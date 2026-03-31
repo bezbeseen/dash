@@ -1,57 +1,1077 @@
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background: #0b1020; color: #e6edf3; }
-
-/* Viewport gutters so dashboards never sit flush to the browser edge */
-.app-shell {
-  min-height: 100vh;
-  padding: 24px clamp(20px, 5vw, 64px);
+* {
+  box-sizing: border-box;
 }
-a { color: inherit; text-decoration: none; }
-button { cursor: pointer; }
-/* Centered content column inside app-shell gutters */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+  background: #050810;
+  color: #e6edf3;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button {
+  cursor: pointer;
+  font: inherit;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ——— Product shell (Trello / Monday-inspired board workspace) ——— */
+
+.board-workspace {
+  display: flex;
+  min-height: 100vh;
+  align-items: stretch;
+}
+
+.board-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px 16px;
+  background: linear-gradient(180deg, #0a0f1a 0%, #070b14 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.board-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+.board-sidebar-brand:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.board-sidebar-brand-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+  background: linear-gradient(135deg, #3b7cff 0%, #7c5cff 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(59, 124, 255, 0.35);
+}
+
+.board-sidebar-brand-name {
+  display: block;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+.board-sidebar-brand-sub {
+  display: block;
+  font-size: 11px;
+  color: #7a8ca3;
+  margin-top: 2px;
+}
+
+.board-sidebar-section-label {
+  margin: 0 0 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #5c6d84;
+}
+
+.board-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.board-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #b8c5d9;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.board-sidebar-link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.board-sidebar-link-active {
+  background: rgba(59, 124, 255, 0.16);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(59, 124, 255, 0.25);
+}
+
+.board-sidebar-icon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.board-sidebar-hint {
+  margin-top: auto;
+  padding: 12px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #5c6d84;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* QuickBooks checking / bank balance widget */
+.qb-balance-widget {
+  padding: 14px;
+  border-radius: 12px;
+  background: linear-gradient(160deg, rgba(59, 124, 255, 0.14) 0%, rgba(124, 92, 255, 0.08) 100%);
+  border: 1px solid rgba(124, 165, 255, 0.2);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.2);
+}
+.qb-balance-widget-muted {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+}
+.qb-balance-widget-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #9fb8e8;
+  margin-bottom: 10px;
+}
+.qb-balance-hero {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #fff;
+  line-height: 1.2;
+}
+.qb-balance-widget-sub {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #a8b8d0;
+  line-height: 1.35;
+}
+.qb-balance-widget-body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #7d8ea8;
+}
+.qb-balance-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+.qb-balance-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.qb-balance-list li:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+.qb-balance-list-name {
+  color: #b8c8df;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qb-balance-list-amt {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: #e8eef8;
+}
+.qb-balance-widget-foot {
+  margin: 12px 0 0;
+  font-size: 10px;
+  line-height: 1.45;
+  color: #627a94;
+}
+
+.board-stage {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(145deg, #0f1628 0%, #0c1929 40%, #0a1524 100%);
+}
+
+.board-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.board-page-detail {
+  overflow-y: auto;
+  padding: 24px 28px 48px;
+}
+
+/* Ticket page: TOC + stacked section panels */
+.ticket-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(168px, 200px) minmax(0, 1fr);
+  gap: 28px 40px;
+  align-items: start;
+  max-width: 1180px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.ticket-detail-main {
+  min-width: 0;
+}
+
+.ticket-detail-panel {
+  scroll-margin-top: 20px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 16px;
+  padding: 20px 22px 22px;
+  margin-bottom: 18px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+}
+
+.ticket-detail-panel > .detail-section-title:first-child {
+  margin-top: 0;
+}
+
+.ticket-detail-overview .detail-back {
+  margin-bottom: 14px;
+}
+
+.ticket-detail-overview .detail-header {
+  margin-bottom: 0;
+}
+
+.ticket-detail-toc {
+  position: sticky;
+  top: 16px;
+  align-self: start;
+}
+
+.ticket-detail-toc-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin: 0 0 10px 2px;
+  font-weight: 600;
+}
+
+.ticket-detail-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ticket-detail-toc-link {
+  display: block;
+  font-size: 13px;
+  color: #94a3b8;
+  text-decoration: none;
+  padding: 7px 10px;
+  border-radius: 8px;
+  line-height: 1.35;
+}
+
+.ticket-detail-toc-link:hover {
+  background: rgba(96, 165, 250, 0.14);
+  color: #e2e8f0;
+}
+
+.ticket-detail-footer.detail-footer {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+@media (max-width: 900px) {
+  .ticket-detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .ticket-detail-toc {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    margin: -4px 0 12px;
+    padding: 10px 0 12px;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.97) 65%, transparent);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  }
+
+  .ticket-detail-toc-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .ticket-detail-toc-link {
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 12px;
+  }
+}
+
+/* Top bar (Monday-style title row + Trello-style toolbar) */
+.board-topbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px 14px;
+  background: rgba(5, 8, 16, 0.55);
+  /* Heavy backdrop-blur can contribute to Chrome GPU black screens on some Macs. */
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .board-topbar {
+    backdrop-filter: none;
+    background: rgba(5, 8, 16, 0.94);
+  }
+}
+
+.board-topbar-title {
+  margin: 0 0 4px;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.board-topbar-sub {
+  margin: 0;
+  font-size: 13px;
+  color: #8b9cb4;
+  max-width: 520px;
+  line-height: 1.45;
+}
+.board-topbar-leads {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #7a8aa3;
+}
+
+.board-topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.board-toasts {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 24px 12px;
+}
+.board-toast {
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+.board-toast-error {
+  background: rgba(220, 38, 38, 0.15);
+  color: #fda4a4;
+  border: 1px solid rgba(220, 38, 38, 0.35);
+}
+.board-toast-ok {
+  background: rgba(34, 197, 94, 0.12);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.28);
+}
+
+/* Horizontal list canvas (Trello columns) */
+.board-canvas {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px 24px 28px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.done-archive-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 24px 28px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.done-archive-empty {
+  flex: 1;
+  padding: 24px 28px 40px;
+}
+
+.card-extra-meta {
+  color: #a5b4c9;
+}
+
+.board-list {
+  flex-shrink: 0;
+  width: 280px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+.board-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.board-list-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #d1dae8;
+}
+
+.board-list-count {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9fb0c9;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 999px;
+}
+
+.board-list-body {
+  flex: 1;
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.board-list-body .card {
+  margin-bottom: 0;
+}
+
+.board-list-footer {
+  padding: 8px 10px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.board-list-add {
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #7d8ea8;
+  font-size: 13px;
+  text-align: left;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.board-list-add:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #c5d0e2;
+}
+
+/* Cards */
+.card {
+  background: #131c2e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.card-main-link {
+  display: grid;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 8px;
+  margin: -4px;
+  padding: 4px;
+  transition: background 0.15s ease;
+}
+.card-main-link:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.card-main-link:hover .card-open-hint {
+  color: #c8d4e6;
+}
+.card-main-link:focus-visible {
+  outline: 2px solid #5b8cff;
+  outline-offset: 2px;
+}
+.card-open-hint {
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(59, 124, 255, 0.2);
+  color: #a8c4ff;
+  font-size: 11px;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Keep card buttons above the clickable ticket link stacking context */
+.actions-card {
+  position: relative;
+  z-index: 2;
+}
+
+.btn-done {
+  border-color: rgba(34, 197, 94, 0.45);
+  background: rgba(34, 197, 94, 0.18);
+}
+.btn-done:hover {
+  background: rgba(34, 197, 94, 0.28);
+  border-color: rgba(34, 197, 94, 0.55);
+}
+
+.btn-lost {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(220, 38, 38, 0.2);
+}
+.btn-lost:hover {
+  background: rgba(220, 38, 38, 0.32);
+  border-color: rgba(248, 113, 113, 0.55);
+}
+
+.card-archived-note {
+  margin: 0;
+  font-size: 12px;
+}
+
+.ticket-archived-banner {
+  padding: 12px 14px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.ticket-archived-banner strong {
+  margin-right: 8px;
+}
+.ticket-archived-reason {
+  color: #fcd34d;
+  margin-right: 8px;
+}
+
+/* QuickBooks invoice activity timeline (API-backed) */
+.ticket-qb-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 2px solid rgba(96, 165, 250, 0.35);
+}
+.ticket-qb-timeline-item {
+  position: relative;
+  margin: 0 0 0 10px;
+  padding: 0 0 18px 16px;
+}
+.ticket-qb-timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -15px;
+  top: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(96, 165, 250, 0.85);
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.9);
+}
+.ticket-qb-timeline-title {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+.ticket-qb-timeline-at {
+  font-size: 13px;
+  color: #93c5fd;
+  margin-bottom: 4px;
+}
+.ticket-qb-timeline-detail {
+  font-size: 13px;
+  color: #cbd5e1;
+  line-height: 1.45;
+  margin-bottom: 4px;
+}
+.ticket-qb-timeline-amount {
+  font-size: 15px;
+  font-weight: 600;
+  color: #86efac;
+  margin-top: 2px;
+}
+.ticket-qb-timeline-meta {
+  margin-top: 4px;
+  font-size: 12px;
+}
+.ticket-qb-timeline-notes {
+  margin: 16px 0 0;
+  padding-left: 1.2rem;
+  line-height: 1.5;
+}
+
+/* Linked Gmail references on ticket */
+.linked-email-list {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.linked-email-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+.linked-email-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.linked-email-subject {
+  font-size: 15px;
+  margin: 0;
+}
+.linked-email-remove-form {
+  flex-shrink: 0;
+  margin: 0;
+}
+.linked-email-remove {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+.linked-email-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 12px;
+  color: #93a4ba;
+  margin-bottom: 6px;
+}
+.linked-email-link-line {
+  margin: 6px 0 0;
+}
+.linked-email-notes {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  color: #c5d0e2;
+}
+.linked-email-add-form {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.linked-email-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px 16px;
+  margin-bottom: 14px;
+}
+.linked-email-field-full {
+  grid-column: 1 / -1;
+}
+.linked-email-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #93a4ba;
+}
+.linked-email-field input,
+.linked-email-field textarea {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  color: #e6edf3;
+  font: inherit;
+  font-size: 14px;
+}
+.linked-email-field textarea {
+  resize: vertical;
+  min-height: 56px;
+}
+
+.gmail-sidebar-hint .gmail-sidebar-btn {
+  display: block;
+  text-align: center;
+  font-size: 13px;
+  padding: 8px 10px;
+}
+.gmail-sidebar-connected {
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  line-height: 1.35;
+}
+
+.gmail-sidebar-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.gmail-sidebar-list-item {
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  word-break: break-all;
+}
+.gmail-sidebar-list-item:last-child {
+  border-bottom: none;
+}
+
+.linked-email-field select,
+.gmail-mailbox-select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  color: #e6edf3;
+  font: inherit;
+  font-size: 14px;
+}
+.linked-email-field select:disabled,
+.gmail-mailbox-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.gmail-synced-thread h3 {
+  margin-top: 0;
+}
+.gmail-message-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.gmail-message-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+.gmail-message-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.gmail-message-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.gmail-snippet {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #b8c8df;
+}
+.gmail-attachment-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 13px;
+}
+.gmail-attachment-list li {
+  margin: 4px 0;
+}
+
+.btn {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.btn-toolbar {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+}
+.btn-toolbar:hover {
+  background: rgba(59, 124, 255, 0.15);
+  border-color: rgba(59, 124, 255, 0.35);
+}
+.btn-toolbar-muted {
+  opacity: 0.85;
+  font-weight: 400;
+}
+
+.btn-ghost {
+  display: inline-block;
+  text-align: center;
+}
+
+.meta {
+  color: #8b9cb4;
+  font-size: 12px;
+}
+
+/* Legacy / shared */
 .dashboard-main {
   width: 100%;
   max-width: 1600px;
   margin-inline: auto;
   min-width: 0;
 }
-
-/* Back-compat if anything still uses .container */
 .container {
   width: 100%;
   max-width: 1600px;
   margin-inline: auto;
   min-width: 0;
 }
-.header {
+
+/* Job detail (/dashboard/jobs/[id]) */
+.detail-back {
+  margin-bottom: 20px;
+}
+.detail-header {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
   align-items: flex-start;
+  justify-content: space-between;
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
-.top-actions {
+.detail-title {
+  margin: 0 0 6px;
+  font-size: 1.75rem;
+}
+.detail-subtitle {
+  margin: 0;
+  font-size: 1rem;
+}
+.detail-section {
+  margin-bottom: 28px;
+}
+.detail-section-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #93a4ba;
+  margin: 0 0 12px;
+}
+.detail-kv {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) 1fr;
+  gap: 8px 20px;
+  margin: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+.detail-kv dt {
+  margin: 0;
+  color: #93a4ba;
+  font-size: 13px;
+}
+.detail-kv dd {
+  margin: 0;
+  font-size: 14px;
+}
+.detail-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+.badge-lg {
+  font-size: 13px;
+  padding: 6px 12px;
+}
+.detail-footer {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px 24px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 8px;
 }
-/* 8 board columns; horizontal scroll happens inside this strip, not full-bleed */
-.board {
+
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: grid;
-  grid-template-columns: repeat(8, minmax(200px, 1fr));
-  gap: 16px;
-  align-items: start;
-  width: 100%;
-  min-width: 0;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  -webkit-overflow-scrolling: touch;
+  gap: 12px;
 }
-.column { background: #111827; border: 1px solid #243042; border-radius: 14px; padding: 12px; min-height: 400px; }
-.column h2 { font-size: 14px; margin: 0 0 12px; letter-spacing: 0.04em; text-transform: uppercase; color: #93a4ba; }
-.card { background: #172235; border: 1px solid #243042; border-radius: 12px; padding: 12px; margin-bottom: 12px; display: grid; gap: 8px; }
-.badge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #20304a; color: #b8c7da; font-size: 12px; }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.btn { border: 1px solid #314055; background: #1a2333; color: #fff; padding: 8px 10px; border-radius: 10px; }
-.meta { color: #93a4ba; font-size: 12px; }
+.activity-item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.activity-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.activity-time {
+  font-size: 12px;
+  color: #93a4ba;
+}
+.activity-event {
+  font-size: 13px;
+  font-weight: 600;
+  color: #dbe4ef;
+}
+.activity-message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.activity-metadata {
+  margin: 10px 0 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: #050810;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  overflow-x: auto;
+}
+
+/* Ticket: QBO PDF + email section */
+.ticket-doc-note {
+  margin: 0 0 12px;
+  line-height: 1.45;
+  max-width: 52rem;
+}
+.ticket-doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.ticket-pdf-preview {
+  margin-top: 8px;
+}
+.ticket-pdf-preview-label {
+  margin: 0 0 8px;
+}
+.ticket-pdf-frame {
+  width: 100%;
+  min-height: 420px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: #080d18;
+}
+.ticket-mailto {
+  color: #8ab4ff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.ticket-mailto:hover {
+  color: #bcd4ff;
+}
+.ticket-memo {
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+.ticket-memo-internal {
+  color: #b8a8d8;
+}

@@ -29,6 +29,14 @@ export type EstimateSnapshot = {
   acceptedAt?: string;
 };
 
+/** Bank account row for sidebar / cash widget (from QBO Account query). */
+export type BankAccountBalance = {
+  id: string;
+  name: string;
+  accountSubType?: string;
+  balanceCents: number;
+};
+
 export type InvoiceSnapshot = {
   id: string;
   linkedEstimateId?: string;
@@ -38,4 +46,13 @@ export type InvoiceSnapshot = {
   balanceCents: number;
   amountPaidCents: number;
   status: 'DRAFT' | 'OPEN' | 'PAID' | 'VOID';
+  /** From QBO when returned by GET Invoice / useful for PDF naming & ticket UI */
+  docNumber?: string;
+  txnDate?: string;
+  dueDate?: string;
+  /** Invoice “send to” email (customer-facing billing email on the invoice) */
+  billEmail?: string;
+  billEmailCc?: string;
+  customerMemo?: string;
+  privateNote?: string;
 };

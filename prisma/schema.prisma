@@ -25,6 +25,11 @@ enum BoardStatus {
   PAID
 }
 
+enum ArchiveReason {
+  DONE
+  LOST
+}
+
 enum EstimateStatus {
   UNKNOWN
   DRAFT
@@ -74,11 +79,84 @@ model Job {
   deliveredAt          DateTime?
   paidAt               DateTime?
   boardStatus          BoardStatus       @default(REQUESTED)
+  archivedAt           DateTime?
+  archiveReason        ArchiveReason?
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
   activityLogs         ActivityLog[]
+  linkedEmails         LinkedEmail[]
+  /// Gmail thread id (from URL or API) — sync pulls every message + attachments in that thread.
+  gmailThreadId        String?
+  /// Which connected mailbox to use when calling Gmail API for this ticket (you / partner / contact@, etc.).
+  gmailConnectionId    String?
+  gmailConnection      GmailConnection? @relation(fields: [gmailConnectionId], references: [id], onDelete: SetNull)
+  gmailMessages        GmailSyncedMessage[]
 
   @@index([boardStatus])
+  @@index([archivedAt])
+}
+
+/// Each Google account you authorize (readonly). Connect yours, your partner’s, and contact@ separately.
+model GmailConnection {
+  id                     String   @id @default(cuid())
+  googleEmail            String   @unique
+  refreshToken           String
+  accessToken            String
+  accessTokenExpiresAt   DateTime
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  jobs                   Job[]
+}
+
+
+model GmailSyncedMessage {
+  id             String   @id @default(cuid())
+  jobId          String
+  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  gmailMessageId String
+  gmailThreadId  String
+  subject        String?
+  fromAddr       String?
+  toAddr         String?
+  date           DateTime?
+  snippet        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  attachments    GmailSyncedAttachment[]
+
+  @@unique([jobId, gmailMessageId])
+  @@index([jobId, date])
+}
+
+model GmailSyncedAttachment {
+  id                String             @id @default(cuid())
+  messageId         String
+  message           GmailSyncedMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  gmailAttachmentId String
+  filename          String
+  mimeType          String?
+  sizeBytes         Int
+  /// Path relative to project root (forward slashes)
+  storagePath       String
+  createdAt         DateTime           @default(now())
+
+  @@index([messageId])
+}
+
+/// User-pasted email thread references (Gmail/Outlook permalinks, mailto, notes). QBO does not expose email threads.
+model LinkedEmail {
+  id        String    @id @default(cuid())
+  jobId     String
+  job       Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  subject   String?
+  fromAddr  String?
+  toAddr    String?
+  sentAt    DateTime?
+  linkUrl   String?
+  notes     String?
+  createdAt DateTime  @default(now())
+
+  @@index([jobId, createdAt])
 }
 
 model ActivityLog {

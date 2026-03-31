@@ -21,11 +21,12 @@ export async function POST() {
       listRecentInvoices(token.realmId, 50),
     ]);
 
+    const { realmId } = token;
     for (const est of estimates) {
-      await upsertJobFromEstimate(est);
+      await upsertJobFromEstimate(est, { realmId });
     }
     for (const inv of invoices) {
-      await upsertJobFromInvoice(inv);
+      await upsertJobFromInvoice(inv, { realmId });
     }
 
     const params = new URLSearchParams({

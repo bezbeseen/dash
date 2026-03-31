@@ -1,5 +1,5 @@
 import {
-  ActivityLog,
+  ArchiveReason,
   BoardStatus,
   EstimateStatus,
   EventSource,
@@ -32,11 +32,16 @@ function mapInvoiceStatus(value: InvoiceSnapshot['status']): InvoiceStatus {
   }
 }
 
-export async function upsertJobFromEstimate(snapshot: EstimateSnapshot) {
+export async function upsertJobFromEstimate(
+  snapshot: EstimateSnapshot,
+  opts?: { realmId?: string },
+) {
   const estimateStatus = mapEstimateStatus(snapshot.status);
+  const realmId = opts?.realmId;
 
   return prisma.$transaction(async (tx) => {
     const existing = await tx.job.findUnique({ where: { quickbooksEstimateId: snapshot.id } });
+    const wasArchived = existing?.archivedAt != null;
     const updatePayload: Prisma.JobUncheckedUpdateInput = {
       quickbooksEstimateId: snapshot.id,
       quickbooksCustomerId: snapshot.customerId,
@@ -46,6 +51,7 @@ export async function upsertJobFromEstimate(snapshot: EstimateSnapshot) {
       estimateAmountCents: snapshot.totalAmtCents,
       estimateSentAt: snapshot.txnDate ? new Date(snapshot.txnDate) : undefined,
       estimateAcceptedAt: snapshot.acceptedAt ? new Date(snapshot.acceptedAt) : estimateStatus === EstimateStatus.ACCEPTED ? new Date() : undefined,
+      ...(realmId ? { quickbooksCompanyId: realmId } : {}),
     };
 
     const job = existing
@@ -67,13 +73,14 @@ export async function upsertJobFromEstimate(snapshot: EstimateSnapshot) {
               : estimateStatus === EstimateStatus.ACCEPTED
                 ? new Date()
                 : undefined,
+            quickbooksCompanyId: realmId ?? undefined,
             productionStatus: ProductionStatus.NOT_STARTED,
             invoiceStatus: InvoiceStatus.NONE,
             boardStatus: BoardStatus.REQUESTED,
           },
         });
 
-    const boardStatus = deriveBoardStatus(job);
+    const boardStatus = wasArchived ? job.boardStatus : deriveBoardStatus(job);
     const updated = await tx.job.update({ where: { id: job.id }, data: { boardStatus } });
 
     await tx.activityLog.create({
@@ -90,7 +97,12 @@ export async function upsertJobFromEstimate(snapshot: EstimateSnapshot) {
   });
 }
 
-export async function upsertJobFromInvoice(snapshot: InvoiceSnapshot) {
+export async function upsertJobFromInvoice(
+  snapshot: InvoiceSnapshot,
+  opts?: { realmId?: string },
+) {
+  const realmId = opts?.realmId;
+
   return prisma.$transaction(async (tx) => {
     const byInvoice = await tx.job.findUnique({ where: { quickbooksInvoiceId: snapshot.id } });
     const byEstimate = snapshot.linkedEstimateId
@@ -98,6 +110,7 @@ export async function upsertJobFromInvoice(snapshot: InvoiceSnapshot) {
       : null;
 
     const target = byInvoice ?? byEstimate;
+    const wasArchived = target?.archivedAt != null;
 
     const updatePayload: Prisma.JobUncheckedUpdateInput = {
       quickbooksInvoiceId: snapshot.id,
@@ -109,6 +122,7 @@ export async function upsertJobFromInvoice(snapshot: InvoiceSnapshot) {
       amountPaidCents: snapshot.amountPaidCents,
       paidAt: snapshot.status === 'PAID' ? new Date() : null,
       quickbooksEstimateId: target?.quickbooksEstimateId ?? snapshot.linkedEstimateId,
+      ...(realmId ? { quickbooksCompanyId: realmId } : {}),
     };
 
     const job = target
@@ -124,13 +138,14 @@ export async function upsertJobFromInvoice(snapshot: InvoiceSnapshot) {
             amountPaidCents: snapshot.amountPaidCents,
             paidAt: snapshot.status === 'PAID' ? new Date() : null,
             quickbooksEstimateId: snapshot.linkedEstimateId ?? undefined,
+            quickbooksCompanyId: realmId ?? undefined,
             estimateStatus: EstimateStatus.UNKNOWN,
             productionStatus: ProductionStatus.NOT_STARTED,
             boardStatus: BoardStatus.REQUESTED,
           },
         });
 
-    const boardStatus = deriveBoardStatus(job);
+    const boardStatus = wasArchived ? job.boardStatus : deriveBoardStatus(job);
     const updated = await tx.job.update({ where: { id: job.id }, data: { boardStatus } });
 
     await tx.activityLog.create({
@@ -147,8 +162,38 @@ export async function upsertJobFromInvoice(snapshot: InvoiceSnapshot) {
   });
 }
 
+export async function archiveJob(jobId: string, reason: ArchiveReason, message: string) {
+  const current = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
+  if (current.archivedAt != null) {
+    throw new Error('This job is already off the board.');
+  }
+
+  const updated = await prisma.job.update({
+    where: { id: jobId },
+    data: {
+      archivedAt: new Date(),
+      archiveReason: reason,
+    },
+  });
+
+  await prisma.activityLog.create({
+    data: {
+      jobId,
+      source: EventSource.APP,
+      eventName: reason === ArchiveReason.DONE ? 'job.archived_done' : 'job.archived_lost',
+      message,
+    },
+  });
+
+  return updated;
+}
+
 export async function updateProductionStatus(jobId: string, productionStatus: ProductionStatus, eventName: string, message: string) {
   const current = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
+
+  if (current.archivedAt != null) {
+    throw new Error('This job is off the board; restore it before changing production status.');
+  }
 
   const timestamps: Partial<Job> = {};
   if (productionStatus === ProductionStatus.IN_PROGRESS && !current.startedAt) timestamps.startedAt = new Date();

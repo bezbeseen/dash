@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { getQuickBooksApiBase } from '@/lib/quickbooks/config';
 import { getValidQuickBooksAccessToken } from '@/lib/quickbooks/tokens-db';
-import { EstimateSnapshot, InvoiceSnapshot } from './types';
+import { BankAccountBalance, EstimateSnapshot, InvoiceSnapshot } from './types';
 
 export function verifyQuickBooksSignature(rawBody: string, signatureHeader: string | null) {
   const verifierToken = process.env.QUICKBOOKS_WEBHOOK_VERIFIER;
@@ -18,7 +18,15 @@ export function verifyQuickBooksSignature(rawBody: string, signatureHeader: stri
 
 function dollarsToCents(amt: string | number | undefined): number {
   if (amt == null) return 0;
-  const n = typeof amt === 'number' ? amt : parseFloat(String(amt));
+  if (typeof amt === 'number') {
+    if (Number.isNaN(amt)) return 0;
+    return Math.round(amt * 100);
+  }
+  const s = String(amt)
+    .replace(/[$,\s]/g, '')
+    .trim();
+  if (!s) return 0;
+  const n = parseFloat(s);
   if (Number.isNaN(n)) return 0;
   return Math.round(n * 100);
 }
@@ -50,16 +58,24 @@ type QboEstimate = {
 
 type QboLinkedTxn = { TxnId?: string; TxnType?: string };
 
+type QboEmailAddr = { Address?: string };
+
 type QboInvoice = {
   Id?: string;
   TotalAmt?: number | string;
   Balance?: number | string;
   DocNumber?: string;
+  TxnDate?: string;
+  DueDate?: string;
   CustomerRef?: QboRef;
   LinkedTxn?: QboLinkedTxn[];
+  BillEmail?: QboEmailAddr;
+  BillEmailCc?: QboEmailAddr;
+  CustomerMemo?: string;
+  PrivateNote?: string;
 };
 
-async function qboJson(realmId: string, path: string): Promise<unknown> {
+export async function quickBooksCompanyJson(realmId: string, path: string): Promise<unknown> {
   const token = await getValidQuickBooksAccessToken(realmId);
   const base = getQuickBooksApiBase();
   const url = `${base}/v3/company/${encodeURIComponent(realmId)}/${path}${path.includes('?') ? '&' : '?'}minorversion=65`;
@@ -104,10 +120,14 @@ function estimateFromQbo(e: QboEstimate, fallbackId: string): EstimateSnapshot {
 function invoiceFromQbo(inv: QboInvoice, fallbackId: string): InvoiceSnapshot {
   const id = inv.Id ?? fallbackId;
   const totalCents = dollarsToCents(inv.TotalAmt);
-  // Query responses may omit Balance; don't treat missing balance as "paid".
-  const balanceKnown = inv.Balance != null && String(inv.Balance).length > 0;
-  const balanceCents = balanceKnown ? dollarsToCents(inv.Balance) : 0;
-  const amountPaidCents =
+  const balRaw = inv.Balance;
+  // Balance must be a plain number/string — sometimes other fields come back oddly shaped.
+  const balanceKnown =
+    balRaw != null &&
+    (typeof balRaw === 'number' || typeof balRaw === 'string') &&
+    String(balRaw).trim().length > 0;
+  let balanceCents = balanceKnown ? dollarsToCents(balRaw) : 0;
+  let amountPaidCents =
     balanceKnown && totalCents >= 0 ? Math.max(0, totalCents - balanceCents) : 0;
 
   let status: InvoiceSnapshot['status'] = 'OPEN';
@@ -115,6 +135,19 @@ function invoiceFromQbo(inv: QboInvoice, fallbackId: string): InvoiceSnapshot {
     status = 'PAID';
   } else if (totalCents === 0 && (!balanceKnown || balanceCents === 0)) {
     status = 'DRAFT';
+  }
+
+  // QBO sometimes leaves a 1–2¢ open balance on fully paid invoices (tax/rounding). Treat as paid.
+  if (
+    balanceKnown &&
+    totalCents > 0 &&
+    balanceCents > 0 &&
+    balanceCents <= 2 &&
+    amountPaidCents >= totalCents - 2
+  ) {
+    status = 'PAID';
+    balanceCents = 0;
+    amountPaidCents = totalCents;
   }
 
   const linked = inv.LinkedTxn?.find(
@@ -131,11 +164,18 @@ function invoiceFromQbo(inv: QboInvoice, fallbackId: string): InvoiceSnapshot {
     balanceCents,
     amountPaidCents,
     status,
+    docNumber: inv.DocNumber?.trim() || undefined,
+    txnDate: inv.TxnDate,
+    dueDate: inv.DueDate,
+    billEmail: inv.BillEmail?.Address?.trim() || undefined,
+    billEmailCc: inv.BillEmailCc?.Address?.trim() || undefined,
+    customerMemo: typeof inv.CustomerMemo === 'string' ? inv.CustomerMemo.trim() || undefined : undefined,
+    privateNote: inv.PrivateNote?.trim() || undefined,
   };
 }
 
 export async function fetchEstimateById(realmId: string, estimateId: string): Promise<EstimateSnapshot> {
-  const body = await qboJson(realmId, `estimate/${encodeURIComponent(estimateId)}`);
+  const body = await quickBooksCompanyJson(realmId, `estimate/${encodeURIComponent(estimateId)}`);
   const est = (body as { Estimate?: QboEstimate }).Estimate;
   if (!est) {
     throw new Error('QuickBooks response missing Estimate object');
@@ -144,12 +184,52 @@ export async function fetchEstimateById(realmId: string, estimateId: string): Pr
 }
 
 export async function fetchInvoiceById(realmId: string, invoiceId: string): Promise<InvoiceSnapshot> {
-  const body = await qboJson(realmId, `invoice/${encodeURIComponent(invoiceId)}`);
+  const body = await quickBooksCompanyJson(realmId, `invoice/${encodeURIComponent(invoiceId)}`);
   const inv = (body as { Invoice?: QboInvoice }).Invoice;
   if (!inv) {
     throw new Error('QuickBooks response missing Invoice object');
   }
   return invoiceFromQbo(inv, invoiceId);
+}
+
+/** QBO returns raw PDF bytes (not JSON). */
+export async function fetchInvoicePdf(realmId: string, invoiceId: string): Promise<ArrayBuffer> {
+  const token = await getValidQuickBooksAccessToken(realmId);
+  const base = getQuickBooksApiBase();
+  const url = `${_basePdfUrl(base, realmId)}/invoice/${encodeURIComponent(invoiceId)}/pdf?minorversion=65`;
+  return _fetchQboPdf(url, token);
+}
+
+export async function fetchEstimatePdf(realmId: string, estimateId: string): Promise<ArrayBuffer> {
+  const token = await getValidQuickBooksAccessToken(realmId);
+  const base = getQuickBooksApiBase();
+  const url = `${_basePdfUrl(base, realmId)}/estimate/${encodeURIComponent(estimateId)}/pdf?minorversion=65`;
+  return _fetchQboPdf(url, token);
+}
+
+function _basePdfUrl(base: string, realmId: string) {
+  return `${base}/v3/company/${encodeURIComponent(realmId)}`;
+}
+
+async function _fetchQboPdf(url: string, token: string): Promise<ArrayBuffer> {
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/pdf',
+    },
+  });
+  const buf = await res.arrayBuffer();
+  if (!res.ok) {
+    let extra = '';
+    try {
+      const text = new TextDecoder().decode(buf.slice(0, 500));
+      if (text.trim().startsWith('{')) extra = `: ${text}`;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`QuickBooks PDF error ${res.status}${extra}`);
+  }
+  return buf;
 }
 
 function qboQueryEntities<T>(qr: { QueryResponse?: Record<string, unknown> } | undefined, key: string): T[] {
@@ -161,15 +241,79 @@ function qboQueryEntities<T>(qr: { QueryResponse?: Record<string, unknown> } | u
 /** Pull recent estimates from QuickBooks (sandbox or prod per env). */
 export async function listRecentEstimates(realmId: string, maxResults = 50): Promise<EstimateSnapshot[]> {
   const sql = `SELECT * FROM Estimate MAXRESULTS ${maxResults}`;
-  const body = await qboJson(realmId, `query?query=${encodeURIComponent(sql)}`);
+  const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
   const estimates = qboQueryEntities<QboEstimate>(body as { QueryResponse?: Record<string, unknown> }, 'Estimate');
   return estimates.map((e) => estimateFromQbo(e, e.Id ?? ''));
 }
 
-/** Pull recent invoices from QuickBooks (balances / links may be sparser than GET-by-id). */
+/**
+ * List recent invoices, then hydrate each with GET invoice/{id}.
+ * Query responses often omit Balance and LinkedTxn; without Balance every row looks “open / unpaid”
+ * and paid jobs never reach the PAID column.
+ */
 export async function listRecentInvoices(realmId: string, maxResults = 50): Promise<InvoiceSnapshot[]> {
-  const sql = `SELECT * FROM Invoice MAXRESULTS ${maxResults}`;
-  const body = await qboJson(realmId, `query?query=${encodeURIComponent(sql)}`);
-  const invoices = qboQueryEntities<QboInvoice>(body as { QueryResponse?: Record<string, unknown> }, 'Invoice');
-  return invoices.map((inv) => invoiceFromQbo(inv, inv.Id ?? ''));
+  const ordered = `SELECT Id FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS ${maxResults}`;
+  let body: unknown;
+  try {
+    body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(ordered)}`);
+  } catch {
+    const fallback = `SELECT Id FROM Invoice MAXRESULTS ${maxResults}`;
+    body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(fallback)}`);
+  }
+  const stubs = qboQueryEntities<QboInvoice>(body as { QueryResponse?: Record<string, unknown> }, 'Invoice');
+  const ids = [...new Set(stubs.map((s) => s.Id).filter((id): id is string => Boolean(id)))];
+
+  const results = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        return await fetchInvoiceById(realmId, id);
+      } catch (e) {
+        console.warn('[quickbooks] listRecentInvoices: GET invoice failed, skipping id', id, e);
+        return null;
+      }
+    }),
+  );
+
+  return results.filter((x): x is InvoiceSnapshot => x != null);
+}
+
+type QboAccount = {
+  Id?: string;
+  Name?: string;
+  AccountType?: string;
+  AccountSubType?: string;
+  CurrentBalance?: number | string;
+};
+
+function accountRowToBalance(a: QboAccount): BankAccountBalance | null {
+  const id = a.Id?.trim();
+  if (!id) return null;
+  const name = a.Name?.trim() || `Account ${id}`;
+  return {
+    id,
+    name,
+    accountSubType: a.AccountSubType?.trim(),
+    balanceCents: dollarsToCents(a.CurrentBalance),
+  };
+}
+
+/**
+ * Checking accounts from the Chart of Accounts (current register balance as QBO stores it).
+ * Falls back to all Bank-type accounts if none are subtype Checking.
+ */
+export async function listCheckingAccountBalances(realmId: string): Promise<BankAccountBalance[]> {
+  const checkingSql =
+    "SELECT Id, Name, AccountType, AccountSubType, CurrentBalance FROM Account WHERE AccountType = 'Bank' AND AccountSubType = 'Checking' MAXRESULTS 25";
+  let body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(checkingSql)}`);
+  let rows = qboQueryEntities<QboAccount>(body as { QueryResponse?: Record<string, unknown> }, 'Account');
+
+  if (rows.length === 0) {
+    const bankSql =
+      "SELECT Id, Name, AccountType, AccountSubType, CurrentBalance FROM Account WHERE AccountType = 'Bank' MAXRESULTS 25";
+    body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(bankSql)}`);
+    rows = qboQueryEntities<QboAccount>(body as { QueryResponse?: Record<string, unknown> }, 'Account');
+  }
+
+  const out = rows.map(accountRowToBalance).filter((x): x is BankAccountBalance => x != null);
+  return out.sort((a, b) => b.balanceCents - a.balanceCents);
 }

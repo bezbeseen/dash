@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
 import { ProductionStatus } from '@prisma/client';
 import { updateProductionStatus } from '@/lib/domain/sync';
+import { postActionRedirect } from '@/lib/http/post-action-redirect';
 
-export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  await updateProductionStatus(id, ProductionStatus.DELIVERED, 'job.delivered', 'Job delivered to customer.');
-  return NextResponse.redirect(new URL('/dashboard', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'));
+  try {
+    await updateProductionStatus(id, ProductionStatus.DELIVERED, 'job.delivered', 'Job delivered to customer.');
+  } catch {
+    return NextResponse.redirect(postActionRedirect(req, id, '/dashboard?job_error=blocked'));
+  }
+  return NextResponse.redirect(postActionRedirect(req, id, '/dashboard'));
 }

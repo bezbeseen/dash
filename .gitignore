@@ -24,6 +24,9 @@ npm-debug.log*
 .vscode/
 *.swp
 
+# Downloaded Gmail attachments (local dev)
+storage/gmail-attachments/
+
 # Vercel
 .vercel
 

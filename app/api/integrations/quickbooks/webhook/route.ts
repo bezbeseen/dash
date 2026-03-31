@@ -37,12 +37,12 @@ export async function POST(req: NextRequest) {
       try {
         if (entity.name === 'Estimate') {
           const estimate = await fetchEstimateById(realmId, entity.id);
-          await upsertJobFromEstimate(estimate);
+          await upsertJobFromEstimate(estimate, { realmId });
         }
 
         if (entity.name === 'Invoice') {
           const invoice = await fetchInvoiceById(realmId, entity.id);
-          await upsertJobFromInvoice(invoice);
+          await upsertJobFromInvoice(invoice, { realmId });
         }
 
         await prisma.quickBooksWebhookEvent.update({
