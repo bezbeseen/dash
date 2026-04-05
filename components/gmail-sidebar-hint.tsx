@@ -13,7 +13,7 @@ export async function GmailSidebarHint() {
 
   return (
     <div className="gmail-sidebar-hint">
-      <p className="board-sidebar-section-label" style={{ marginTop: 8 }}>
+      <p className="menu-label" style={{ marginTop: 8 }}>
         Gmail ({connections.length}/{MAX_MAILBOXES})
       </p>
       {connections.length === 0 ? (

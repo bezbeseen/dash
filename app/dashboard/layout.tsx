@@ -5,37 +5,52 @@ import { DashboardSidebarNav } from '@/components/dashboard-sidebar-nav';
 import { PreserveShellScroll } from '@/components/preserve-shell-scroll';
 import { GmailSidebarHint } from '@/components/gmail-sidebar-hint';
 import { GmailRedirectUriHint } from '@/components/gmail-redirect-uri-hint';
+import { MaxtonDashboardEffects } from '@/components/maxton-dashboard-effects';
+import { MaxtonTopHeader } from '@/components/maxton-top-header';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="board-workspace d-flex flex-column flex-lg-row min-vh-100">
-      <aside className="board-sidebar flex-shrink-0" aria-label="Workspace navigation">
-        <Link href="/dashboard" className="board-sidebar-brand">
-          <span className="board-sidebar-brand-mark" aria-hidden>
-            D
-          </span>
-          <div>
-            <span className="board-sidebar-brand-name">Dash</span>
-            <span className="board-sidebar-brand-sub">Operations</span>
+    <>
+      <MaxtonDashboardEffects />
+      <MaxtonTopHeader />
+
+      <aside className="sidebar-wrapper" aria-label="Workspace navigation">
+        <div className="sidebar-header">
+          <Link href="/dashboard" className="logo-icon text-decoration-none">
+            <img src="/maxton/logo-icon.png" className="logo-img" width={45} height={45} alt="" />
+          </Link>
+          <div className="logo-name flex-grow-1">
+            <h5 className="mb-0">
+              <Link href="/dashboard" className="text-body text-decoration-none">
+                Dash
+              </Link>
+            </h5>
           </div>
-        </Link>
+          <div className="sidebar-close">
+            <span className="material-icons-outlined">close</span>
+          </div>
+        </div>
+        <div className="sidebar-nav">
+          <DashboardSidebarNav />
 
-        <DashboardSidebarNav />
-
-        <GmailSidebarHint />
-        <GmailRedirectUriHint />
-
-        <CheckingBalanceWidget />
-
-        <div className="board-sidebar-hint">
-          QuickBooks-backed · statuses update from sync &amp; shop actions
+          <div className="px-3 pb-3">
+            <GmailSidebarHint />
+            <GmailRedirectUriHint />
+            <CheckingBalanceWidget />
+            <p className="menu-label mt-3 mb-2">About</p>
+            <p className="small text-body-secondary lh-sm mb-0">
+              QuickBooks-backed · statuses update from sync &amp; shop actions
+            </p>
+          </div>
         </div>
       </aside>
 
-      <div className="board-stage flex-grow-1 min-w-0">
-        <PreserveShellScroll />
-        {children}
-      </div>
-    </div>
+      <main className="main-wrapper">
+        <div className="main-content">
+          <PreserveShellScroll />
+          {children}
+        </div>
+      </main>
+    </>
   );
 }
