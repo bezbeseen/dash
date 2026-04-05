@@ -8,7 +8,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     await archiveJob(id, ArchiveReason.LOST, 'Marked Lost — ticket removed from the board.');
   } catch {
-    return NextResponse.redirect(postActionRedirect(req, id, '/dashboard?job_error=archive'));
+    return NextResponse.redirect(postActionRedirect(req, id, '/dashboard/tickets?job_error=archive'));
   }
-  return NextResponse.redirect(postActionRedirect(req, id, '/dashboard'));
+  return NextResponse.redirect(postActionRedirect(req, id, '/dashboard/tickets'));
 }

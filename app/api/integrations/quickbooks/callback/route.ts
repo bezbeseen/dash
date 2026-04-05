@@ -4,7 +4,7 @@ import { exchangeAuthorizationCode } from '@/lib/quickbooks/oauth';
 import { upsertQuickBooksTokens } from '@/lib/quickbooks/tokens-db';
 
 function dashboardOn(req: NextRequest, query: string) {
-  return NextResponse.redirect(new URL(`/dashboard?${query}`, req.nextUrl.origin));
+  return NextResponse.redirect(new URL(`/dashboard/settings?${query}`, req.nextUrl.origin));
 }
 
 export async function GET(req: NextRequest) {

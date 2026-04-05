@@ -104,7 +104,7 @@ export async function quickBooksCompanyJson(realmId: string, path: string): Prom
 function estimateFromQbo(e: QboEstimate, fallbackId: string): EstimateSnapshot {
   const id = e.Id ?? fallbackId;
   const customerName = e.CustomerRef?.name?.trim() || `Customer ${e.CustomerRef?.value ?? 'unknown'}`;
-  const projectName = e.DocNumber?.trim() ? `Estimate ${e.DocNumber}` : `Estimate ${id}`;
+  const projectName = e.DocNumber?.trim() ? `Estimate #${e.DocNumber}` : `Estimate #${id}`;
 
   return {
     id,
@@ -292,6 +292,7 @@ function accountRowToBalance(a: QboAccount): BankAccountBalance | null {
   return {
     id,
     name,
+    accountType: a.AccountType?.trim(),
     accountSubType: a.AccountSubType?.trim(),
     balanceCents: dollarsToCents(a.CurrentBalance),
   };
@@ -314,6 +315,19 @@ export async function listCheckingAccountBalances(realmId: string): Promise<Bank
     rows = qboQueryEntities<QboAccount>(body as { QueryResponse?: Record<string, unknown> }, 'Account');
   }
 
+  const out = rows.map(accountRowToBalance).filter((x): x is BankAccountBalance => x != null);
+  return out.sort((a, b) => b.balanceCents - a.balanceCents);
+}
+
+/**
+ * All Chart of Accounts rows with AccountType = Bank (up to 100). For the Cash & banks page;
+ * the sidebar widget uses {@link listCheckingAccountBalances} instead (checking-first).
+ */
+export async function listBankAccountsDetailed(realmId: string): Promise<BankAccountBalance[]> {
+  const bankSql =
+    "SELECT Id, Name, AccountType, AccountSubType, CurrentBalance FROM Account WHERE AccountType = 'Bank' MAXRESULTS 100";
+  const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(bankSql)}`);
+  const rows = qboQueryEntities<QboAccount>(body as { QueryResponse?: Record<string, unknown> }, 'Account');
   const out = rows.map(accountRowToBalance).filter((x): x is BankAccountBalance => x != null);
   return out.sort((a, b) => b.balanceCents - a.balanceCents);
 }

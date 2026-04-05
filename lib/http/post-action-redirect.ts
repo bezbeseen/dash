@@ -1,5 +1,5 @@
 /** Build redirect URL using the incoming request host (fixes :3001 vs .env localhost:3000). */
-export function postActionRedirect(req: Request, jobId: string, fallbackPath = '/dashboard'): URL {
+export function postActionRedirect(req: Request, jobId: string, fallbackPath = '/dashboard/tickets'): URL {
   try {
     const incoming = new URL(req.url);
     const base = `${incoming.protocol}//${incoming.host}`;

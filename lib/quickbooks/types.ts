@@ -29,10 +29,13 @@ export type EstimateSnapshot = {
   acceptedAt?: string;
 };
 
-/** Bank account row for sidebar / cash widget (from QBO Account query). */
+/** Bank account row from QBO Account query (widget + cash page). */
 export type BankAccountBalance = {
   id: string;
   name: string;
+  /** QBO AccountType, e.g. Bank */
+  accountType?: string;
+  /** QBO AccountSubType, e.g. Checking, Savings */
   accountSubType?: string;
   balanceCents: number;
 };

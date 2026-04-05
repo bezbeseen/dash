@@ -28,6 +28,11 @@ npm-debug.log*
 # Downloaded Gmail attachments (local dev)
 storage/gmail-attachments/
 
+# Local one-off downloads / scratch (do not commit)
+/Be Seen LLC_Transaction List by Date.csv
+/TransactionListbyDate.pdf
+/Untitled
+
 # Vercel
 .vercel
 

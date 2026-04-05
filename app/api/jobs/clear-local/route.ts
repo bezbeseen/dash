@@ -12,5 +12,5 @@ export async function POST() {
   await prisma.activityLog.deleteMany();
   await prisma.job.deleteMany();
 
-  return NextResponse.redirect(new URL('/dashboard?cleared=1', baseUrl()));
+  return NextResponse.redirect(new URL('/dashboard/tickets?cleared=1', baseUrl()));
 }

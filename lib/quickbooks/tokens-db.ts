@@ -37,7 +37,15 @@ export async function upsertQuickBooksTokens(params: {
 
 /** Returns a valid Bearer token, refreshing if close to expiry. */
 export async function getValidQuickBooksAccessToken(realmId: string): Promise<string> {
-  const row = await prisma.quickBooksToken.findUnique({ where: { realmId } });
+  const row = await prisma.quickBooksToken.findUnique({
+    where: { realmId },
+    select: {
+      accessToken: true,
+      refreshToken: true,
+      accessTokenExpiresAt: true,
+      refreshTokenExpiresAt: true,
+    },
+  });
   if (!row) {
     throw new Error(
       `No QuickBooks tokens for realm ${realmId}. Open /api/integrations/quickbooks/connect in the browser to connect.`
@@ -61,6 +69,7 @@ export async function getValidQuickBooksAccessToken(realmId: string): Promise<st
           ? new Date(Date.now() + refreshed.x_refresh_token_expires_in * 1000)
           : row.refreshTokenExpiresAt,
     },
+    select: { id: true },
   });
 
   return refreshed.access_token;

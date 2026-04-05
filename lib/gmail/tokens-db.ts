@@ -24,7 +24,7 @@ async function buildClientForConnectionRow(conn: {
     const at = credentials.access_token;
     const expMs = credentials.expiry_date ?? Date.now() + 3_600_000;
     if (!at) {
-      throw new Error('Gmail token refresh failed. Reconnect that mailbox from the sidebar.');
+      throw new Error('Gmail token refresh failed. Reconnect that mailbox from Settings.');
     }
     await prisma.gmailConnection.update({
       where: { id: conn.id },
@@ -56,7 +56,7 @@ export async function getGmailOAuth2ClientForConnection(connectionId: string) {
 export async function getGmailOAuth2ClientForApi() {
   const conn = await prisma.gmailConnection.findFirst({ orderBy: { updatedAt: 'desc' } });
   if (!conn) {
-    throw new Error('Gmail is not connected. Use “Connect Gmail” in the sidebar (up to 3 accounts).');
+    throw new Error('Gmail is not connected. Use Connect Gmail in Settings (up to 3 accounts).');
   }
   return buildClientForConnectionRow(conn);
 }

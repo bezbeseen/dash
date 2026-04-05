@@ -8,7 +8,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     await updateProductionStatus(id, ProductionStatus.IN_PROGRESS, 'job.started', 'Production started.');
   } catch {
-    return NextResponse.redirect(postActionRedirect(req, id, '/dashboard?job_error=blocked'));
+    return NextResponse.redirect(postActionRedirect(req, id, '/dashboard/tickets?job_error=blocked'));
   }
-  return NextResponse.redirect(postActionRedirect(req, id, '/dashboard'));
+  return NextResponse.redirect(postActionRedirect(req, id, '/dashboard/tickets'));
 }

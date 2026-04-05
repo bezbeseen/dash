@@ -10,9 +10,12 @@ const baseUrl = () => process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
  * Requires a successful Connect QuickBooks (QuickBooksToken row).
  */
 export async function POST() {
-  const token = await prisma.quickBooksToken.findFirst({ orderBy: { updatedAt: 'desc' } });
+  const token = await prisma.quickBooksToken.findFirst({
+    orderBy: { updatedAt: 'desc' },
+    select: { id: true, realmId: true },
+  });
   if (!token) {
-    return NextResponse.redirect(new URL('/dashboard?sync_error=no_tokens', baseUrl()));
+    return NextResponse.redirect(new URL('/dashboard/tickets?sync_error=no_tokens', baseUrl()));
   }
 
   try {
@@ -29,6 +32,16 @@ export async function POST() {
       await upsertJobFromInvoice(inv, { realmId });
     }
 
+    try {
+      await prisma.quickBooksToken.update({
+        where: { id: token.id },
+        data: { lastTicketSyncAt: new Date() },
+        select: { id: true },
+      });
+    } catch {
+      /* e.g. migration not applied yet — sync still succeeded */
+    }
+
     const params = new URLSearchParams({
       synced: '1',
       e: String(estimates.length),
@@ -37,9 +50,9 @@ export async function POST() {
     if (estimates.length === 0 && invoices.length === 0) {
       params.set('sync_warn', 'empty');
     }
-    return NextResponse.redirect(new URL(`/dashboard?${params.toString()}`, baseUrl()));
+    return NextResponse.redirect(new URL(`/dashboard/tickets?${params.toString()}`, baseUrl()));
   } catch (e) {
     const msg = e instanceof Error ? encodeURIComponent(e.message) : 'sync_failed';
-    return NextResponse.redirect(new URL(`/dashboard?sync_error=${msg}`, baseUrl()));
+    return NextResponse.redirect(new URL(`/dashboard/tickets?sync_error=${msg}`, baseUrl()));
   }
 }

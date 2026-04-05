@@ -7,7 +7,7 @@ const STORAGE_KEY = 'dash.scrollRestore.v1';
 const MAX_AGE_MS = 120_000;
 
 /** Pathnames where we capture scroll before POST and restore after redirect back here. */
-const BOARD_PATHS = new Set(['/dashboard', '/dashboard/done']);
+const BOARD_PATHS = new Set(['/dashboard/tickets', '/dashboard/done']);
 
 /**
  * Strict Mode runs effects twice; we cancel a deferred `sessionStorage` clear on unmount so the
@@ -47,13 +47,13 @@ function parsePayload(raw: string | null): Payload | null {
 
 function captureScroll(path: string) {
   const canvas = document.querySelector('.board-canvas');
-  const grid = document.querySelector('.done-archive-grid');
+  const archive = document.querySelector('[data-archive-scroll]');
   const payload: Payload = {
     path,
     wx: window.scrollX,
     wy: window.scrollY,
     canvasLeft: canvas instanceof HTMLElement ? canvas.scrollLeft : 0,
-    archiveTop: grid instanceof HTMLElement ? grid.scrollTop : 0,
+    archiveTop: archive instanceof HTMLElement ? archive.scrollTop : 0,
     t: Date.now(),
   };
   try {
@@ -69,15 +69,15 @@ function applyScroll(p: Payload) {
   if (canvas instanceof HTMLElement) {
     canvas.scrollLeft = p.canvasLeft;
   }
-  const grid = document.querySelector('.done-archive-grid');
-  if (grid instanceof HTMLElement) {
-    grid.scrollTop = p.archiveTop;
+  const archive = document.querySelector('[data-archive-scroll]');
+  if (archive instanceof HTMLElement) {
+    archive.scrollTop = p.archiveTop;
   }
 }
 
 /**
  * After a POST from the production board or Done archive (e.g. Start / Done / Sync),
- * full-page redirect resets scroll. We stash window + .board-canvas + .done-archive-grid
+ * full-page redirect resets scroll. We stash window + .board-canvas + [data-archive-scroll]
  * positions in sessionStorage and re-apply on return.
  */
 export function PreserveShellScroll() {

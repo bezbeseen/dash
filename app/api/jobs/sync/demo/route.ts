@@ -24,5 +24,5 @@ export async function POST() {
     status: 'PAID',
   });
 
-  return NextResponse.redirect(new URL('/dashboard', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'));
+  return NextResponse.redirect(new URL('/dashboard/tickets', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'));
 }

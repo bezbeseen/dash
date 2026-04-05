@@ -12,7 +12,10 @@ export async function GET() {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const token = await prisma.quickBooksToken.findFirst({ orderBy: { updatedAt: 'desc' } });
+  const token = await prisma.quickBooksToken.findFirst({
+    orderBy: { updatedAt: 'desc' },
+    select: { realmId: true },
+  });
   if (!token) {
     return NextResponse.json({ ok: false, reason: 'No QuickBooksToken row — run Connect QuickBooks first.' });
   }

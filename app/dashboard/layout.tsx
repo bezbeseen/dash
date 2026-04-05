@@ -1,10 +1,7 @@
 import Link from 'next/link';
 import React from 'react';
-import { CheckingBalanceWidget } from '@/components/checking-balance-widget';
 import { DashboardSidebarNav } from '@/components/dashboard-sidebar-nav';
 import { PreserveShellScroll } from '@/components/preserve-shell-scroll';
-import { GmailSidebarHint } from '@/components/gmail-sidebar-hint';
-import { GmailRedirectUriHint } from '@/components/gmail-redirect-uri-hint';
 import { MaxtonDashboardEffects } from '@/components/maxton-dashboard-effects';
 import { MaxtonTopHeader } from '@/components/maxton-top-header';
 
@@ -34,12 +31,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <DashboardSidebarNav />
 
           <div className="px-3 pb-3">
-            <GmailSidebarHint />
-            <GmailRedirectUriHint />
-            <CheckingBalanceWidget />
-            <p className="menu-label mt-3 mb-2">About</p>
+            <p className="menu-label mb-2">About</p>
             <p className="small text-body-secondary lh-sm mb-0">
-              QuickBooks-backed · statuses update from sync &amp; shop actions
+              QuickBooks-backed · statuses update from sync &amp; shop actions. Chart-of-accounts cash is on{' '}
+              <Link href="/dashboard/cash" className="text-decoration-none">
+                Cash &amp; banks
+              </Link>
+              .
             </p>
           </div>
         </div>

@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(url);
   } catch {
     return NextResponse.redirect(
-      new URL('/dashboard?qb_error=config', req.nextUrl.origin),
+      new URL('/dashboard/settings?qb_error=config', req.nextUrl.origin),
     );
   }
 }

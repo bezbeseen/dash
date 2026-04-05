@@ -1,4 +1,5 @@
 import type { GmailConnection, GmailSyncedAttachment, GmailSyncedMessage } from '@prisma/client';
+import Link from 'next/link';
 import { GmailConnectAnchor } from '@/components/gmail-connect-link';
 
 type Msg = GmailSyncedMessage & { attachments: GmailSyncedAttachment[] };
@@ -73,13 +74,15 @@ export function TicketGmailSection({
 
       {!hasMailboxes ? (
         <p className="meta" style={{ marginBottom: 12 }}>
-          <GmailConnectAnchor className="ticket-mailto">Connect Gmail</GmailConnectAnchor> in the sidebar (or
-          here) — repeat for each account (max {MAX_MAILBOXES}).
+          <Link href="/dashboard/settings">Open Settings</Link> and use{' '}
+          <GmailConnectAnchor className="ticket-mailto">Connect Gmail</GmailConnectAnchor> — repeat for each account
+          (max {MAX_MAILBOXES}).
         </p>
       ) : (
         <p className="meta" style={{ marginBottom: 12 }}>
           <strong>{connections.length}</strong> mailbox
-          {connections.length === 1 ? '' : 'es'} connected. Add more from the sidebar if needed.
+          {connections.length === 1 ? '' : 'es'} connected. Add more from <Link href="/dashboard/settings">Settings</Link>{' '}
+          if needed.
         </p>
       )}
 

@@ -5,7 +5,7 @@ import { buildGmailAuthorizationUrl } from '@/lib/gmail/oauth';
 import { GMAIL_OAUTH_CALLBACK_PATH } from '@/lib/gmail/config';
 
 const dashboardConfigError = () =>
-  new URL('/dashboard?gmail_error=config', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
+  new URL('/dashboard/settings?gmail_error=config', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
 
 export async function GET(req: NextRequest) {
   const state = crypto.randomBytes(24).toString('hex');

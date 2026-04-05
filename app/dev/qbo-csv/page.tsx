@@ -23,7 +23,7 @@ export default async function DevQboCsvPage({ searchParams }: Props) {
   return (
     <div className="board-page" style={{ maxWidth: 640, margin: '0 auto', padding: '48px 24px' }}>
       <p style={{ marginBottom: 8 }}>
-        <Link href="/dashboard" className="btn btn-toolbar btn-toolbar-muted">
+        <Link href="/dashboard/tickets" className="btn btn-toolbar btn-toolbar-muted">
           ← Back to board
         </Link>
       </p>
@@ -41,7 +41,7 @@ export default async function DevQboCsvPage({ searchParams }: Props) {
         <strong>Having a CSV in the project folder does not load it.</strong> You must choose the file
         here and click <strong>Import into local DB</strong>. Data is written to the same PostgreSQL DB as
         the rest of the app (see <code>DATABASE_URL</code> in <code>.env</code>). Then open{' '}
-        <Link href="/dashboard">Production board</Link> — tickets
+        <Link href="/dashboard/tickets">Tickets</Link> — board
         do not list on this page. Use <code>npm run import-csv</code> from a terminal if the browser
         upload misbehaves.
       </div>
@@ -54,8 +54,8 @@ export default async function DevQboCsvPage({ searchParams }: Props) {
       {ok && msg ? (
         <div className="board-toast board-toast-ok" style={{ marginBottom: 16 }}>
           {msg}{' '}
-          <Link href="/dashboard" style={{ textDecoration: 'underline' }}>
-            Open production board
+          <Link href="/dashboard/tickets" style={{ textDecoration: 'underline' }}>
+            Open tickets
           </Link>{' '}
           to see the new tickets.
         </div>

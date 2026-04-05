@@ -139,6 +139,8 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
               projectName={job.projectName}
               customerName={job.customerName}
               boardStatus={headerBoardStatus}
+              createdAt={job.createdAt}
+              updatedAt={job.updatedAt}
             />
           </div>
 
@@ -223,12 +225,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
 
           <TicketActivityLogSection sectionId="ticket-activity-log" logs={job.activityLogs} />
 
-          <TicketDetailFooter
-            sectionId="ticket-meta"
-            jobId={job.id}
-            createdAt={job.createdAt}
-            updatedAt={job.updatedAt}
-          />
+          <TicketDetailFooter sectionId="ticket-meta" jobId={job.id} />
         </div>
       </div>
     </div>

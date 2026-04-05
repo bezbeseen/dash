@@ -217,7 +217,7 @@ export async function importTransactionListCsv(text: string): Promise<{
       id: eid,
       customerId: makeCustomerId(est.name || 'Customer'),
       customerName: est.name || 'Customer',
-      projectName: `Estimate ${enum_}`,
+      projectName: `Estimate #${enum_}`,
       totalAmtCents: Math.max(0, est.amountCents),
       status: hasInvoice ? 'ACCEPTED' : 'SENT',
       txnDate: est.date?.toISOString(),
