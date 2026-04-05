@@ -11,7 +11,7 @@ Repo: [github.com/bezbeseen/dash](https://github.com/bezbeseen/dash)
 - Lets staff manually mark jobs as started, ready, or delivered
 - Moves a job to Paid when the synced invoice is fully paid
 - On each ticket: open **invoice/estimate PDFs** from QuickBooks and see **billing email** / customer message (full email threads aren’t in the QBO API)
-- **Gmail (optional):** connect **up to 3** mailboxes (`gmail.readonly` — e.g. you, partner, contact@). On each ticket, pick **which mailbox** the thread lives in, save the **thread URL**, **Sync thread** → all messages + **attachments** under `storage/gmail-attachments/` (local; gitignored)
+- **Gmail (optional):** connect **up to 3** mailboxes (`gmail.readonly` — e.g. you, partner, contact@). On each ticket, pick **which mailbox** the thread lives in, save the **thread URL**, **Sync thread** → all messages + **attachments** under `storage/gmail-attachments/` (local disk; gitignored). **On Vercel**, serverless filesystem is ephemeral — treat Gmail attachment storage as best-effort unless you later plug in object storage (S3, etc.).
 
 ## Board logic
 
@@ -26,18 +26,29 @@ Repo: [github.com/bezbeseen/dash](https://github.com/bezbeseen/dash)
 
 ## Run locally
 
-1. Copy `.env.example` to `.env`
+Dash uses **PostgreSQL** via Prisma (`DATABASE_URL`). For local Postgres you can use Docker, [Neon](https://neon.tech), Supabase, etc.
+
+Example Docker Postgres:
+
+```bash
+docker run --name dash-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=dash -p 5432:5432 -d postgres:16
+# DATABASE_URL=postgresql://postgres:postgres@localhost:5432/dash
+```
+
+1. Copy `.env.example` to `.env` and set `DATABASE_URL` (and app URLs if not localhost). If Prisma errors about the URL protocol, your `.env` may still say `file:./…` from an older setup — replace it with a PostgreSQL connection string.
 2. Install packages
-3. Run Prisma migrate
-4. Seed demo data
+3. Apply migrations
+4. Seed demo data (optional)
 5. Start Next.js
 
 ```bash
 npm install
-npx prisma migrate dev --name init
+npx prisma migrate deploy
 npm run seed
 npm run dev
 ```
+
+For day-to-day schema changes: `npx prisma migrate dev --name your_change`
 
 ### LAN discovery on Mac (Bonjour)
 
@@ -77,7 +88,7 @@ Skip the OAuth Playground redirect pain: use your app’s own callback.
    - `QUICKBOOKS_REDIRECT_URI=http://localhost:3000/api/integrations/quickbooks/callback`
    - `QUICKBOOKS_ENVIRONMENT=sandbox` (until you use production API + tokens)
 
-3. Run `npm run dev`, open `/dashboard`, click **Connect QuickBooks**, sign in to the **sandbox** company, approve. Tokens are stored in SQLite (`QuickBooksToken`).
+3. Run `npm run dev`, open `/dashboard`, click **Connect QuickBooks**, sign in to the **sandbox** company, approve. Tokens are stored in the database (`QuickBooksToken`).
 
 4. After that, webhook sync calls use **real** `fetchEstimateById` / `fetchInvoiceById` against QuickBooks for that `realmId`.
 
@@ -111,8 +122,19 @@ If you want **familiar-looking** tickets from a QuickBooks **Transaction List by
 - Open **`/dev/qbo-csv`** while running `npm run dev` (404 in production builds).
 - Upload a CSV and click **Import**; jobs are created with synthetic IDs (`csv-est-…` / `csv-inv-…`) via `lib/dev/qbo-transaction-list-csv.ts`.
 - **Or** from the project root: `npm run import-csv -- "Your Export.csv"` (same database as the app).
-- **Then open `/dashboard`.** Putting a `.csv` in the repo does **not** auto-import; data lives in SQLite (`DATABASE_URL`, usually `prisma/dev.db`).
+- **Then open `/dashboard`.** Putting a `.csv` in the repo does **not** auto-import; data lives in PostgreSQL (`DATABASE_URL`).
 - This does **not** replace **Sync from QuickBooks**; it’s a separate code path for local UI experiments.
+
+## Deploy on Vercel
+
+1. Create a **managed PostgreSQL** database (Neon, Supabase, Vercel Postgres, etc.) and copy its connection string.
+2. In the Vercel project → **Settings → Environment Variables**, set at least:
+   - `DATABASE_URL` — PostgreSQL URL (often `?sslmode=require` for cloud providers)
+   - `NEXT_PUBLIC_APP_URL` — your production site origin, e.g. `https://your-app.vercel.app`
+   - QuickBooks: `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_REDIRECT_URI` (must match an Intuit **Production** redirect URI using `https`), `QUICKBOOKS_ENVIRONMENT`, `QUICKBOOKS_WEBHOOK_VERIFIER` as needed
+   - Gmail (if used): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`; register `https://…/api/integrations/gmail/callback` in Google Cloud
+3. Redeploy. The build runs `prisma generate`, **`prisma migrate deploy`** (applies migrations), then `next build`, so new databases get tables on first deploy.
+4. If the site still errors: check **Vercel → Deployment → Logs** for Prisma/DB messages; confirm `DATABASE_URL` is set for **Production** (and Preview if you use preview deploys).
 
 ## Important files
 

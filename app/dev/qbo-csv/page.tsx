@@ -39,9 +39,9 @@ export default async function DevQboCsvPage({ searchParams }: Props) {
         style={{ marginBottom: 20, textAlign: 'left', lineHeight: 1.5 }}
       >
         <strong>Having a CSV in the project folder does not load it.</strong> You must choose the file
-        here and click <strong>Import into local DB</strong>. Data is written to the same SQLite file as
-        the rest of the app (see <code>DATABASE_URL</code> in <code>.env</code> — usually{' '}
-        <code>prisma/dev.db</code>). Then open <Link href="/dashboard">Production board</Link> — tickets
+        here and click <strong>Import into local DB</strong>. Data is written to the same PostgreSQL DB as
+        the rest of the app (see <code>DATABASE_URL</code> in <code>.env</code>). Then open{' '}
+        <Link href="/dashboard">Production board</Link> — tickets
         do not list on this page. Use <code>npm run import-csv</code> from a terminal if the browser
         upload misbehaves.
       </div>

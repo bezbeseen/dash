@@ -1,6 +1,6 @@
 /**
- * Import a QuickBooks "Transaction List by Date" CSV into the local SQLite DB
- * (same path as Next.js — prisma/dev.db when DATABASE_URL=file:./dev.db).
+ * Import a QuickBooks "Transaction List by Date" CSV into the same PostgreSQL DB
+ * as the app (`DATABASE_URL` in `.env`).
  *
  * Usage:
  *   npm run import-csv -- "/path/to/Transaction List by Date.csv"
