@@ -8,8 +8,8 @@ import { GmailRedirectUriHint } from '@/components/gmail-redirect-uri-hint';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="board-workspace">
-      <aside className="board-sidebar" aria-label="Workspace navigation">
+    <div className="board-workspace d-flex flex-column flex-lg-row min-vh-100">
+      <aside className="board-sidebar flex-shrink-0" aria-label="Workspace navigation">
         <Link href="/dashboard" className="board-sidebar-brand">
           <span className="board-sidebar-brand-mark" aria-hidden>
             D
@@ -32,7 +32,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </div>
       </aside>
 
-      <div className="board-stage">
+      <div className="board-stage flex-grow-1 min-w-0">
         <PreserveShellScroll />
         {children}
       </div>

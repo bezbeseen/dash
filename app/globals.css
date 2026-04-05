@@ -1075,3 +1075,35 @@ button:disabled {
 .ticket-memo-internal {
   color: #b8a8d8;
 }
+
+/* ——— Mobile / Bootstrap-friendly layout (see main-files Maxton: Bootstrap 5 + viewport) ——— */
+@media (max-width: 991.98px) {
+  .board-workspace {
+    min-height: 100dvh;
+  }
+  .board-sidebar {
+    width: 100% !important;
+    max-width: none;
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .board-canvas {
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .board-list {
+    width: 100% !important;
+    max-width: none;
+    max-height: none;
+    min-height: 200px;
+  }
+  .board-topbar-actions {
+    flex-wrap: wrap;
+  }
+  .ticket-detail-layout {
+    grid-template-columns: 1fr;
+  }
+}
