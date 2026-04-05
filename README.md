@@ -35,7 +35,7 @@ docker run --name dash-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=dash -p 5
 # DATABASE_URL=postgresql://postgres:postgres@localhost:5432/dash
 ```
 
-1. Copy `.env.example` to `.env` and set `DATABASE_URL` (and app URLs if not localhost). If Prisma errors about the URL protocol, your `.env` may still say `file:./…` from an older setup — replace it with a PostgreSQL connection string.
+1. Copy `.env.example` to `.env` and set `DATABASE_URL` and `DIRECT_URL` (and app URLs if not localhost). If Prisma errors about the URL protocol, your `.env` may still say `file:./…` from an older setup — replace it with PostgreSQL connection strings (see `.env.example` for Supabase pooler vs single-URL setups).
 2. Install packages
 3. Apply migrations
 4. Seed demo data (optional)
@@ -129,7 +129,7 @@ If you want **familiar-looking** tickets from a QuickBooks **Transaction List by
 
 1. Create a **managed PostgreSQL** database (Neon, Supabase, Vercel Postgres, etc.) and copy its connection string.
 2. In the Vercel project → **Settings → Environment Variables**, set at least:
-   - `DATABASE_URL` — PostgreSQL URL (often `?sslmode=require` for cloud providers)
+   - `DATABASE_URL` and **`DIRECT_URL`** — see `.env.example`. **Supabase:** the `db.*.supabase.co` direct URL is often **IPv6-only**; Vercel’s build can fail with **P1001**. Use the dashboard **Connect** strings: **Transaction pooler** → `DATABASE_URL` (port `6543`, add `?pgbouncer=true&sslmode=require`), **Session pooler** → `DIRECT_URL` (port `5432`). **Neon / others:** set both variables to the **same** URL.
    - `NEXT_PUBLIC_APP_URL` — your production site origin, e.g. `https://your-app.vercel.app`
    - QuickBooks: `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_REDIRECT_URI` (must match an Intuit **Production** redirect URI using `https`), `QUICKBOOKS_ENVIRONMENT`, `QUICKBOOKS_WEBHOOK_VERIFIER` as needed
    - Gmail (if used): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`; register `https://…/api/integrations/gmail/callback` in Google Cloud
