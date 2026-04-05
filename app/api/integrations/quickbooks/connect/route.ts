@@ -1,9 +1,9 @@
 import crypto from 'crypto';
 import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { buildQuickBooksAuthorizationUrl } from '@/lib/quickbooks/oauth';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const state = crypto.randomBytes(24).toString('hex');
   const cookieStore = await cookies();
   cookieStore.set('qb_oauth_state', state, {
@@ -14,6 +14,12 @@ export async function GET() {
     path: '/',
   });
 
-  const url = buildQuickBooksAuthorizationUrl(state);
-  return NextResponse.redirect(url);
+  try {
+    const url = buildQuickBooksAuthorizationUrl(state);
+    return NextResponse.redirect(url);
+  } catch {
+    return NextResponse.redirect(
+      new URL('/dashboard?qb_error=config', req.nextUrl.origin),
+    );
+  }
 }

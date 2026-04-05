@@ -1,7 +1,7 @@
 import { BoardStatus } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 
-/** Always read fresh jobs from SQLite (avoid any edge-case caching after CSV import / sync). */
+/** Always read fresh jobs from the DB (avoid any edge-case caching after CSV import / sync). */
 export const dynamic = 'force-dynamic';
 import { JobCard } from '@/components/job-card';
 import {
@@ -16,6 +16,8 @@ type DashboardPageProps = {
     synced?: string;
     sync_error?: string;
     qb_connected?: string;
+    qb_error?: string;
+    qb_error_detail?: string;
     job_error?: string;
     gmail_connected?: string;
     gmail_error?: string;
@@ -34,6 +36,19 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   ]);
   const q = await searchParams;
   const qbConnected = q.qb_connected === '1';
+  const qbDetail = q.qb_error_detail?.trim() || null;
+  const qbError =
+    q.qb_error === 'state'
+      ? 'QuickBooks: sign-in expired or cookies were blocked. Use one browser, finish on the same tab, and click Connect QuickBooks again from this site.'
+      : q.qb_error === 'denied'
+        ? `QuickBooks sign-in was cancelled or denied.${qbDetail ? ` (${qbDetail})` : ''}`
+        : q.qb_error === 'missing'
+          ? 'QuickBooks returned an incomplete response. Try Connect QuickBooks again.'
+          : q.qb_error === 'config'
+            ? 'QuickBooks: missing CLIENT_ID, CLIENT_SECRET, or QUICKBOOKS_REDIRECT_URI on the server (check Vercel env).'
+            : q.qb_error === 'token'
+              ? `QuickBooks token exchange failed.${qbDetail ? ` ${qbDetail}` : ''} Check Vercel env matches Intuit (sandbox vs production keys, redirect URI exact match).`
+              : null;
   const synced = q.synced === '1';
   const syncError = q.sync_error ? decodeURIComponent(q.sync_error) : null;
   const jobError =
@@ -111,13 +126,20 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </div>
       </header>
 
-      {(syncError || jobError || gmailError || qbConnected || synced || gmailConnected) && (
+      {(syncError ||
+        jobError ||
+        gmailError ||
+        qbError ||
+        qbConnected ||
+        synced ||
+        gmailConnected) && (
         <div className="board-toasts" role="status">
           {syncError ? (
             <div className="board-toast board-toast-error">QuickBooks sync error: {syncError}</div>
           ) : null}
           {jobError ? <div className="board-toast board-toast-error">{jobError}</div> : null}
           {gmailError ? <div className="board-toast board-toast-error">{gmailError}</div> : null}
+          {qbError ? <div className="board-toast board-toast-error">{qbError}</div> : null}
           {qbConnected ? <div className="board-toast board-toast-ok">QuickBooks connected.</div> : null}
           {gmailConnected ? <div className="board-toast board-toast-ok">Gmail connected.</div> : null}
           {synced ? (
