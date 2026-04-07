@@ -75,6 +75,12 @@ model Job {
   amountPaidCents      Int               @default(0)
   estimateSentAt       DateTime?
   estimateAcceptedAt   DateTime?
+  /// QuickBooks MetaData.CreateTime (or txn date) for the estimate — for sorting, not last sync.
+  estimateCreatedAtQbo DateTime?
+  /// QuickBooks MetaData.CreateTime (or txn date) for the invoice.
+  invoiceCreatedAtQbo  DateTime?
+  /// Coalesced sort: estimate QBO create, else invoice QBO create (see sync).
+  qbOrderingAt         DateTime?
   productionStatus     ProductionStatus  @default(NOT_STARTED)
   startedAt            DateTime?
   readyAt              DateTime?
@@ -96,6 +102,7 @@ model Job {
 
   @@index([boardStatus])
   @@index([archivedAt])
+  @@index([qbOrderingAt])
 }
 
 /// Each Google account you authorize (readonly). Connect yours, your partner’s, and contact@ separately.

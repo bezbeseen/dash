@@ -17,7 +17,16 @@ export function ActivityFeed({ actions, emptyMessage = 'No activity yet.' }: Pro
       {actions.map((a) => (
         <li key={a.id} className="border-bottom border-light py-2">
           <div className="d-flex flex-wrap align-items-baseline gap-2 mb-1">
-            <span className="text-body-secondary text-nowrap">{fmtDetailDate(a.createdAt)}</span>
+            {a.qbEventAtLabel ? (
+              <>
+                <span className="fw-semibold text-nowrap">QuickBooks: {a.qbEventAtLabel}</span>
+                <span className="text-body-secondary text-nowrap small">
+                  Recorded in Dash {fmtDetailDate(a.createdAt)}
+                </span>
+              </>
+            ) : (
+              <span className="text-body-secondary text-nowrap">{fmtDetailDate(a.createdAt)}</span>
+            )}
             <span className="badge rounded-pill text-bg-light border">{labelEnum(a.source)}</span>
             <span className="text-body-secondary">{a.eventName}</span>
           </div>

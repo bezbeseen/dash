@@ -20,8 +20,8 @@ export async function POST() {
 
   try {
     const [estimates, invoices] = await Promise.all([
-      listRecentEstimates(token.realmId, 50),
-      listRecentInvoices(token.realmId, 50),
+      listRecentEstimates(token.realmId, 100),
+      listRecentInvoices(token.realmId, 100),
     ]);
 
     const { realmId } = token;

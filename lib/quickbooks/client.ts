@@ -47,6 +47,8 @@ function mapEstimateTxnStatus(txnStatus?: string): EstimateSnapshot['status'] {
 
 type QboRef = { value?: string; name?: string };
 
+type QboMeta = { CreateTime?: string; LastUpdatedTime?: string };
+
 type QboEstimate = {
   Id?: string;
   TxnStatus?: string;
@@ -54,6 +56,7 @@ type QboEstimate = {
   TotalAmt?: number | string;
   DocNumber?: string;
   CustomerRef?: QboRef;
+  MetaData?: QboMeta;
 };
 
 type QboLinkedTxn = { TxnId?: string; TxnType?: string };
@@ -73,6 +76,7 @@ type QboInvoice = {
   BillEmailCc?: QboEmailAddr;
   CustomerMemo?: string;
   PrivateNote?: string;
+  MetaData?: QboMeta;
 };
 
 export async function quickBooksCompanyJson(realmId: string, path: string): Promise<unknown> {
@@ -114,6 +118,7 @@ function estimateFromQbo(e: QboEstimate, fallbackId: string): EstimateSnapshot {
     totalAmtCents: dollarsToCents(e.TotalAmt),
     status: mapEstimateTxnStatus(e.TxnStatus),
     txnDate: e.TxnDate,
+    metaCreateTime: e.MetaData?.CreateTime,
   };
 }
 
@@ -171,6 +176,7 @@ function invoiceFromQbo(inv: QboInvoice, fallbackId: string): InvoiceSnapshot {
     billEmailCc: inv.BillEmailCc?.Address?.trim() || undefined,
     customerMemo: typeof inv.CustomerMemo === 'string' ? inv.CustomerMemo.trim() || undefined : undefined,
     privateNote: inv.PrivateNote?.trim() || undefined,
+    metaCreateTime: inv.MetaData?.CreateTime,
   };
 }
 
@@ -239,7 +245,7 @@ function qboQueryEntities<T>(qr: { QueryResponse?: Record<string, unknown> } | u
 }
 
 /** Pull recent estimates from QuickBooks (sandbox or prod per env). */
-export async function listRecentEstimates(realmId: string, maxResults = 50): Promise<EstimateSnapshot[]> {
+export async function listRecentEstimates(realmId: string, maxResults = 100): Promise<EstimateSnapshot[]> {
   const sql = `SELECT * FROM Estimate MAXRESULTS ${maxResults}`;
   const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
   const estimates = qboQueryEntities<QboEstimate>(body as { QueryResponse?: Record<string, unknown> }, 'Estimate');
@@ -251,7 +257,7 @@ export async function listRecentEstimates(realmId: string, maxResults = 50): Pro
  * Query responses often omit Balance and LinkedTxn; without Balance every row looks “open / unpaid”
  * and paid jobs never reach the PAID column.
  */
-export async function listRecentInvoices(realmId: string, maxResults = 50): Promise<InvoiceSnapshot[]> {
+export async function listRecentInvoices(realmId: string, maxResults = 100): Promise<InvoiceSnapshot[]> {
   const ordered = `SELECT Id FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS ${maxResults}`;
   let body: unknown;
   try {

@@ -10,6 +10,11 @@ import {
 } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { deriveBoardStatus } from '@/lib/domain/derive-board-status';
+import {
+  computeQbOrderingAt,
+  estimateCreatedAtFromSnapshot,
+  invoiceCreatedAtFromSnapshot,
+} from '@/lib/domain/qb-ordering-at';
 import { EstimateSnapshot, InvoiceSnapshot } from '@/lib/quickbooks/types';
 
 function mapEstimateStatus(value: EstimateSnapshot['status']): EstimateStatus {
@@ -42,6 +47,14 @@ export async function upsertJobFromEstimate(
   return prisma.$transaction(async (tx) => {
     const existing = await tx.job.findUnique({ where: { quickbooksEstimateId: snapshot.id } });
     const wasArchived = existing?.archivedAt != null;
+    const parsedEst = estimateCreatedAtFromSnapshot(snapshot);
+    const nextEstCreated = parsedEst ?? existing?.estimateCreatedAtQbo ?? null;
+    const nextInvCreated = existing?.invoiceCreatedAtQbo ?? null;
+    const qbOrderingAt = computeQbOrderingAt({
+      estimateCreatedAtQbo: nextEstCreated,
+      invoiceCreatedAtQbo: nextInvCreated,
+    });
+
     const updatePayload: Prisma.JobUncheckedUpdateInput = {
       quickbooksEstimateId: snapshot.id,
       quickbooksCustomerId: snapshot.customerId,
@@ -51,6 +64,8 @@ export async function upsertJobFromEstimate(
       estimateAmountCents: snapshot.totalAmtCents,
       estimateSentAt: snapshot.txnDate ? new Date(snapshot.txnDate) : undefined,
       estimateAcceptedAt: snapshot.acceptedAt ? new Date(snapshot.acceptedAt) : estimateStatus === EstimateStatus.ACCEPTED ? new Date() : undefined,
+      estimateCreatedAtQbo: nextEstCreated,
+      qbOrderingAt,
       ...(realmId ? { quickbooksCompanyId: realmId } : {}),
     };
 
@@ -73,6 +88,8 @@ export async function upsertJobFromEstimate(
               : estimateStatus === EstimateStatus.ACCEPTED
                 ? new Date()
                 : undefined,
+            estimateCreatedAtQbo: nextEstCreated,
+            qbOrderingAt,
             quickbooksCompanyId: realmId ?? undefined,
             productionStatus: ProductionStatus.NOT_STARTED,
             invoiceStatus: InvoiceStatus.NONE,
@@ -112,6 +129,14 @@ export async function upsertJobFromInvoice(
     const target = byInvoice ?? byEstimate;
     const wasArchived = target?.archivedAt != null;
 
+    const parsedInv = invoiceCreatedAtFromSnapshot(snapshot);
+    const nextInvCreated = parsedInv ?? target?.invoiceCreatedAtQbo ?? null;
+    const nextEstCreated = target?.estimateCreatedAtQbo ?? null;
+    const qbOrderingAt = computeQbOrderingAt({
+      estimateCreatedAtQbo: nextEstCreated,
+      invoiceCreatedAtQbo: nextInvCreated,
+    });
+
     const updatePayload: Prisma.JobUncheckedUpdateInput = {
       quickbooksInvoiceId: snapshot.id,
       quickbooksCustomerId: snapshot.customerId,
@@ -122,6 +147,8 @@ export async function upsertJobFromInvoice(
       amountPaidCents: snapshot.amountPaidCents,
       paidAt: snapshot.status === 'PAID' ? new Date() : null,
       quickbooksEstimateId: target?.quickbooksEstimateId ?? snapshot.linkedEstimateId,
+      invoiceCreatedAtQbo: nextInvCreated,
+      qbOrderingAt,
       ...(realmId ? { quickbooksCompanyId: realmId } : {}),
     };
 
@@ -138,6 +165,8 @@ export async function upsertJobFromInvoice(
             amountPaidCents: snapshot.amountPaidCents,
             paidAt: snapshot.status === 'PAID' ? new Date() : null,
             quickbooksEstimateId: snapshot.linkedEstimateId ?? undefined,
+            invoiceCreatedAtQbo: nextInvCreated,
+            qbOrderingAt,
             quickbooksCompanyId: realmId ?? undefined,
             estimateStatus: EstimateStatus.UNKNOWN,
             productionStatus: ProductionStatus.NOT_STARTED,

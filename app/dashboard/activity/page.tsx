@@ -43,7 +43,9 @@ export default async function ActivityPage() {
             </h2>
             <p className="text-body-secondary small mb-3">
               Logged automatically when you use production buttons on a ticket, sync from QuickBooks, or connect
-              Gmail. Open a row to jump to that ticket.
+              Gmail. For QuickBooks estimate/invoice sync, the <strong>QuickBooks</strong> date is the transaction
+              date from QBO; <strong>Recorded in Dash</strong> is when this app wrote the log. Open a row to jump to
+              that ticket.
             </p>
             <ActivityFeed actions={actions} />
           </div>

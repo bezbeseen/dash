@@ -7,6 +7,8 @@ type JobLike = {
   invoiceStatus: InvoiceStatus;
   amountPaidCents?: number;
   invoiceAmountCents?: number;
+  /** If set but invoiceStatus is still NONE (stale sync), keep invoice on the board. */
+  quickbooksInvoiceId?: string | null;
 };
 
 /** Allow 1¢ slack so rounding never blocks “Paid” on the board. */
@@ -50,6 +52,11 @@ export function deriveBoardStatus(job: JobLike): BoardStatus {
     return BoardStatus.QUOTED;
   }
 
+  // Invoice-only or bad enum mapping: linked invoice exists but status did not map to OPEN/DRAFT/PAID.
+  if (job.quickbooksInvoiceId && job.invoiceStatus === InvoiceStatus.NONE) {
+    return BoardStatus.INVOICED;
+  }
+
   return BoardStatus.REQUESTED;
 }
 
@@ -74,7 +81,12 @@ function snapshotInvoiceToEnum(s: InvoiceSnapshot['status']): InvoiceStatus {
 export function boardStatusForTicketHeader(
   job: Pick<
     JobLike,
-    'estimateStatus' | 'productionStatus' | 'invoiceStatus' | 'invoiceAmountCents' | 'amountPaidCents'
+    | 'estimateStatus'
+    | 'productionStatus'
+    | 'invoiceStatus'
+    | 'invoiceAmountCents'
+    | 'amountPaidCents'
+    | 'quickbooksInvoiceId'
   >,
   liveInvoice: InvoiceSnapshot | null,
 ): BoardStatus {
@@ -87,5 +99,6 @@ export function boardStatusForTicketHeader(
     invoiceStatus: snapshotInvoiceToEnum(liveInvoice.status),
     invoiceAmountCents: liveInvoice.totalAmtCents,
     amountPaidCents: liveInvoice.amountPaidCents,
+    quickbooksInvoiceId: job.quickbooksInvoiceId,
   });
 }

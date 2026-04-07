@@ -27,6 +27,8 @@ export type EstimateSnapshot = {
   status: 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'UNKNOWN';
   txnDate?: string;
   acceptedAt?: string;
+  /** MetaData.CreateTime from QBO (when the estimate was created in QuickBooks). */
+  metaCreateTime?: string;
 };
 
 /** Bank account row from QBO Account query (widget + cash page). */
@@ -58,4 +60,6 @@ export type InvoiceSnapshot = {
   billEmailCc?: string;
   customerMemo?: string;
   privateNote?: string;
+  /** MetaData.CreateTime from QBO (when the invoice was created in QuickBooks). */
+  metaCreateTime?: string;
 };

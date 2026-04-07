@@ -20,8 +20,10 @@ export function JobCard({ job, extraMeta }: { job: Job; extraMeta?: string }) {
           {(job.invoiceAmountCents / 100).toFixed(2)}
         </div>
         <div className="meta">
-          Created {fmtDetailDate(job.createdAt)} · Updated {fmtDetailDate(job.updatedAt)}
+          QuickBooks date: {job.qbOrderingAt ? fmtDetailDate(job.qbOrderingAt) : 'n/a'}; Dash created{' '}
+          {fmtDetailDate(job.createdAt)}
         </div>
+        <div className="meta">Updated {fmtDetailDate(job.updatedAt)}</div>
         {extraMeta ? <div className="meta card-extra-meta">{extraMeta}</div> : null}
         <div className="badge">{boardStatusDisplayLabel(job.boardStatus)}</div>
         <span className="card-open-hint meta">Open ticket →</span>

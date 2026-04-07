@@ -1,11 +1,14 @@
 import { ArchiveReason, BoardStatus, EventSource } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
+import { qbEventDateLabelFromMetadata } from '@/lib/domain/activity-metadata';
 import { DASHBOARD_COLUMNS, type DashboardColumnKey } from '@/lib/domain/board-display';
 import { computeMoneyRollup } from '@/lib/domain/money-rollup';
 
 export type DashboardRecentAction = {
   id: string;
   createdAt: Date;
+  /** QuickBooks transaction date when present on sync metadata (estimate/invoice txnDate). */
+  qbEventAtLabel: string | null;
   source: EventSource;
   eventName: string;
   message: string;
@@ -22,6 +25,7 @@ export async function loadRecentActions(limit: number): Promise<DashboardRecentA
     select: {
       id: true,
       createdAt: true,
+      metadata: true,
       source: true,
       eventName: true,
       message: true,
@@ -32,6 +36,7 @@ export async function loadRecentActions(limit: number): Promise<DashboardRecentA
   return recentLogRows.map((row) => ({
     id: row.id,
     createdAt: row.createdAt,
+    qbEventAtLabel: qbEventDateLabelFromMetadata(row.metadata),
     source: row.source,
     eventName: row.eventName,
     message: row.message,
