@@ -33,6 +33,7 @@ export function DashboardSidebarNav() {
   const settingsActive = pathname === '/dashboard/settings' || pathname.startsWith('/dashboard/settings/');
   const ticketsActive = pathname === '/dashboard/tickets' || pathname.startsWith('/dashboard/jobs/');
   const doneActive = pathname === '/dashboard/done' || pathname.startsWith('/dashboard/done/');
+  const tasksActive = pathname === '/dashboard/tasks' || pathname.startsWith('/dashboard/tasks/');
 
   return (
     <ul className="metismenu" id="sidenav">
@@ -67,6 +68,14 @@ export function DashboardSidebarNav() {
             <i className="material-icons-outlined">task_alt</i>
           </div>
           <div className="menu-title">Done</div>
+        </Link>
+      </li>
+      <li className={tasksActive ? 'mm-active' : ''}>
+        <Link href="/dashboard/tasks">
+          <div className="parent-icon">
+            <i className="material-icons-outlined">checklist</i>
+          </div>
+          <div className="menu-title">Tasks</div>
         </Link>
       </li>
 

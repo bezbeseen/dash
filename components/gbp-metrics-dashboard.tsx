@@ -37,8 +37,8 @@ export function GbpMetricsDashboard({ data }: { data: GbpMetricsPageData }) {
               APIs &amp; Services &rarr; Quotas
             </a>
             , check <strong>Requests per minute</strong>; if quota shows <strong>0</strong>, link{' '}
-            <strong>Billing</strong> to the project or request a quota increase. Dash now caches location listing for 5
-            minutes to reduce repeat calls.
+            <strong>Billing</strong> to the project or request a quota increase. Dash stores a location snapshot in your
+            database (refreshed at most every 30 minutes) and reuses it on failures to reduce repeat calls.
           </p>
         ) : (
           <p className="small text-body-secondary mb-3">
@@ -66,6 +66,12 @@ export function GbpMetricsDashboard({ data }: { data: GbpMetricsPageData }) {
 
   return (
     <div className="d-flex flex-column gap-4">
+      {data.locationsFromStaleSnapshot ? (
+        <div className="alert alert-warning small mb-0" role="status">
+          Location list is from a saved snapshot because Google Account Management is rate limited or unavailable. Metrics
+          below may still load if the Performance API quota is separate. Fix Cloud project quotas when you can.
+        </div>
+      ) : null}
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
         <p className="small text-body-secondary mb-0">
           Signed in as <span className="detail-mono">{data.googleEmail}</span> &middot; last{' '}

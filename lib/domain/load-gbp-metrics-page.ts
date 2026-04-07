@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma';
-import { getCachedGbpLocationList } from '@/lib/google-business/cached-location-list';
+import { fetchGbpLocationsResilient } from '@/lib/google-business/persisted-location-list';
 import {
   fetchGbpLocationMetricTotals,
   GBP_DAILY_METRICS,
@@ -23,6 +23,8 @@ export type GbpMetricsPageData =
       location: GbpMetricsLocationOption;
       rows: { metric: string; label: string; total: number }[];
       allLocations: GbpMetricsLocationOption[];
+      /** True when location names came from DB after a failed refresh (e.g. Account Management 429). */
+      locationsFromStaleSnapshot?: boolean;
     };
 
 export async function loadGbpMetricsPageData(locationIndex: number): Promise<GbpMetricsPageData> {
@@ -36,7 +38,7 @@ export async function loadGbpMetricsPageData(locationIndex: number): Promise<Gbp
 
   try {
     const email = connections[0].googleEmail;
-    const { accountCount, allLocations } = await getCachedGbpLocationList(email);
+    const { accountCount, allLocations, source } = await fetchGbpLocationsResilient(email);
     if (accountCount === 0) {
       return { ok: false, kind: 'error', message: 'No Google Business accounts returned for this login.' };
     }
@@ -65,6 +67,7 @@ export async function loadGbpMetricsPageData(locationIndex: number): Promise<Gbp
       location,
       rows,
       allLocations,
+      locationsFromStaleSnapshot: source === 'db_stale',
     };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Could not load Google Business Profile metrics.';

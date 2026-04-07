@@ -13,6 +13,7 @@ import '@/styles/maxton/sass/responsive.css';
 import type { Metadata, Viewport } from 'next';
 import React from 'react';
 import { BootstrapClient } from '@/components/bootstrap-client';
+import { AuthSessionProvider } from '@/components/auth/session-provider';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -42,7 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <BootstrapClient />
-        {children}
+        <AuthSessionProvider>{children}</AuthSessionProvider>
       </body>
     </html>
   );

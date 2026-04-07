@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma';
-import { getCachedGbpLocationList } from '@/lib/google-business/cached-location-list';
+import { fetchGbpLocationsResilient } from '@/lib/google-business/persisted-location-list';
 
 const MAX_GBP = 3;
 
@@ -10,15 +10,23 @@ export async function GoogleBusinessSettingsSection() {
   });
   const canAdd = connections.length < MAX_GBP;
 
-  let apiPreview: { ok: true; accounts: number; locations: string[] } | { ok: false; message: string } | null = null;
+  let apiPreview:
+    | { ok: true; accounts: number; locations: string[]; fromStaleSnapshot?: boolean }
+    | { ok: false; message: string }
+    | null = null;
   if (connections.length > 0) {
     try {
-      const { accountCount, allLocations } = await getCachedGbpLocationList(connections[0].googleEmail);
+      const { accountCount, allLocations, source } = await fetchGbpLocationsResilient(connections[0].googleEmail);
       const locTitles = allLocations
         .map((l) => l.title)
         .filter(Boolean)
         .slice(0, 8);
-      apiPreview = { ok: true, accounts: accountCount, locations: locTitles };
+      apiPreview = {
+        ok: true,
+        accounts: accountCount,
+        locations: locTitles,
+        fromStaleSnapshot: source === 'db_stale',
+      };
     } catch (e) {
       apiPreview = {
         ok: false,
@@ -71,6 +79,11 @@ export async function GoogleBusinessSettingsSection() {
           <p className="fw-semibold mb-2">Live API preview (first connected account)</p>
           {apiPreview.ok ? (
             <>
+              {apiPreview.fromStaleSnapshot ? (
+                <p className="text-warning-emphasis small mb-2 mb-md-3">
+                  Saved snapshot (Google Account Management rate limited or unavailable). Listing may be outdated.
+                </p>
+              ) : null}
               <p className="mb-1">Accounts: {apiPreview.accounts}</p>
               {apiPreview.locations.length > 0 ? (
                 <ul className="mb-0 ps-3">

@@ -16,6 +16,7 @@ import { TicketActionsSection } from '@/components/ticket-detail/ticket-actions-
 import { TicketActivityLogSection } from '@/components/ticket-detail/ticket-activity-log-section';
 import { TicketDetailFooter } from '@/components/ticket-detail/ticket-detail-footer';
 import { TicketDetailToc, type TicketTocItem } from '@/components/ticket-detail/ticket-detail-toc';
+import { TicketTasksSection } from '@/components/ticket-detail/ticket-tasks-section';
 import { boardStatusForTicketHeader } from '@/lib/domain/derive-board-status';
 import { fetchInvoiceById } from '@/lib/quickbooks/client';
 import { fetchInvoiceActivityTimeline, isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
@@ -120,6 +121,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   if (hasInvoice) {
     tocItems.push({ id: 'ticket-invoice-email', label: 'Invoice email' });
   }
+  tocItems.push({ id: 'ticket-tasks', label: 'Tasks' });
   tocItems.push(
     { id: 'ticket-gmail', label: 'Gmail' },
     { id: 'ticket-seed-email', label: 'Seed email' },
@@ -194,6 +196,8 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             pdfSectionId="ticket-pdfs"
             invoiceEmailSectionId="ticket-invoice-email"
           />
+
+          <TicketTasksSection sectionId="ticket-tasks" jobId={job.id} />
 
           <TicketGmailSection
             sectionId="ticket-gmail"
