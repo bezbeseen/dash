@@ -105,6 +105,22 @@ export async function quickBooksCompanyJson(realmId: string, path: string): Prom
   }
 }
 
+/** Profit & Loss for a date range (month-to-date, quarter, etc.). */
+export async function fetchProfitAndLossReport(
+  realmId: string,
+  startDateYmd: string,
+  endDateYmd: string,
+  opts?: { accountingMethod?: 'Accrual' | 'Cash' },
+): Promise<unknown> {
+  const method = opts?.accountingMethod ?? 'Accrual';
+  const q = new URLSearchParams({
+    start_date: startDateYmd,
+    end_date: endDateYmd,
+    accounting_method: method,
+  });
+  return quickBooksCompanyJson(realmId, `reports/ProfitAndLoss?${q.toString()}`);
+}
+
 function estimateFromQbo(e: QboEstimate, fallbackId: string): EstimateSnapshot {
   const id = e.Id ?? fallbackId;
   const customerName = e.CustomerRef?.name?.trim() || `Customer ${e.CustomerRef?.value ?? 'unknown'}`;

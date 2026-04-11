@@ -1,11 +1,19 @@
 import Link from 'next/link';
+import { AccountingPnlRefreshButton } from '@/components/accounting-pnl-refresh';
 import { prisma } from '@/lib/db/prisma';
 import { computeMoneyRollup } from '@/lib/domain/money-rollup';
+import { loadProfitAndLossMonthToDate } from '@/lib/quickbooks/profit-loss';
 import { fmtUsd } from '@/lib/ticket/format';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AccountingPage() {
+  const token = await prisma.quickBooksToken.findFirst({
+    orderBy: { updatedAt: 'desc' },
+    select: { realmId: true },
+  });
+  const pnl = token ? await loadProfitAndLossMonthToDate(token.realmId) : null;
+
   const rows = await prisma.job.findMany({
     where: { archivedAt: null },
     select: {
@@ -44,6 +52,71 @@ export default async function AccountingPage() {
         className="flex-grow-1 overflow-auto px-3 px-md-4 pb-4"
         style={{ minHeight: 0 }}
       >
+        <section className="card border rounded-3 p-4 mb-3 bg-body">
+          <div className="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+            <div>
+              <h2 className="h6 fw-semibold mb-1">Profit &amp; Loss (month to date)</h2>
+              <p className="text-body-secondary small mb-0">
+                Pulled live from QuickBooks for the current calendar month through today in{' '}
+                <code className="detail-mono">{pnl?.ok ? pnl.reportTimeZone : 'your report timezone'}</code>.
+                Refresh the page or use the button for the latest numbers (typically accrual-basis unless you set{' '}
+                <code className="detail-mono">QUICKBOOKS_PNL_ACCOUNTING_METHOD=Cash</code>).
+              </p>
+            </div>
+            <AccountingPnlRefreshButton />
+          </div>
+          {!token ? (
+            <p className="text-body-secondary small mb-0">
+              <Link href="/dashboard/settings">Connect QuickBooks</Link> to load P&amp;L.
+            </p>
+          ) : !pnl || !pnl.ok ? (
+            <div className="alert alert-warning mb-0 py-2 small" role="status">
+              Could not load P&amp;L from QuickBooks.
+              {pnl && !pnl.ok ? ` ${pnl.error}` : null}
+            </div>
+          ) : pnl.lines.length === 0 ? (
+            <p className="text-body-secondary small mb-0">No rows returned for this period (new company or no data).</p>
+          ) : (
+            <>
+              <p className="small text-body-secondary mb-2">
+                {pnl.companyName ? <span className="fw-semibold text-body">{pnl.companyName}</span> : null}
+                {pnl.companyName ? ' \u00b7 ' : null}
+                {pnl.startPeriod} {'\u2192'} {pnl.endPeriod} {'\u00b7'} {pnl.accountingMethod}
+              </p>
+              {pnl.netIncomeCents != null ? (
+                <p className="fs-5 fw-semibold mb-3">
+                  Net income (report){' '}
+                  <span className={pnl.netIncomeCents < 0 ? 'text-danger' : 'text-body'}>
+                    {fmtUsd(pnl.netIncomeCents)}
+                  </span>
+                </p>
+              ) : null}
+              <div className="table-responsive border rounded-2" style={{ maxHeight: 'min(70vh, 32rem)' }}>
+                <table className="table table-sm table-hover mb-0 align-middle">
+                  <thead className="table-light sticky-top">
+                    <tr>
+                      <th className="ps-3">Account / summary</th>
+                      <th className="text-end pe-3" style={{ width: '8rem' }}>
+                        Amount
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pnl.lines.map((line, i) => (
+                      <tr key={`${line.label}-${i}`}>
+                        <td className="ps-3">
+                          <span style={{ paddingLeft: line.depth * 12 }}>{line.label}</span>
+                        </td>
+                        <td className="text-end pe-3 text-nowrap detail-mono">{fmtUsd(line.amountCents)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </section>
+
         <section className="card border rounded-3 p-4 mb-3 bg-body">
           <p className="text-body-secondary small text-uppercase fw-semibold mb-1">
             Collected (paid in)

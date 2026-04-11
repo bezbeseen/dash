@@ -32,6 +32,7 @@ export function DashboardSidebarNav() {
   const gbpMetricsActive = pathname === '/dashboard/gbp' || pathname.startsWith('/dashboard/gbp/');
   const settingsActive = pathname === '/dashboard/settings' || pathname.startsWith('/dashboard/settings/');
   const ticketsActive = pathname === '/dashboard/tickets' || pathname.startsWith('/dashboard/jobs/');
+  const prequotedActive = pathname === '/dashboard/prequoted';
   const doneActive = pathname === '/dashboard/done' || pathname.startsWith('/dashboard/done/');
   const tasksActive = pathname === '/dashboard/tasks' || pathname.startsWith('/dashboard/tasks/');
 
@@ -60,6 +61,14 @@ export function DashboardSidebarNav() {
             <i className="material-icons-outlined">confirmation_number</i>
           </div>
           <div className="menu-title">Tickets</div>
+        </Link>
+      </li>
+      <li className={prequotedActive ? 'mm-active' : ''}>
+        <Link href="/dashboard/prequoted">
+          <div className="parent-icon">
+            <i className="material-icons-outlined">edit_note</i>
+          </div>
+          <div className="menu-title">Pre-quote tickets</div>
         </Link>
       </li>
       <li className={doneActive ? 'mm-active' : ''}>

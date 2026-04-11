@@ -12,42 +12,11 @@ import {
   jobErrorFromQuery,
   syncToastFromQuery,
 } from '@/lib/domain/integration-query-toasts';
+import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import { fmtDetailDate } from '@/lib/ticket/format';
 
 /** Always read fresh jobs from the DB (avoid any edge-case caching after CSV import / sync). */
 export const dynamic = 'force-dynamic';
-
-type QbTicketsToolbar = {
-  hasToken: boolean;
-  lastTicketSyncAt: Date | null;
-  lastSyncUnknown: boolean;
-};
-
-/** Loads QB connection + last manual sync time; survives DBs that have not run the lastTicketSyncAt migration yet. */
-async function loadQbTicketsToolbar(): Promise<QbTicketsToolbar> {
-  try {
-    const row = await prisma.quickBooksToken.findFirst({
-      orderBy: { updatedAt: 'desc' },
-      select: { lastTicketSyncAt: true },
-    });
-    if (!row) return { hasToken: false, lastTicketSyncAt: null, lastSyncUnknown: false };
-    return { hasToken: true, lastTicketSyncAt: row.lastTicketSyncAt, lastSyncUnknown: false };
-  } catch {
-    try {
-      const row = await prisma.quickBooksToken.findFirst({
-        orderBy: { updatedAt: 'desc' },
-        select: { id: true },
-      });
-      return {
-        hasToken: row != null,
-        lastTicketSyncAt: null,
-        lastSyncUnknown: row != null,
-      };
-    } catch {
-      return { hasToken: false, lastTicketSyncAt: null, lastSyncUnknown: false };
-    }
-  }
-}
 
 type TicketsPageProps = {
   searchParams: Promise<{
@@ -59,7 +28,7 @@ type TicketsPageProps = {
 };
 
 export default async function TicketsPage({ searchParams }: TicketsPageProps) {
-  const [jobs, leadCount, leadJobs, qbToolbar] = await Promise.all([
+  const [jobs, leadCount, qbToolbar] = await Promise.all([
     prisma.job.findMany({
       where: { archivedAt: null, boardStatus: { not: BoardStatus.REQUESTED } },
       orderBy: [
@@ -69,14 +38,6 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     }),
     prisma.job.count({
       where: { archivedAt: null, boardStatus: BoardStatus.REQUESTED },
-    }),
-    prisma.job.findMany({
-      where: { archivedAt: null, boardStatus: BoardStatus.REQUESTED },
-      orderBy: [
-        { qbOrderingAt: { sort: 'desc', nulls: 'last' } },
-        { updatedAt: 'desc' },
-      ],
-      take: 50,
     }),
     loadQbTicketsToolbar(),
   ]);
@@ -101,15 +62,15 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
             Sales to production to billing - one board. Cards are ordered by QuickBooks document time (estimate
             created, or invoice created if no estimate), not by last sync. Click a card to open the ticket. Invoices
             you create{' '}
-            <strong>without</strong> an estimate show under <strong>Ready / invoiced</strong> after sync (not Quoted).
+            <strong>without</strong> an estimate show under <strong>Ready / invoiced</strong> after sync (not Quoted).{' '}
+            <Link href="/dashboard/prequoted" className="text-decoration-underline">
+              Pre-quote tickets
+            </Link>
             {leadCount > 0 ? (
-              <>
+              <span className="board-topbar-leads">
                 {' '}
-                <span className="board-topbar-leads">
-                  {leadCount} lead{leadCount === 1 ? '' : 's'} in <strong>Pre-quote</strong> below (no sent estimate
-                  yet, or still syncing).
-                </span>
-              </>
+                ({leadCount} in pre-quote: no sent estimate yet, or still syncing.)
+              </span>
             ) : null}
           </p>
         </div>
@@ -178,30 +139,6 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
           );
         })}
       </div>
-
-      {leadCount > 0 ? (
-        <section className="board-leads px-3 px-md-4 pb-4" aria-labelledby="board-leads-heading">
-          <h2 id="board-leads-heading" className="h6 fw-semibold mb-2">
-            Pre-quote leads ({leadCount})
-            {leadJobs.length < leadCount ? (
-              <span className="text-body-secondary fw-normal small">
-                {' '}
-                - showing {leadJobs.length} most recent
-              </span>
-            ) : null}
-          </h2>
-          <p className="small text-body-secondary mb-3">
-            These tickets are not on the columns above: QuickBooks has no <strong>sent</strong> estimate for them yet,
-            or the row is still catching up. Invoice-only work normally skips this list and appears under{' '}
-            <strong>Ready / invoiced</strong>.
-          </p>
-          <div className="board-leads-grid d-flex flex-column gap-2" style={{ maxWidth: '28rem' }}>
-            {leadJobs.map((job) => (
-              <JobCard key={job.id} job={job} />
-            ))}
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }

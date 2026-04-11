@@ -30,7 +30,7 @@ export function DashboardOverview({ summary: s }: Props) {
         </div>
         <div className="col-12 col-sm-6 col-xl-3">
           <Link
-            href="/dashboard/tickets"
+            href="/dashboard/prequoted"
             className="card border rounded-3 p-3 h-100 bg-body text-body text-decoration-none shadow-sm"
           >
             <div className="d-flex align-items-center gap-2 mb-2 text-body-secondary small text-uppercase fw-semibold">
@@ -40,7 +40,7 @@ export function DashboardOverview({ summary: s }: Props) {
               Leads
             </div>
             <p className="fs-3 fw-bold mb-0">{s.leadCount}</p>
-            <p className="meta small mb-0 mt-1">Pre-quote (not on board)</p>
+            <p className="meta small mb-0 mt-1">Pre-quote tickets</p>
           </Link>
         </div>
         <div className="col-12 col-sm-6 col-xl-3">
