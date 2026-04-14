@@ -15,13 +15,17 @@ This repo ships a **Docker** image (Next.js standalone + Prisma) and **Docker Co
 
 ## Prerequisites
 
-- Docker Engine + Docker Compose v2
-- Environment variables (same names as `.env.example`). Minimum for Compose:
-
+- Docker Engine + Docker Compose v2 (for Compose below).
+- Environment variables: same names as `.env.example`. For Docker Compose you need at least:
   - `NEXTAUTH_SECRET` — `openssl rand -base64 32`
-  - `NEXTAUTH_URL` / `NEXT_PUBLIC_APP_URL` — public URL users open (e.g. `https://dash.example.com`)
+  - `NEXTAUTH_URL` / `NEXT_PUBLIC_APP_URL` — URL users open (e.g. `https://dash.example.com`)
+  - Plus DB and any integrations you use.
 
-  Add QuickBooks, Google, Slack, etc. as needed for your deployment.
+### Vercel (quick checklist)
+
+1. **`NEXTAUTH_SECRET`** — required. If missing, NextAuth throws **NO_SECRET** and `/api/auth/*` returns 500. Set for **Production** (and **Preview** if you test sign-in on preview URLs). Generate: `openssl rand -base64 32`.
+2. **`NEXTAUTH_URL`** — production origin, e.g. `https://your-project.vercel.app` (no trailing slash). For preview deployments, NextAuth often still needs the **primary** production URL unless you use advanced cookie config.
+3. Redeploy after adding or changing secrets.
 
 ## Quick start (Compose)
 

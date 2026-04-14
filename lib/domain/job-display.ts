@@ -29,7 +29,16 @@ export function jobPrimaryHeading(job: Pick<Job, 'customerName' | 'projectName'>
   return job.customerName.trim();
 }
 
-/** Second line when the first line is customer#doc; otherwise the project line (e.g. seed jobs). */
+/**
+ * Second line under the card title: free-text project name for non-doc rows; for Estimate/Invoice
+ * `projectName` lines the primary row is already `Customer #ref`, so we show the formatted doc title
+ * (e.g. `Estimate #1263`) here instead of leaving the card one-line tall.
+ */
 export function jobSecondaryHeading(job: Pick<Job, 'projectName'>): string | null {
-  return docRefFromProjectName(job.projectName) ? null : job.projectName;
+  const raw = job.projectName?.trim();
+  if (!raw) return null;
+  if (docRefFromProjectName(job.projectName)) {
+    return jobDisplayTitle(job);
+  }
+  return raw;
 }
