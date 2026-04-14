@@ -1,0 +1,35 @@
+# Dependencies & build output
+node_modules
+.next
+out
+
+# Git & IDE
+.git
+.github
+.idea
+.vscode
+*.md
+!README.md
+
+# Env (inject at runtime)
+.env
+.env.*
+!.env.example
+!env.local.example
+
+# Dev-only
+coverage
+certificates
+storage/gmail-attachments
+dev
+scripts/dev-*.mjs
+**/*.csv
+**/*.pdf
+
+# OS
+.DS_Store
+*.log
+npm-debug.log*
+
+# Vercel
+.vercel

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:https": "next dev --experimental-https",
     "dev:lan": "next dev -H 0.0.0.0",
     "dev:bonjour": "node scripts/dev-bonjour.mjs",
     "dev:tunnel": "node scripts/dev-tunnel.mjs",
@@ -14,7 +15,9 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "seed": "tsx prisma/seed.ts",
-    "import-csv": "tsx scripts/import-transaction-csv.ts"
+    "import-csv": "tsx scripts/import-transaction-csv.ts",
+    "docker:build": "docker build -t dash:latest .",
+    "docker:up": "docker compose up -d --build"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

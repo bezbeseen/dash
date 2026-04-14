@@ -261,7 +261,7 @@
 
 
 .btn {
-	-webkit-tap-highlight-color: transparent;
+	/* -webkit-tap-highlight-color: transparent; */
      transform: translateY(0);
 	--bs-btn-font-weight: 500;
 }

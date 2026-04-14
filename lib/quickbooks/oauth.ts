@@ -18,11 +18,10 @@ function requireClientCreds() {
   return { clientId, clientSecret };
 }
 
-export function buildQuickBooksAuthorizationUrl(state: string): string {
+export function buildQuickBooksAuthorizationUrl(state: string, redirectUri: string): string {
   const { clientId } = requireClientCreds();
-  const redirectUri = process.env.QUICKBOOKS_REDIRECT_URI;
-  if (!redirectUri) {
-    throw new Error('QUICKBOOKS_REDIRECT_URI must be set');
+  if (!redirectUri.trim()) {
+    throw new Error('QuickBooks redirect URI is empty');
   }
 
   const params = new URLSearchParams({

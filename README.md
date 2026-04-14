@@ -26,7 +26,7 @@ Repo: [github.com/bezbeseen/dash](https://github.com/bezbeseen/dash)
 
 ## Run locally
 
-Dash uses **PostgreSQL** via Prisma (`DATABASE_URL`). For local Postgres you can use Docker, [Neon](https://neon.tech), Supabase, etc.
+Dash uses **PostgreSQL** via Prisma (`DATABASE_URL`). For local Postgres you can use Docker, [Neon](https://neon.tech), Vercel Postgres, etc.
 
 Example Docker Postgres:
 
@@ -35,7 +35,7 @@ docker run --name dash-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=dash -p 5
 # DATABASE_URL=postgresql://postgres:postgres@localhost:5432/dash
 ```
 
-1. Copy `.env.example` to `.env` and set `DATABASE_URL` and `DIRECT_URL` (and app URLs if not localhost). If Prisma errors about the URL protocol, your `.env` may still say `file:./…` from an older setup — replace it with PostgreSQL connection strings (see `.env.example` for Supabase pooler vs single-URL setups).
+1. Copy `.env.example` to `.env` and set `DATABASE_URL` and `DIRECT_URL` (and app URLs if not localhost). If Prisma errors about the URL protocol, your `.env` may still say `file:./…` from an older setup — replace it with PostgreSQL connection strings (see `.env.example`; usually both variables are the same URL).
 2. Install packages
 3. Apply migrations
 4. Seed demo data (optional)
@@ -49,6 +49,16 @@ npm run dev
 ```
 
 For day-to-day schema changes: `npx prisma migrate dev --name your_change`
+
+### Local environment vs deploy
+
+Use a **local profile** so you can change behavior before anything hits Vercel:
+
+1. **`.env`** (gitignored) — copy from `.env.example`, fill in **PostgreSQL** (`DATABASE_URL`, `DIRECT_URL`), `NEXTAUTH_SECRET`, and integration keys. This is your day-to-day machine config. Run `npm run dev` with **`http://localhost:3000`** so URLs stay consistent.
+2. **`.env.local`** (gitignored) — optional. Copy from `env.local.example` if you want a second layer (e.g. only override `NEXTAUTH_URL` / `NEXT_PUBLIC_APP_URL` without editing `.env`). Next.js merges `.env.local` over `.env`. **Leave `DATABASE_URL` / `DIRECT_URL` in `.env`** (or duplicate them there); Prisma CLI reads `.env` by default, not `.env.local`.
+3. **Production** — set the same variable names in **Vercel → Project → Settings → Environment Variables** (production URL, production DB if applicable, Intuit **Production** redirect URIs, etc.). Deploy when you are ready; the app does not read your laptop’s `.env` on Vercel.
+
+You get a full local app (DB, UI, Google sign-in, Slack, etc.) on your machine; **QuickBooks OAuth** often needs a public `https` callback registered at Intuit, so many teams test the **Connect QuickBooks** flow against a **preview/production** URL, or use a tunnel URL, while still developing everything else locally. See **Connect QuickBooks** below.
 
 ### LAN discovery on Mac (Bonjour)
 
@@ -76,19 +86,21 @@ Keep that terminal open while testing.
 
 Skip the OAuth Playground redirect pain: use your app’s own callback.
 
-1. In Intuit Developer → your app → **Settings → Redirect URIs** → **Development**, add **exactly**:
+1. In Intuit Developer → your app → **Settings → Redirect URIs**, register a callback that matches how you run the app (Intuit matches **scheme + host + path** exactly):
 
-   `http://localhost:3000/api/integrations/quickbooks/callback`
+   - **Development** tab often allows **`http://localhost:3000/api/integrations/quickbooks/callback`**. If the portal rejects it or you only use **Production** redirect URIs (HTTPS-only), use one of these instead:
+   - **HTTPS on localhost:** run `npm run dev:https`, then add **`https://localhost:3000/api/integrations/quickbooks/callback`**. The browser will warn about the dev certificate once — continue to localhost.
+   - **HTTPS tunnel (recommended if Production keys + HTTPS required):** run `npm run dev:tunnel`, wait for the printed **`https://…`** URL, then add **`https://<that-host>/api/integrations/quickbooks/callback`** to Intuit. **Open Dash using that same `https://…` URL** in the browser (not plain `localhost`) so OAuth `redirect_uri` matches.
 
-   (Development allows HTTP.) Click **Save**.
+   Click **Save** in Intuit after each change.
 
 2. Set in `.env`:
 
    - `QUICKBOOKS_CLIENT_ID` / `QUICKBOOKS_CLIENT_SECRET` (Development keys)
-   - `QUICKBOOKS_REDIRECT_URI=http://localhost:3000/api/integrations/quickbooks/callback`
    - `QUICKBOOKS_ENVIRONMENT=sandbox` (until you use production API + tokens)
+   - `QUICKBOOKS_REDIRECT_URI` is **optional**: if omitted, Dash uses **whatever host you opened** + `/api/integrations/quickbooks/callback` (so `http://localhost:3000/...` when you run locally). Set it only if you need a fixed URL (e.g. behind a proxy). **Remove** a production-only redirect from local `.env` if OAuth was sending you to the live site.
 
-3. Run `npm run dev`, open `/dashboard`, click **Connect QuickBooks**, sign in to the **sandbox** company, approve. Tokens are stored in the database (`QuickBooksToken`).
+3. Run `npm run dev` (or `npm run dev:https` / `npm run dev:tunnel` to match the redirect you registered), open `/dashboard`, click **Connect QuickBooks**, sign in to the **sandbox** company, approve. Tokens are stored in the database (`QuickBooksToken`).
 
 4. After that, webhook sync calls use **real** `fetchEstimateById` / `fetchInvoiceById` against QuickBooks for that `realmId`.
 
@@ -127,11 +139,11 @@ If you want **familiar-looking** tickets from a QuickBooks **Transaction List by
 
 ## Deploy on Vercel
 
-1. Create a **managed PostgreSQL** database (Neon, Supabase, Vercel Postgres, etc.) and copy its connection string.
+1. Create a **managed PostgreSQL** database (Neon, Vercel Postgres, RDS, etc.) and copy its connection string.
 2. In the Vercel project → **Settings → Environment Variables**, set at least:
-   - `DATABASE_URL` and **`DIRECT_URL`** — see `.env.example`. **Supabase:** the `db.*.supabase.co` direct URL is often **IPv6-only**; Vercel’s build can fail with **P1001**. Use the dashboard **Connect** strings: **Transaction pooler** → `DATABASE_URL` (port `6543`, add `?pgbouncer=true&sslmode=require`), **Session pooler** → `DIRECT_URL` (port `5432`). **Neon / others:** set both variables to the **same** URL.
+   - `DATABASE_URL` and **`DIRECT_URL`** — see `.env.example`. Most hosts use the **same** URL for both. If your provider gives separate pooler vs “direct” migration URLs, map them accordingly; add `?sslmode=require` when the host requires TLS.
    - `NEXT_PUBLIC_APP_URL` — your production site origin, e.g. `https://your-app.vercel.app`
-   - QuickBooks: `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_REDIRECT_URI` (must match an Intuit **Production** redirect URI using `https`), `QUICKBOOKS_ENVIRONMENT`, `QUICKBOOKS_WEBHOOK_VERIFIER` as needed
+   - QuickBooks: `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_ENVIRONMENT`, `QUICKBOOKS_WEBHOOK_VERIFIER` as needed. `QUICKBOOKS_REDIRECT_URI` is optional (defaults to the deployment origin + callback path); if set, it must match an Intuit **Production** redirect URI using `https`.
    - Gmail (if used): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`; register `https://…/api/integrations/gmail/callback` in Google Cloud
 3. Redeploy. The build runs `prisma generate`, **`prisma migrate deploy`** (applies migrations), then `next build`, so new databases get tables on first deploy.
 4. If the site still errors: check **Vercel → Deployment → Logs** for Prisma/DB messages; confirm `DATABASE_URL` is set for **Production** (and Preview if you use preview deploys).

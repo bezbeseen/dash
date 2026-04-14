@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { getQuickBooksEnvironment } from '@/lib/quickbooks/config';
+import { getQuickBooksEnvironment, QUICKBOOKS_OAUTH_CALLBACK_PATH } from '@/lib/quickbooks/config';
 
 /**
  * Safe config snapshot (no secrets). For debugging OAuth on production.
@@ -17,13 +17,18 @@ export async function GET(req: NextRequest) {
   }
 
   const requestHost = req.nextUrl.host;
+  const implicitQbRedirect = `${req.nextUrl.origin}${QUICKBOOKS_OAUTH_CALLBACK_PATH}`;
   const redirectMatchesRequest =
     qbRedirectHost != null && qbRedirectHost === requestHost;
 
   const hints: string[] = [];
-  if (!redirectMatchesRequest && qbRedirectHost) {
+  if (!qbRedirect) {
     hints.push(
-      `QUICKBOOKS_REDIRECT_URI host is "${qbRedirectHost}" but you opened "${requestHost}". They must match (www vs non-www, preview vs production).`,
+      `QuickBooks redirect is not set in env; OAuth uses this request's origin + callback: ${implicitQbRedirect} (register that exact URL in Intuit).`,
+    );
+  } else if (!redirectMatchesRequest && qbRedirectHost) {
+    hints.push(
+      `QUICKBOOKS_REDIRECT_URI host is "${qbRedirectHost}" but you opened "${requestHost}". They must match (www vs non-www, preview vs production), or remove QUICKBOOKS_REDIRECT_URI to use the current host automatically.`,
     );
   }
   hints.push(
@@ -48,9 +53,10 @@ export async function GET(req: NextRequest) {
     quickbooks: {
       hasClientId: Boolean(process.env.QUICKBOOKS_CLIENT_ID?.trim()),
       hasClientSecret: Boolean(process.env.QUICKBOOKS_CLIENT_SECRET?.trim()),
-      hasRedirectUri: Boolean(qbRedirect),
+      hasExplicitRedirectUri: Boolean(qbRedirect),
+      effectiveOAuthCallback: qbRedirect || implicitQbRedirect,
       redirectHost: qbRedirectHost,
-      redirectMatchesRequestHost: redirectMatchesRequest,
+      redirectMatchesRequestHost: qbRedirect ? redirectMatchesRequest : true,
       environment: getQuickBooksEnvironment(),
     },
     gmail: {

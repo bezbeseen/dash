@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dash — card style lab</title>
+    <!--
+    All CSS is inlined so opening this file via file:// still works (browsers often block ../app/globals.css).
+    When you settle on look/feel, copy changes into app/globals.css (search "Cards" and .btn / .meta).
+  -->
+    <style>
+      /* Bootstrap 5 “light” tokens the real app expects — keeps colors in sync with globals.css */
+      :root {
+        --bs-body-bg: #fff;
+        --bs-body-color: #212529;
+        --bs-border-color: #dee2e6;
+        --bs-border-width: 1px;
+        --bs-secondary-color: #6c757d;
+        --bs-border-color-translucent: rgba(0, 0, 0, 0.175);
+        --bs-box-shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        --bs-tertiary-bg: #f8f9fa;
+        --bs-secondary-bg: #1a78d6;
+        --bs-primary: #0d6efd;
+        --bs-primary-bg-subtle: #4a6997;
+        --bs-primary-text-emphasis: #084298;
+        --bs-success: #198754;
+        --bs-success-bg-subtle: #d1e7dd;
+        --bs-success-text-emphasis: #0a3622;
+        --bs-success-border-subtle: #a3cfbb;
+        --bs-danger: #dc3545;
+        --bs-danger-bg-subtle: #f8d7da;
+        --bs-danger-text-emphasis: #58151c;
+        --bs-danger-border-subtle: #f1aeb5;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        background-color: #e9ecef;
+        color: var(--bs-body-color);
+        line-height: 1.45;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      button {
+        cursor: pointer;
+        font: inherit;
+      }
+
+      .lab-page {
+        padding: 24px;
+        max-width: 420px;
+        margin: 0 auto;
+      }
+      .lab-note {
+        font-size: 13px;
+        color: #495057;
+        margin: 0 0 20px;
+        padding: 12px 14px;
+        background: #fff;
+        border: 1px solid #ced4da;
+        border-radius: 8px;
+      }
+      .lab-note code {
+        font-size: 12px;
+        background: #f1f3f5;
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+
+      /* ——— from app/globals.css (“Cards” + buttons + .meta) ——— */
+      .card {
+        background-color: var(--bs-body-bg);
+        border: var(--bs-border-width) solid var(--bs-border-color);
+        border-radius: 10px;
+        padding: 12px;
+        display: grid;
+        gap: 8px;
+        box-shadow: var(--bs-box-shadow-sm);
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      .card:hover {
+        border-color: var(--bs-border-color-translucent);
+      }
+
+      .card-main-link {
+        display: grid;
+        gap: 8px;
+        color: inherit;
+        text-decoration: none;
+        border-radius: 8px;
+        margin: -4px;
+        padding: 4px;
+        transition: background 0.15s ease;
+      }
+      .card-main-link:hover {
+        background-color: var(--bs-tertiary-bg);
+      }
+      .card-main-link:hover .card-open-hint,
+      .card-main-link:hover .job-card-open-hint {
+        color: var(--bs-secondary-color);
+      }
+      .card-main-link:focus-visible {
+        outline: 2px solid var(--bs-primary);
+        outline-offset: 2px;
+      }
+      .card-open-hint {
+        font-size: 11px;
+        margin-top: 2px;
+      }
+
+      /* Job card rows — keep in sync with app/globals.css */
+      .job-card-title {
+        line-height: 1.3;
+      }
+      .job-card-subtitle {
+        line-height: 1.35;
+        color: var(--bs-body-color);
+        font-size: 0.9375rem;
+      }
+      .job-card-estimate,
+      .job-card-invoice,
+      .job-card-quickbooks,
+      .job-card-updated,
+      .job-card-extra {
+        color: var(--bs-secondary-color);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .job-card-status.badge {
+        margin-top: 2px;
+      }
+      .job-card-open-hint {
+        font-size: 11px;
+        margin-top: 2px;
+        color: var(--bs-secondary-color);
+      }
+      .job-card-action {
+        margin: 0;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background-color: var(--bs-primary-bg-subtle);
+        color: var(--bs-primary-text-emphasis);
+        font-size: 11px;
+        font-weight: 600;
+        width: fit-content;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .actions-card {
+        position: relative;
+        z-index: 2;
+      }
+
+      .btn {
+        border: var(--bs-border-width) solid var(--bs-border-color);
+        background-color: var(--bs-secondary-bg);
+        color: var(--bs-body-color);
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        transition: background 0.12s ease, border-color 0.12s ease;
+      }
+      .btn:hover {
+        background-color: var(--bs-tertiary-bg);
+        border-color: var(--bs-border-color-translucent);
+      }
+
+      .btn-done {
+        border-color: var(--bs-success);
+        background-color: var(--bs-success-bg-subtle);
+        color: var(--bs-success-text-emphasis);
+      }
+      .btn-done:hover {
+        background-color: var(--bs-success-border-subtle);
+        border-color: var(--bs-success-text-emphasis);
+      }
+
+      .btn-lost {
+        border-color: var(--bs-danger);
+        background-color: var(--bs-danger-bg-subtle);
+        color: var(--bs-danger-text-emphasis);
+      }
+      .btn-lost:hover {
+        background-color: var(--bs-danger-border-subtle);
+        border-color: var(--bs-danger-text-emphasis);
+      }
+
+      .meta {
+        color: var(--bs-secondary-color);
+        font-size: 12px;
+      }
+
+      /* Class cheat-sheet (not used in production) */
+      .lab-key {
+        font-size: 13px;
+        margin: 0 0 20px;
+        padding: 0;
+        border: 1px solid #ced4da;
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+      }
+      .lab-key caption {
+        text-align: left;
+        padding: 10px 14px;
+        font-weight: 600;
+        background: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+      }
+      .lab-key th,
+      .lab-key td {
+        padding: 8px 14px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid #eee;
+      }
+      .lab-key th {
+        width: 9.5rem;
+        font-weight: 600;
+        white-space: nowrap;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        color: #495057;
+      }
+      .lab-key tr:last-child th,
+      .lab-key tr:last-child td {
+        border-bottom: none;
+      }
+      .lab-key code {
+        font-size: 11px;
+        background: #f1f3f5;
+        padding: 1px 5px;
+        border-radius: 3px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="lab-page">
+      <p class="lab-note">
+        Styles are <strong>in this file</strong> (no external CSS). Copy tweaks into
+        <code>app/globals.css</code> when you are happy. Class names below match the real app so you
+        can paste markup ideas into <code>components/job-card.tsx</code> / <code>job-card-actions.tsx</code>.
+      </p>
+
+      <table class="lab-key">
+        <caption>What each class is for</caption>
+        <tbody>
+          <tr>
+            <th scope="row"><code>.card</code></th>
+            <td>White panel: border, padding, grid layout, shadow. Maps to outer wrapper in <code>JobCard</code>.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.card-main-link</code></th>
+            <td>
+              Whole ticket preview is one link to the job detail page. Hover/focus ring; grid stacks title,
+              lines, badge, hint.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.meta</code></th>
+            <td>
+              Muted helper text elsewhere in the app. Job card detail lines use
+              <code>.job-card-estimate</code> (etc.) in <code>app/globals.css</code>, not <code>.meta</code>.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.job-card-title</code></th>
+            <td>Customer / primary heading (bold inside).</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.job-card-subtitle</code></th>
+            <td>Product or job line (e.g. “500 Business Cards”). Omitted when empty.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.job-card-estimate</code></th>
+            <td>Estimate amount line.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.job-card-invoice</code></th>
+            <td>Paid vs invoice total line.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.job-card-quickbooks</code></th>
+            <td>QuickBooks date + Dash created timestamp.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.job-card-updated</code></th>
+            <td>Last updated line.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.job-card-extra</code></th>
+            <td>Optional extra line from the board; also <code>.card-extra-meta</code>.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.job-card-status</code> + <code>.badge</code></th>
+            <td>Status pill (e.g. QUOTED). Keep both classes: <code>.badge</code> supplies the look.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.job-card-open-hint</code></th>
+            <td>“Open ticket →”; pairs with <code>.card-open-hint</code> (focus/hover behavior).</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.job-card-action</code> …</th>
+            <td>
+              Each <code>&lt;form&gt;</code> has <code>.job-card-action</code> plus
+              <code>.job-card-action-start|ready|delivered|done|lost</code> for debugging or CSS hooks.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.actions</code></th>
+            <td>Flex row of forms/buttons with gap and wrap.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.actions-card</code></th>
+            <td>
+              Same row, but <code>z-index</code> so buttons stay clickable above the big link (stacking
+              context). From <code>JobCardActions</code>.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>.btn</code> · <code>.btn-done</code> · <code>.btn-lost</code></th>
+            <td>Custom buttons (not Bootstrap variants). Done = green tint, Lost = red tint.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Outer shell: components/job-card.tsx root -->
+      <div class="card">
+        <!-- Clickable region: entire ticket preview → /dashboard/jobs/:id -->
+        <a class="card-main-link" href="#">
+          <div class="job-card-title"><strong>Acme Auto</strong></div>
+          <div class="job-card-subtitle">500 Business Cards</div>
+          <div class="job-card-estimate">Estimate: $120.00</div>
+          <div class="job-card-invoice">Invoice paid: $0.00 / $0.00</div>
+          <div class="job-card-quickbooks">
+            QuickBooks date: n/a; Dash created Apr 13, 2026, 5:21 PM
+          </div>
+          <div class="job-card-updated">Updated Apr 13, 2026, 5:21 PM</div>
+          <div class="job-card-status badge">QUOTED</div>
+          <span class="job-card-open-hint card-open-hint">Open ticket →</span>
+        </a>
+
+        <!-- Production uses <form class="job-card-action …">; buttons here for quick lab tweaks -->
+        <div class="actions actions-card">
+          <form class="job-card-action job-card-action-start" action="#" method="post">
+            <button class="btn" type="button">Start work</button>
+          </form>
+          <form class="job-card-action job-card-action-ready" action="#" method="post">
+            <button class="btn" type="button">Ready</button>
+          </form>
+          <form class="job-card-action job-card-action-delivered" action="#" method="post">
+            <button class="btn" type="button" title="Mark delivered or installed on site">
+              Delivered / installed
+            </button>
+          </form>
+          <form class="job-card-action job-card-action-done" action="#" method="post">
+            <button class="btn btn-done" type="button">Done</button>
+          </form>
+          <form class="job-card-action job-card-action-lost" action="#" method="post">
+            <button class="btn btn-lost" type="button">Lost</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

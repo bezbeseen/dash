@@ -1,3 +1,6 @@
+/** OAuth callback path (no origin). Intuit must list the full URL: `{origin}{path}`. */
+export const QUICKBOOKS_OAUTH_CALLBACK_PATH = '/api/integrations/quickbooks/callback';
+
 export type QuickBooksEnvironment = 'sandbox' | 'production';
 
 export function getQuickBooksEnvironment(): QuickBooksEnvironment {

@@ -32,7 +32,9 @@ export async function GET(req: NextRequest) {
     return dashboardOn(req, 'qb_error=missing');
   }
 
-  const redirectUri = process.env.QUICKBOOKS_REDIRECT_URI;
+  const redirectFromCookie = cookieStore.get('qb_oauth_redirect_uri')?.value;
+  cookieStore.delete('qb_oauth_redirect_uri');
+  const redirectUri = redirectFromCookie || process.env.QUICKBOOKS_REDIRECT_URI?.trim();
   if (!redirectUri) {
     return dashboardOn(req, 'qb_error=config');
   }

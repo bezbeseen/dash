@@ -10,23 +10,25 @@ export function JobCard({ job, extraMeta }: { job: Job; extraMeta?: string }) {
   return (
     <div className="card">
       <Link href={`/dashboard/jobs/${job.id}`} className="card-main-link">
-        <div>
+        <div className="job-card-title">
           <strong>{jobPrimaryHeading(job)}</strong>
         </div>
-        {sub ? <div>{sub}</div> : null}
-        <div className="meta">Estimate: ${(job.estimateAmountCents / 100).toFixed(2)}</div>
-        <div className="meta">
+        {sub ? <div className="job-card-subtitle">{sub}</div> : null}
+        <div className="job-card-estimate">
+          Estimate: ${(job.estimateAmountCents / 100).toFixed(2)}
+        </div>
+        <div className="job-card-invoice">
           Invoice paid: ${(job.amountPaidCents / 100).toFixed(2)} / $
           {(job.invoiceAmountCents / 100).toFixed(2)}
         </div>
-        <div className="meta">
+        <div className="job-card-quickbooks">
           QuickBooks date: {job.qbOrderingAt ? fmtDetailDate(job.qbOrderingAt) : 'n/a'}; Dash created{' '}
           {fmtDetailDate(job.createdAt)}
         </div>
-        <div className="meta">Updated {fmtDetailDate(job.updatedAt)}</div>
-        {extraMeta ? <div className="meta card-extra-meta">{extraMeta}</div> : null}
-        <div className="badge">{boardStatusDisplayLabel(job.boardStatus)}</div>
-        <span className="card-open-hint meta">Open ticket →</span>
+        <div className="job-card-updated">Updated {fmtDetailDate(job.updatedAt)}</div>
+        {extraMeta ? <div className="job-card-extra card-extra-meta">{extraMeta}</div> : null}
+        <div className="job-card-status badge">{boardStatusDisplayLabel(job.boardStatus)}</div>
+        <span className="job-card-open-hint card-open-hint">Open ticket →</span>
       </Link>
       <JobCardActions jobId={job.id} archived={job.archivedAt != null} />
     </div>

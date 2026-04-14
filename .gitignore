@@ -8,6 +8,7 @@ tsconfig.tsbuildinfo
 
 # Env & secrets (use .env.example in repo)
 .env
+.env.local
 .env.*.local
 
 # Local DB (Prisma SQLite dev)
@@ -38,3 +39,5 @@ storage/gmail-attachments/
 
 # Test / coverage
 coverage/
+
+certificates

@@ -1,10 +1,28 @@
 import type { Job } from '@prisma/client';
 
+export type DoneJobMoneyTotals = {
+  estimateCents: number;
+  invoiceCents: number;
+  paidCents: number;
+};
+
 export type DoneMonthGroup = {
   key: string;
   label: string;
   jobs: Job[];
+  totals: DoneJobMoneyTotals;
 };
+
+export function sumDoneJobMoneyCents(jobs: Job[]): DoneJobMoneyTotals {
+  return jobs.reduce(
+    (acc, j) => ({
+      estimateCents: acc.estimateCents + j.estimateAmountCents,
+      invoiceCents: acc.invoiceCents + j.invoiceAmountCents,
+      paidCents: acc.paidCents + j.amountPaidCents,
+    }),
+    { estimateCents: 0, invoiceCents: 0, paidCents: 0 },
+  );
+}
 
 function archiveDate(job: Job): Date {
   return job.archivedAt ?? job.updatedAt;
@@ -35,6 +53,6 @@ export function groupDoneJobsByMonth(jobsSortedNewestFirst: Job[]): DoneMonthGro
   const keys = [...map.keys()].sort((a, b) => b.localeCompare(a));
   return keys.map((key) => {
     const g = map.get(key)!;
-    return { key, label: g.label, jobs: g.jobs };
+    return { key, label: g.label, jobs: g.jobs, totals: sumDoneJobMoneyCents(g.jobs) };
   });
 }

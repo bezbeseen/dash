@@ -1,0 +1,42 @@
+# Self-hosted stack: Postgres + Dash. For production, set secrets via env or a `.env` file
+# in this directory (see DEPLOY.md).
+#
+# Usage:
+#   export NEXTAUTH_SECRET=$(openssl rand -base64 32)
+#   docker compose up -d --build
+#
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: dash
+    volumes:
+      - dash_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d dash']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/dash
+      DIRECT_URL: postgresql://postgres:postgres@db:5432/dash
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET (e.g. openssl rand -base64 32)}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  dash_pgdata:
