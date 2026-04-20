@@ -18,10 +18,9 @@ import {
 } from '@/lib/domain/qb-ordering-at';
 import { EstimateSnapshot, InvoiceSnapshot } from '@/lib/quickbooks/types';
 import {
-  slackNotify,
-  slackQuickBooksDocLine,
-  slackTicketSummary,
-  ticketUrl,
+  slackArchiveNotificationsEnabled,
+  slackNotifyArchived,
+  slackNotifyProductionChange,
 } from '@/lib/slack/notify';
 
 function mapEstimateStatus(value: EstimateSnapshot['status']): EstimateStatus {
@@ -234,14 +233,10 @@ export async function archiveJob(jobId: string, reason: ArchiveReason, message: 
     },
   });
 
-  const url = ticketUrl(jobId);
   const label = reason === ArchiveReason.DONE ? 'Done' : 'Lost';
-  const line2 = url ? `Ticket: ${url}` : `Ticket id: ${jobId}`;
-  const who = slackTicketSummary(current);
-  const qb = slackQuickBooksDocLine(current);
-  await slackNotify(
-    `Ticket moved off board (${label}).\n${who}${qb ? `\n${qb}` : ''}\nFrom: ${current.boardStatus}\n${line2}`,
-  );
+  if (slackArchiveNotificationsEnabled()) {
+    await slackNotifyArchived({ label, job: current, jobId });
+  }
 
   return updated;
 }
@@ -281,13 +276,13 @@ export async function updateProductionStatus(jobId: string, productionStatus: Pr
     },
   });
 
-  const url = ticketUrl(jobId);
-  const line2 = url ? `Ticket: ${url}` : `Ticket id: ${jobId}`;
-  const who = slackTicketSummary(current);
-  const qb = slackQuickBooksDocLine(current);
-  await slackNotify(
-    `${message}\n${who}${qb ? `\n${qb}` : ''}\nProduction: ${current.productionStatus} → ${productionStatus}\nBoard: ${current.boardStatus} → ${finalJob.boardStatus}\n${line2}`,
-  );
+  await slackNotifyProductionChange({
+    message,
+    job: current,
+    toProduction: productionStatus,
+    finalBoardStatus: finalJob.boardStatus,
+    jobId,
+  });
 
   return finalJob;
 }

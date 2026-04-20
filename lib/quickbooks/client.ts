@@ -331,6 +331,35 @@ function qboQueryEntities<T>(qr: { QueryResponse?: Record<string, unknown> } | u
   return Array.isArray(raw) ? (raw as T[]) : [raw as T];
 }
 
+function qboQuerySqlStringLiteral(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+function normalizeInvoiceDocNumberInput(raw: string): string {
+  let s = raw.trim();
+  if (s.startsWith('#')) s = s.slice(1).trim();
+  return s;
+}
+
+/**
+ * Query by DocNumber, then GET full invoice — two QBO calls total (on-demand; no extra polling).
+ */
+export async function fetchInvoiceByDocNumber(realmId: string, docNumberRaw: string): Promise<InvoiceSnapshot | null> {
+  const docNumber = normalizeInvoiceDocNumberInput(docNumberRaw);
+  if (!docNumber) return null;
+
+  const lit = qboQuerySqlStringLiteral(docNumber);
+  const sql = `SELECT Id FROM Invoice WHERE DocNumber = '${lit}' MAXRESULTS 5`;
+  const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
+  const stubs = qboQueryEntities<QboInvoice>(body as { QueryResponse?: Record<string, unknown> }, 'Invoice');
+  const ids = [...new Set(stubs.map((s) => s.Id).filter((id): id is string => Boolean(id)))];
+  if (ids.length === 0) return null;
+  if (ids.length > 1) {
+    console.warn('[quickbooks] multiple Invoice Ids for DocNumber; using first', docNumber, ids);
+  }
+  return fetchInvoiceById(realmId, ids[0]!);
+}
+
 /** Pull recent estimates from QuickBooks (sandbox or prod per env). */
 export async function listRecentEstimates(realmId: string, maxResults = 100): Promise<EstimateSnapshot[]> {
   const sql = `SELECT * FROM Estimate MAXRESULTS ${maxResults}`;

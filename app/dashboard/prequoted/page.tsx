@@ -67,11 +67,34 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
         </div>
         <div className="board-topbar-actions d-flex flex-wrap align-items-center gap-2">
           {qbToolbar.hasToken ? (
-            <form action="/api/jobs/sync" method="post">
-              <button className="btn btn-toolbar" type="submit">
-                Sync from QuickBooks
-              </button>
-            </form>
+            <>
+              <form action="/api/jobs/sync" method="post" className="d-inline">
+                <button className="btn btn-toolbar" type="submit">
+                  Sync from QuickBooks
+                </button>
+              </form>
+              <form
+                action="/api/jobs/import-invoice"
+                method="post"
+                className="d-flex flex-wrap align-items-center gap-1"
+              >
+                <label className="visually-hidden" htmlFor="import-invoice-doc-prequoted">
+                  Invoice number
+                </label>
+                <input
+                  id="import-invoice-doc-prequoted"
+                  name="doc_number"
+                  type="text"
+                  className="form-control form-control-sm board-import-invoice-input"
+                  placeholder="Invoice #"
+                  autoComplete="off"
+                  aria-label="QuickBooks invoice number"
+                />
+                <button className="btn btn-toolbar btn-sm" type="submit">
+                  Import
+                </button>
+              </form>
+            </>
           ) : (
             <Link href="/dashboard/settings" className="btn btn-toolbar">
               Connect QuickBooks

@@ -60,9 +60,11 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
           <h1 className="board-topbar-title">Tickets</h1>
           <p className="board-topbar-sub">
             Sales to production to billing - one board. Cards are ordered by QuickBooks document time (estimate
-            created, or invoice created if no estimate), not by last sync. Click a card to open the ticket. Invoices
+            created, or invoice created if no estimate), not by last sync. Click a card to open the ticket.             Invoices
             you create{' '}
-            <strong>without</strong> an estimate show under <strong>Ready / invoiced</strong> after sync (not Quoted).{' '}
+            <strong>without</strong> an estimate show under <strong>Ready / invoiced</strong> after sync (not Quoted).
+            If one is missing, use <strong>Invoice # → Import</strong> in the toolbar (a few QuickBooks API calls only).
+            {' '}
             <Link href="/dashboard/prequoted" className="text-decoration-underline">
               Pre-quote tickets
             </Link>
@@ -76,11 +78,34 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
         </div>
         <div className="board-topbar-actions d-flex flex-wrap align-items-center gap-2">
           {qbToolbar.hasToken ? (
-            <form action="/api/jobs/sync" method="post">
-              <button className="btn btn-toolbar" type="submit">
-                Sync from QuickBooks
-              </button>
-            </form>
+            <>
+              <form action="/api/jobs/sync" method="post" className="d-inline">
+                <button className="btn btn-toolbar" type="submit">
+                  Sync from QuickBooks
+                </button>
+              </form>
+              <form
+                action="/api/jobs/import-invoice"
+                method="post"
+                className="d-flex flex-wrap align-items-center gap-1"
+              >
+                <label className="visually-hidden" htmlFor="import-invoice-doc">
+                  Invoice number
+                </label>
+                <input
+                  id="import-invoice-doc"
+                  name="doc_number"
+                  type="text"
+                  className="form-control form-control-sm board-import-invoice-input"
+                  placeholder="Invoice #"
+                  autoComplete="off"
+                  aria-label="QuickBooks invoice number"
+                />
+                <button className="btn btn-toolbar btn-sm" type="submit">
+                  Import
+                </button>
+              </form>
+            </>
           ) : (
             <Link href="/dashboard/settings" className="btn btn-toolbar">
               Connect QuickBooks

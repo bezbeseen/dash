@@ -494,6 +494,11 @@ button:disabled {
   gap: 8px;
 }
 
+.board-import-invoice-input {
+  width: 7rem;
+  min-width: 5.5rem;
+}
+
 .board-toasts {
   flex-shrink: 0;
   display: flex;

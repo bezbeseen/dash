@@ -32,6 +32,7 @@ type PageProps = {
     gmail_mailbox_error?: string;
     gmail_sync_error?: string;
     gmail_synced?: string;
+    qb_imported?: string;
   }>;
 };
 
@@ -43,6 +44,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const gmailMailboxError = sp.gmail_mailbox_error === '1';
   const gmailSyncError = sp.gmail_sync_error ? decodeURIComponent(sp.gmail_sync_error) : null;
   const gmailSyncedOk = sp.gmail_synced === '1';
+  const qbImportedOk = sp.qb_imported === '1';
 
   const gmailConnections = await prisma.gmailConnection.findMany({
     orderBy: { googleEmail: 'asc' },
@@ -132,6 +134,11 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
 
   return (
     <div className="board-page board-page-detail">
+      {qbImportedOk ? (
+        <div className="board-toasts px-3 px-md-4 pt-3" role="status">
+          <div className="board-toast board-toast-ok">Invoice imported from QuickBooks.</div>
+        </div>
+      ) : null}
       <div className="ticket-detail-layout">
         <TicketDetailToc items={tocItems} />
         <div className="ticket-detail-main">
