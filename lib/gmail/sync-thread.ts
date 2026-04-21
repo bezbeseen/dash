@@ -229,7 +229,9 @@ export async function syncGmailThreadForJob(jobId: string): Promise<{ messages: 
   const threadMessages = threadData.messages || [];
   let fileCount = 0;
 
-  const storageDir = path.join(process.cwd(), 'storage', 'gmail-attachments', jobId);
+  // Use /tmp on Vercel (serverless filesystem is read-only except /tmp)
+  const baseDir = process.env.VERCEL === '1' ? '/tmp' : process.cwd();
+  const storageDir = path.join(baseDir, 'storage', 'gmail-attachments', jobId);
   await fs.mkdir(storageDir, { recursive: true });
 
   for (const m of threadMessages) {
@@ -303,7 +305,8 @@ export async function syncGmailThreadForJob(jobId: string): Promise<{ messages: 
         att.filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 160) || 'attachment';
       const diskName = `${data.id!.slice(-10)}_${att.attachmentId.slice(-10)}_${safe}`;
       const rel = path.join('storage', 'gmail-attachments', jobId, diskName).replace(/\\/g, '/');
-      const abs = path.join(process.cwd(), rel);
+      const baseDir = process.env.VERCEL === '1' ? '/tmp' : process.cwd();
+      const abs = path.join(baseDir, rel);
       await fs.writeFile(abs, buf);
 
       await prisma.gmailSyncedAttachment.create({

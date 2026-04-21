@@ -58,9 +58,8 @@ export function TicketGmailSection({
     <section id={sectionId} className="ticket-detail-panel">
       <h2 className="detail-section-title">Gmail on this ticket</h2>
       <p className="meta ticket-doc-note">
-        You can connect <strong>up to {MAX_MAILBOXES} Gmail accounts</strong> (you, your partner, contact@).
-        Paste the <strong>conversation URL</strong> (or id), pick the mailbox, <strong>Save thread</strong>, then{' '}
-        <strong>Sync thread</strong> to pull messages and attachments <strong>into Dash</strong> via the Gmail API.
+        Connect up to <strong>{MAX_MAILBOXES} Gmail accounts</strong>. Paste a full Gmail conversation URL (or thread ID),
+        pick the mailbox, <strong>Save thread</strong>, then <strong>Sync thread</strong> to download messages + attachments.
       </p>
       <p className="meta ticket-doc-note" style={{ marginTop: -6 }}>
         <strong>Not the same as &quot;Seed email&quot; below:</strong> seed is only a quick bookmark + note — it{' '}
@@ -128,12 +127,12 @@ export function TicketGmailSection({
           </select>
         </label>
         <label className="linked-email-field linked-email-field-full">
-          <span>Gmail conversation URL or thread id</span>
+          <span>Gmail conversation URL or thread ID</span>
           <input
             name="threadUrlOrId"
             type="text"
             defaultValue={gmailThreadId ?? ''}
-            placeholder="Gmail URL (&th= or permmsgid=), ⋮ → Copy link, or Message-ID from ⋮ → Show original"
+            placeholder="Paste full Gmail URL (mail.google.com/...&th=...) or thread ID. We auto-extract it."
             autoComplete="off"
           />
         </label>
@@ -159,14 +158,13 @@ export function TicketGmailSection({
         </button>
       </form>
       {hasMailboxes && gmailThreadId && !gmailConnectionId ? (
-        <p className="meta gmail-sync-hint" style={{ marginTop: 10 }}>
-          <strong>Sync is waiting:</strong> this ticket has a saved thread but no mailbox on file. Choose a
-          mailbox above and click <strong>Save thread on ticket</strong> again (older tickets need this once).
+        <p className="meta gmail-sync-hint" style={{ marginTop: 10, color: '#d32f2f' }}>
+          <strong>Action needed:</strong> Choose a mailbox above and click <strong>Save thread on ticket</strong> again.
         </p>
       ) : null}
       {hasMailboxes && !gmailThreadId ? (
         <p className="meta gmail-sync-hint" style={{ marginTop: 10 }}>
-          Paste a Gmail conversation URL, save, then sync — the button stays off until a thread is saved.
+          Paste a Gmail conversation URL above, click Save, then Sync. The Sync button activates after saving a thread.
         </p>
       ) : null}
 

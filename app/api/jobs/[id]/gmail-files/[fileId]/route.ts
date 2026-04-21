@@ -17,7 +17,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const abs = path.join(process.cwd(), att.storagePath);
+  const baseDir = process.env.VERCEL === '1' ? '/tmp' : process.cwd();
+  const abs = path.join(baseDir, att.storagePath);
   try {
     const buf = await fs.readFile(abs);
     return new NextResponse(buf, {
