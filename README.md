@@ -7,6 +7,7 @@ Repo: [github.com/bezbeseen/dash](https://github.com/bezbeseen/dash)
 ## What it does
 
 - Creates local jobs from QuickBooks estimate/invoice sync events
+- **New:** "Invoice # → Import" on Tickets and Pre-quoted pages (instant lookup by DocNumber when full sync hasn't seen the invoice yet)
 - Derives board columns automatically from QuickBooks plus internal production actions
 - Lets staff manually mark jobs as started, ready, or delivered
 - Moves a job to Paid when the synced invoice is fully paid
@@ -82,6 +83,26 @@ npm run dev:tunnel
 This prints a public URL plus exact OAuth callback URLs for QuickBooks and Gmail.
 Keep that terminal open while testing.
 
+## QuickBooks Syncing
+
+### Two ways to get invoices/estimates into Dash
+
+1. **"Sync from QuickBooks" button** (on Tickets and Pre-quoted pages)
+   - Pulls the ~100 most recently updated Estimates + Invoices from QBO.
+   - Good for bulk updates after you make changes in QuickBooks.
+
+2. **"Invoice # → Import"** (new)
+   - Small input box next to the Sync button on both **Tickets** and **Pre-quoted** pages.
+   - Type an invoice number (or `DocNumber`), click **Import**.
+   - Immediately looks up that specific invoice in QuickBooks and creates/updates the job (even if the full sync hasn't seen it yet).
+   - Perfect for the case where "an invoice is created and paid before a QB sync happens".
+
+Both paths use the same backend logic (`upsertJobFromInvoice` in `lib/domain/sync.ts`).
+
+**Webhooks** (`/api/integrations/quickbooks/webhook`) are implemented and ready but **disabled by default**. They provide near-real-time updates when something changes in QBO. Setup requires registering the webhook URL in the Intuit Developer portal.
+
+---
+
 ## Connect QuickBooks (real API, local)
 
 Skip the OAuth Playground redirect pain: use your app’s own callback.
@@ -138,6 +159,8 @@ If you want **familiar-looking** tickets from a QuickBooks **Transaction List by
 - This does **not** replace **Sync from QuickBooks**; it’s a separate code path for local UI experiments.
 
 ## Deploy on Vercel
+
+The new **Invoice # → Import** feature and full QuickBooks syncing both work on Vercel (and locally).
 
 1. Create a **managed PostgreSQL** database (Neon, Vercel Postgres, RDS, etc.) and copy its connection string.
 2. In the Vercel project → **Settings → Environment Variables**, set at least:

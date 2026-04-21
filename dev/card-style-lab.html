@@ -19,9 +19,9 @@
         --bs-border-color-translucent: rgba(0, 0, 0, 0.175);
         --bs-box-shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
         --bs-tertiary-bg: #f8f9fa;
-        --bs-secondary-bg: #1a78d6;
+        --bs-secondary-bg: #d1dae3;
         --bs-primary: #0d6efd;
-        --bs-primary-bg-subtle: #4a6997;
+        --bs-primary-bg-subtle: #489e59;
         --bs-primary-text-emphasis: #084298;
         --bs-success: #198754;
         --bs-success-bg-subtle: #d1e7dd;
@@ -60,7 +60,7 @@
         margin: 0 auto;
       }
       .lab-note {
-        font-size: 13px;
+        font-size: 20px;
         color: #495057;
         margin: 0 0 20px;
         padding: 12px 14px;
@@ -69,7 +69,7 @@
         border-radius: 8px;
       }
       .lab-note code {
-        font-size: 12px;
+        font-size: 16px;
         background: #f1f3f5;
         padding: 1px 6px;
         border-radius: 4px;
@@ -80,9 +80,9 @@
         background-color: var(--bs-body-bg);
         border: var(--bs-border-width) solid var(--bs-border-color);
         border-radius: 10px;
-        padding: 12px;
+        padding: 18px;
         display: grid;
-        gap: 8px;
+        gap: 12px;
         box-shadow: var(--bs-box-shadow-sm);
         transition: border-color 0.15s ease, box-shadow 0.15s ease;
       }
@@ -91,6 +91,7 @@
       }
 
       .card-main-link {
+        font-size: 20px;
         display: grid;
         gap: 8px;
         color: inherit;
@@ -118,12 +119,12 @@
 
       /* Job card rows — keep in sync with app/globals.css */
       .job-card-title {
-        line-height: 1.3;
+        line-height: 1.4;
       }
       .job-card-subtitle {
         line-height: 1.35;
         color: var(--bs-body-color);
-        font-size: 0.9375rem;
+        font-size: 18px;
       }
       .job-card-estimate,
       .job-card-invoice,
@@ -131,8 +132,9 @@
       .job-card-updated,
       .job-card-extra {
         color: var(--bs-secondary-color);
-        font-size: 12px;
+        font-size: 14px;
         line-height: 1.4;
+        font-weight: 500;
       }
       .job-card-status.badge {
         margin-top: 2px;
@@ -254,9 +256,13 @@
   <body>
     <div class="lab-page">
       <p class="lab-note">
-        Styles are <strong>in this file</strong> (no external CSS). Copy tweaks into
-        <code>app/globals.css</code> when you are happy. Class names below match the real app so you
-        can paste markup ideas into <code>components/job-card.tsx</code> / <code>job-card-actions.tsx</code>.
+        <strong>Card Style Lab</strong> — self-contained playground. All CSS is inlined so it works via <code>file://</code>.
+        When you settle on a look, copy rules into <code>app/globals.css</code> (search for <code>.card</code>, <code>.job-card-*</code>, <code>.btn</code>).
+        <br><br>
+        <strong>Other labs:</strong> 
+        <a href="ticket-detail-lab.html">Ticket Detail</a> • 
+        <a href="board-lab.html">Board &amp; Columns</a> • 
+        <a href="ui-kit-lab.html">Buttons &amp; UI Kit</a>
       </p>
 
       <table class="lab-key">

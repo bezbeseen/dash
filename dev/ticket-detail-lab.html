@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dash — Ticket Detail Lab</title>
+  <style>
+    :root {
+      --bs-body-bg: #fff;
+      --bs-body-color: #212529;
+      --bs-border-color: #dee2e6;
+      --bs-border-width: 1px;
+      --bs-secondary-color: #6c757d;
+      --bs-tertiary-bg: #f8f9fa;
+      --bs-primary: #0d6efd;
+      --bs-success: #198754;
+      --bs-danger: #dc3545;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f1f3f5;
+      color: var(--bs-body-color);
+      line-height: 1.5;
+    }
+
+    .lab-container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    .lab-header {
+      background: #212529;
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .lab-content {
+      padding: 32px;
+    }
+
+    .ticket-header {
+      border-bottom: 1px solid var(--bs-border-color);
+      padding-bottom: 20px;
+      margin-bottom: 24px;
+    }
+
+    .ticket-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0 0 8px;
+    }
+
+    .ticket-subtitle {
+      font-size: 18px;
+      color: var(--bs-secondary-color);
+      margin: 0;
+    }
+
+    .section {
+      margin-bottom: 32px;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--bs-secondary-color);
+      margin-bottom: 12px;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+    }
+
+    .meta-item {
+      background: var(--bs-tertiary-bg);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .meta-label {
+      font-size: 12px;
+      color: var(--bs-secondary-color);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .btn {
+      padding: 10px 16px;
+      border: 1px solid var(--bs-border-color);
+      background: white;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .btn-primary { background: var(--bs-primary); color: white; border-color: var(--bs-primary); }
+    .btn-success { background: var(--bs-success); color: white; border-color: var(--bs-success); }
+
+    .lab-note {
+      background: #fff3cd;
+      border: 1px solid #ffeaa7;
+      padding: 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="lab-container">
+    <div class="lab-header">
+      <h1>Ticket Detail Lab</h1>
+      <p>Experiment with ticket detail page layout, sections, and components</p>
+    </div>
+    <div class="lab-content">
+
+      <div class="lab-note">
+        <strong>How to use:</strong> Edit styles in the &lt;style&gt; block. When happy, copy relevant rules into 
+        <code>app/globals.css</code> and markup patterns into <code>components/ticket-detail/*</code>.
+        This file works standalone via file://.
+      </div>
+
+      <!-- Example Ticket Header -->
+      <div class="ticket-header">
+        <div class="ticket-title">Acme Sign Co – 500 Business Cards</div>
+        <div class="ticket-subtitle">Full color, matte laminate, 14pt cardstock • Due Apr 28</div>
+      </div>
+
+      <div class="meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">Status</span>
+          <strong>IN PROGRESS</strong>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Estimate</span>
+          <strong>$450.00</strong>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Invoice</span>
+          <strong>$420.00 (Paid)</strong>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Last Updated</span>
+          Apr 18, 2026 • 3:14 PM
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Production</div>
+        <button class="btn btn-primary">Mark Ready</button>
+        <button class="btn" style="margin-left:8px">Mark Delivered</button>
+      </div>
+
+      <div class="section">
+        <div class="section-title">QuickBooks IDs</div>
+        <div style="font-family:monospace; font-size:13px; background:#f8f9fa; padding:12px; border-radius:6px;">
+          Estimate #EST-93821 • Invoice #INV-47291
+        </div>
+      </div>
+
+      <p style="text-align:center; color:#666; margin-top:40px; font-size:13px;">
+        Add more sections below as needed. This pattern helps us iterate on layout without running the full Next.js app.
+      </p>
+    </div>
+  </div>
+</body>
+</html>

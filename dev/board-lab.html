@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dash — Board Lab</title>
+  <style>
+    :root {
+      --bs-body-bg: #f8f9fa;
+      --bs-body-color: #212529;
+      --bs-border-color: #dee2e6;
+      --bs-primary: #0d6efd;
+      --bs-success: #198754;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: system-ui, sans-serif;
+      background: #e9ecef;
+    }
+
+    .board {
+      display: flex;
+      gap: 16px;
+      overflow-x: auto;
+      padding: 20px;
+      min-height: 600px;
+    }
+
+    .column {
+      background: white;
+      border-radius: 12px;
+      width: 280px;
+      flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .column-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--bs-border-color);
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .column-body {
+      flex: 1;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid var(--bs-border-color);
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+
+    .lab-note {
+      max-width: 800px;
+      margin: 0 auto 30px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  <div class="lab-note">
+    <strong>Board Layout Lab</strong><br>
+    This file lets you experiment with column widths, card spacing, hover states, and overall board feel.<br><br>
+    Copy good rules into <code>app/globals.css</code> (search for <code>.board-*</code> and <code>.card</code>).
+  </div>
+
+  <div class="board">
+    <!-- Column 1 -->
+    <div class="column">
+      <div class="column-header">
+        <span>Quoted <span style="color:#666">(12)</span></span>
+      </div>
+      <div class="column-body">
+        <div class="card">Job card example 1</div>
+        <div class="card">Job card example 2</div>
+      </div>
+    </div>
+
+    <!-- Column 2 -->
+    <div class="column">
+      <div class="column-header">
+        <span>In Production <span style="color:#666">(8)</span></span>
+      </div>
+      <div class="column-body">
+        <div class="card" style="border-left: 4px solid #0d6efd;">Job card example 3</div>
+      </div>
+    </div>
+
+    <!-- Column 3 -->
+    <div class="column">
+      <div class="column-header">
+        <span>Ready / Invoiced <span style="color:#666">(5)</span></span>
+      </div>
+      <div class="column-body">
+        <div class="card">Job card example 4</div>
+      </div>
+    </div>
+  </div>
+
+  <p style="text-align:center; margin-top:40px; color:#666; font-size:13px;">
+    Try changing column width, card padding, shadows, and hover effects in the &lt;style&gt; block above.
+  </p>
+</body>
+</html>

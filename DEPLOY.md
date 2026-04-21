@@ -17,6 +17,8 @@ This repo ships a **Docker** image (Next.js standalone + Prisma) and **Docker Co
 
 - Docker Engine + Docker Compose v2 (for Compose below).
 - Environment variables: same names as `.env.example`. For Docker Compose you need at least:
+
+The new **Invoice # → Import** button (on Tickets and Pre-quoted pages) works out of the box with the existing QuickBooks credentials. No additional env vars are required beyond what was already needed for syncing.
   - `NEXTAUTH_SECRET` — `openssl rand -base64 32`
   - `NEXTAUTH_URL` / `NEXT_PUBLIC_APP_URL` — URL users open (e.g. `https://dash.example.com`)
   - Plus DB and any integrations you use.
@@ -67,6 +69,12 @@ docker push your-registry/dash:v0.1.0
 ```
 
 Run migrations once per deploy (the container runs `prisma migrate deploy` on startup; for multiple replicas, consider a single migration job before rolling out).
+
+## QuickBooks Syncing (applies to both Docker and Vercel)
+
+- **Sync from QuickBooks** button: pulls recent estimates + invoices.
+- **Invoice # → Import** (new on Tickets and Pre-quoted pages): on-demand lookup by `DocNumber`. Useful when an invoice is created/paid before the next full sync.
+- Webhooks (`/api/integrations/quickbooks/webhook`) are implemented but disabled by default. Register the endpoint in Intuit Developer when you want near-real-time updates.
 
 ## Vercel
 

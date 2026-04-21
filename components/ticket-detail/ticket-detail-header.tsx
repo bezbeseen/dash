@@ -25,14 +25,20 @@ export function TicketDetailHeader({
     <header className="detail-header">
       <div>
         <h1 className="detail-title">{jobPrimaryHeading({ projectName, customerName })}</h1>
-        {sub ? <p className="meta detail-subtitle">{sub}</p> : null}
-        <p className="meta detail-subtitle mb-0">
-          Created {fmtDetailDate(createdAt)}
-          <span aria-hidden> · </span>
-          Updated {fmtDetailDate(updatedAt)}
-        </p>
+        {sub ? <p className="detail-subtitle">{sub}</p> : null}
       </div>
       <span className="badge badge-lg">{boardStatusDisplayLabel(boardStatus)}</span>
+
+      <div className="meta-grid">
+        <div className="meta-item">
+          <div className="meta-label">Created</div>
+          <div className="meta-value">{fmtDetailDate(createdAt)}</div>
+        </div>
+        <div className="meta-item">
+          <div className="meta-label">Updated</div>
+          <div className="meta-value">{fmtDetailDate(updatedAt)}</div>
+        </div>
+      </div>
     </header>
   );
 }
