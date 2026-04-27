@@ -17,17 +17,11 @@ This repo ships a **Docker** image (Next.js standalone + Prisma) and **Docker Co
 
 - Docker Engine + Docker Compose v2 (for Compose below).
 - Environment variables: same names as `.env.example`. For Docker Compose you need at least:
-
-The new **Invoice # → Import** button (on Tickets and Pre-quoted pages) works out of the box with the existing QuickBooks credentials. No additional env vars are required beyond what was already needed for syncing.
   - `NEXTAUTH_SECRET` — `openssl rand -base64 32`
   - `NEXTAUTH_URL` / `NEXT_PUBLIC_APP_URL` — URL users open (e.g. `https://dash.example.com`)
   - Plus DB and any integrations you use.
 
-### Vercel (quick checklist)
-
-1. **`NEXTAUTH_SECRET`** — required. If missing, NextAuth throws **NO_SECRET** and `/api/auth/*` returns 500. Set for **Production** (and **Preview** if you test sign-in on preview URLs). Generate: `openssl rand -base64 32`.
-2. **`NEXTAUTH_URL`** — production origin, e.g. `https://your-project.vercel.app` (no trailing slash). For preview deployments, NextAuth often still needs the **primary** production URL unless you use advanced cookie config.
-3. Redeploy after adding or changing secrets.
+The **Invoice # → Import** button (Tickets and Pre-quoted pages) uses the same QuickBooks credentials as the rest of syncing; no extra env vars for that feature alone.
 
 ## Quick start (Compose)
 
@@ -78,7 +72,26 @@ Run migrations once per deploy (the container runs `prisma migrate deploy` on st
 
 ## Vercel
 
-If you deploy on **Vercel** instead, you do not need this Docker image: connect the Vercel project to the repo, set the same env vars in the dashboard, and use `npm run build` (which includes `prisma migrate deploy` in this project’s `build` script). Ephemeral disk limits apply to local Gmail attachment storage; see the main README.
+If you deploy on **Vercel**, you do not need the Docker image: connect the project to the repo and set variables in **Project → Settings → Environment Variables**. Vercel does **not** read your laptop `.env` unless you use CLI sync—paste values for **Production** and **Preview** (if you use preview URLs).
+
+### Env checklist
+
+1. **`DATABASE_URL`** and **`DIRECT_URL`** — **Required.** Must point at **hosted** Postgres (Neon, Supabase, Vercel Postgres, etc.). **`localhost` fails**: the default **`npm run build`** runs **`prisma migrate deploy`**, which opens the DB during the build. Use the same URL for both unless your host documents separate pooler vs “direct” URLs.
+2. **`NEXTAUTH_SECRET`** — Required. If missing, NextAuth returns **NO_SECRET** and `/api/auth/*` can 500. Generate: `openssl rand -base64 32`.
+3. **`NEXTAUTH_URL`** and **`NEXT_PUBLIC_APP_URL`** — Set to the **exact origin** users open for that environment (no trailing slash), e.g. `https://your-project.vercel.app`. For **Preview** deployments, each `*.vercel.app` URL differs: use a **stable** domain you control, or accept that preview auth needs matching env per branch (see main README).
+4. **Google** — `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`; register every callback in Google Cloud (see main README). Optional: leave **`GOOGLE_REDIRECT_URI`** unset so the app builds the Gmail callback from the current host.
+5. **QuickBooks** — client id/secret, environment, webhook verifier per `.env.example`. Optional: leave **`QUICKBOOKS_REDIRECT_URI`** unset unless you need a fixed URL; if set, path must be **`/api/integrations/quickbooks/callback`** (not Gmail).
+6. **Redeploy** after changing secrets.
+
+**Sanity check:** while logged in, open **`/api/integrations/env-check`** on the deployment (safe JSON: no secrets, includes DB host hints).
+
+### Build
+
+Use the default **`npm run build`**: **`prisma generate`**, **`prisma migrate deploy`** (applies migrations to the DB in `DATABASE_URL`), then **`next build`**.
+
+To skip migrations in a custom pipeline, use **`npm run build:next`** and run **`npx prisma migrate deploy`** against the same database separately.
+
+Ephemeral disk limits apply to Gmail attachment caching on serverless; see the main README.
 
 ## Prisma version
 
