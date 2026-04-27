@@ -8,7 +8,7 @@
     "dev:lan": "next dev -H 0.0.0.0",
     "dev:bonjour": "node scripts/dev-bonjour.mjs",
     "dev:tunnel": "node scripts/dev-tunnel.mjs",
-    "build": "prisma generate && prisma migrate deploy && next build",
+    "build": "node scripts/assert-vercel-database-url.mjs && prisma generate && prisma migrate deploy && next build",
     "build:next": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
