@@ -46,6 +46,17 @@ export async function GET(req: NextRequest) {
   const redirectMatchesRequest =
     qbRedirectHost != null && qbRedirectHost === requestHost;
 
+  let quickBooksExplicitRedirectPathOk: boolean | null = null;
+  if (qbRedirect) {
+    try {
+      const p = new URL(qbRedirect).pathname.replace(/\/$/, '') || '/';
+      const expected = QUICKBOOKS_OAUTH_CALLBACK_PATH.replace(/\/$/, '');
+      quickBooksExplicitRedirectPathOk = p === expected;
+    } catch {
+      quickBooksExplicitRedirectPathOk = false;
+    }
+  }
+
   const dbUrlRaw = process.env.DATABASE_URL?.trim();
   let databaseHostname: string | null = null;
   let databaseHostLooksLocal = false;
@@ -88,6 +99,11 @@ export async function GET(req: NextRequest) {
   } else if (!redirectMatchesRequest && qbRedirectHost) {
     hints.push(
       `QUICKBOOKS_REDIRECT_URI host is "${qbRedirectHost}" but you opened "${requestHost}". They must match (www vs non-www, preview vs production), or remove QUICKBOOKS_REDIRECT_URI to use the current host automatically.`,
+    );
+  }
+  if (qbRedirect && quickBooksExplicitRedirectPathOk === false) {
+    hints.push(
+      `QUICKBOOKS_REDIRECT_URI must be the QuickBooks callback only: …${QUICKBOOKS_OAUTH_CALLBACK_PATH} (register the same URL in Intuit). Yours points at a different path — often Gmail was pasted by mistake. Fix or delete QUICKBOOKS_REDIRECT_URI to use ${implicitQbRedirect}.`,
     );
   }
   hints.push(
@@ -150,7 +166,10 @@ export async function GET(req: NextRequest) {
       hasClientSecret: Boolean(process.env.QUICKBOOKS_CLIENT_SECRET?.trim()),
       oauthCredentialsConfigured: quickBooksOAuthCredentialsConfigured(),
       hasExplicitRedirectUri: Boolean(qbRedirect),
+      /** False when QUICKBOOKS_REDIRECT_URI path is not the QuickBooks OAuth callback (e.g. Gmail URL by mistake). */
+      explicitRedirectPathIsQuickBooks: quickBooksExplicitRedirectPathOk,
       effectiveOAuthCallback: qbRedirect || implicitQbRedirect,
+      implicitQuickBooksOAuthCallback: implicitQbRedirect,
       redirectHost: qbRedirectHost,
       redirectMatchesRequestHost: qbRedirect ? redirectMatchesRequest : true,
       environment: getQuickBooksEnvironment(),
