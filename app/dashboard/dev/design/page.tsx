@@ -5,6 +5,7 @@ const REPO_PATHS = [
   { path: 'app/globals.css', note: 'Board columns, ticket detail, custom .btn-*, .card, forms' },
   { path: 'app/layout.tsx', note: 'Bootstrap + Maxton import order, data-bs-theme, fonts' },
   { path: 'app/dashboard/layout.tsx', note: 'Maxton shell: sidebar, header, main-wrapper' },
+  { path: 'app/dashboard/todos/page.tsx', note: 'Shop to-dos list (assign, due, Monday-style sections)' },
   { path: 'components/maxton-top-header.tsx', note: 'Top bar + menu toggle' },
   { path: 'styles/maxton/', note: 'Maxton template CSS (sass + assets)' },
 ] as const;

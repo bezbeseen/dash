@@ -85,6 +85,20 @@ export default async function DashboardHome({ searchParams }: DashboardHomeProps
             <span className="dashboard-home-card-title">Cash &amp; banks</span>
             <span className="dashboard-home-card-desc">QBO chart of accounts</span>
           </Link>
+          <Link href="/dashboard/tasks" className="dashboard-home-card">
+            <span className="dashboard-home-card-icon" aria-hidden>
+              <i className="material-icons-outlined">checklist</i>
+            </span>
+            <span className="dashboard-home-card-title">Tasks</span>
+            <span className="dashboard-home-card-desc">Ticket-linked to-dos</span>
+          </Link>
+          <Link href={'/dashboard/todos' as never} className="dashboard-home-card">
+            <span className="dashboard-home-card-icon" aria-hidden>
+              <i className="material-icons-outlined">event_note</i>
+            </span>
+            <span className="dashboard-home-card-title">To-dos</span>
+            <span className="dashboard-home-card-desc">Shop list · assign &amp; due</span>
+          </Link>
           <Link href="/dashboard/activity" className="dashboard-home-card">
             <span className="dashboard-home-card-icon" aria-hidden>
               <i className="material-icons-outlined">history</i>

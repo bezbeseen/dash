@@ -46,7 +46,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
       <header className="board-topbar">
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Tasks</h1>
-          <p className="board-topbar-sub">Separate to-do list with optional links to tickets.</p>
+          <p className="board-topbar-sub">Ticket follow-ups: optional link to a job, due date, and done/reopen.</p>
         </div>
         <div className="board-topbar-actions">
           <Link href="/dashboard" className="btn btn-toolbar btn-toolbar-muted">

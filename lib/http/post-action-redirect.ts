@@ -1,6 +1,6 @@
 /**
  * After a same-origin dashboard form POST (e.g. tasks), return the user to the submitting page.
- * Only allows `/dashboard/tasks` and `/dashboard/jobs/*` to avoid open redirects.
+ * Only allows `/dashboard/tasks`, `/dashboard/todos`, and `/dashboard/jobs/*` to avoid open redirects.
  */
 export function postDashboardFormRedirect(
   req: Request,
@@ -16,7 +16,11 @@ export function postDashboardFormRedirect(
       const u = new URL(ref);
       if (u.host === incoming.host) {
         const path = u.pathname;
-        const allowed = path === '/dashboard/tasks' || path.startsWith('/dashboard/jobs/');
+        const allowed =
+          path === '/dashboard/tasks' ||
+          path === '/dashboard/todos' ||
+          path.startsWith('/dashboard/todos/') ||
+          path.startsWith('/dashboard/jobs/');
         if (allowed) {
           return new URL(`${path}${u.search}`, base);
         }

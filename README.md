@@ -12,6 +12,7 @@ Repo: [github.com/bezbeseen/dash](https://github.com/bezbeseen/dash)
 - Lets staff manually mark jobs as started, ready, or delivered
 - Moves a job to Paid when the synced invoice is fully paid
 - On each ticket: open **invoice/estimate PDFs** from QuickBooks and see **billing email** / customer message (full email threads aren’t in the QBO API)
+- **To-dos (optional):** shop-wide list on **To-dos** (assign a teammate, due date) — not ticket-based; ticket-related items stay under **Tasks**.
 - **Gmail (optional):** connect **up to 3** mailboxes (`gmail.readonly` — e.g. you, partner, contact@). On each ticket, pick **which mailbox** the thread lives in, paste a Gmail conversation URL (or thread ID), **Save thread**, then **Sync thread** → all messages + **attachments**. Attachments are saved to `/tmp` on Vercel (ephemeral) or `./storage/gmail-attachments` locally. For production use, consider adding cloud storage (Vercel Blob, S3) later.
 
 ## Board logic
