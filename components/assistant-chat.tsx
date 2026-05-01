@@ -3,7 +3,22 @@
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import Link from 'next/link';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+
+/** AI SDK surfaces non-OK bodies as Error.message; unwrap our JSON `{ error }` for humans. */
+function formatAssistantError(raw: string | undefined): string {
+  if (!raw?.trim()) return 'Request failed.';
+  const t = raw.trim();
+  if (t.startsWith('{')) {
+    try {
+      const j = JSON.parse(t) as { error?: string };
+      if (typeof j.error === 'string' && j.error.trim()) return j.error.trim();
+    } catch {
+      /* ignore */
+    }
+  }
+  return raw;
+}
 
 function renderPart(part: UIMessage['parts'][number], key: React.Key) {
   if (part.type === 'text') {
@@ -55,7 +70,7 @@ export function AssistantChat() {
   const { messages, sendMessage, status, stop, error, clearError } = useChat({
     transport,
     onError: (err) => {
-      setBanner(err.message ?? 'Request failed');
+      setBanner(formatAssistantError(err.message));
     },
     onFinish: () => {
       clearError();
@@ -63,6 +78,11 @@ export function AssistantChat() {
   });
 
   const busy = status === 'streaming' || status === 'submitted';
+
+  const alertText = useMemo(
+    () => formatAssistantError(banner ?? error?.message),
+    [banner, error?.message],
+  );
 
   const onSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -82,7 +102,7 @@ export function AssistantChat() {
       <div className="card-body d-flex flex-column" style={{ minHeight: '420px', maxHeight: 'min(70vh, 640px)' }}>
         {(banner || error) && (
           <div className="alert alert-warning py-2 small mb-3" role="status">
-            {banner ?? error?.message}
+            {alertText}
           </div>
         )}
 
