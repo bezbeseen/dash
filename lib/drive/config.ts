@@ -70,3 +70,11 @@ export function canCreateDriveJobFolderFromTemplate(): boolean {
       driveParentIdForBucket('ARCHIVE'),
   );
 }
+
+/** Default subfolder for QBO PDF sync when your template does not already include one. */
+export const QBO_PDFS_DRIVE_SUBFOLDER_DEFAULT = 'Invoices and quotes';
+
+/** Override to match your job template (e.g. 06_Invoices Quotes). If unset we try to reuse an existing invoices/quotes folder. */
+export function getQboPdfsSubfolderNameOrDefault(): string {
+  return trimOrUndef(process.env.GOOGLE_DRIVE_QBO_PDFS_SUBFOLDER_NAME) ?? QBO_PDFS_DRIVE_SUBFOLDER_DEFAULT;
+}
