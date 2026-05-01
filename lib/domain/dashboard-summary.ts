@@ -1,7 +1,8 @@
-import { ArchiveReason, BoardStatus, EventSource } from '@prisma/client';
+import { ArchiveReason, BoardStatus, EventSource, TaskStatus } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { qbEventDateLabelFromMetadata } from '@/lib/domain/activity-metadata';
 import { DASHBOARD_COLUMNS, type DashboardColumnKey } from '@/lib/domain/board-display';
+import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import { computeMoneyRollup } from '@/lib/domain/money-rollup';
 
 export type DashboardRecentAction = {
@@ -59,6 +60,19 @@ function columnCountsFromBoardStatuses(
   return out;
 }
 
+export type DashboardCustomerRollup = {
+  customerName: string;
+  jobCount: number;
+  invoicedCents: number;
+  paidCents: number;
+};
+
+export type DashboardTicketTaskStats = {
+  open: number;
+  done: number;
+  overdue: number;
+};
+
 export type DashboardSummary = {
   onBoardCount: number;
   leadCount: number;
@@ -66,12 +80,36 @@ export type DashboardSummary = {
   money: ReturnType<typeof computeMoneyRollup>;
   doneCount: number;
   quickBooksConnected: boolean;
+  quickBooksLastTicketSyncAt: Date | null;
+  quickBooksLastSyncUnknown: boolean;
+  driveFoldersLinkedCount: number;
   gmailMailboxCount: number;
   lastActivityAt: Date | null;
+  ticketTasks: DashboardTicketTaskStats;
+  topCustomers: DashboardCustomerRollup[];
+};
+
+const ticketTaskBaseWhere = {
+  jobId: { not: null },
+  job: { is: { archivedAt: null } },
 };
 
 export async function loadDashboardSummary(): Promise<DashboardSummary> {
-  const [boardGroups, leadCount, moneyRows, doneCount, qbCount, gmailCount, lastJob] = await Promise.all([
+  const now = new Date();
+  const [
+    boardGroups,
+    leadCount,
+    moneyRows,
+    doneCount,
+    driveFoldersLinkedCount,
+    qbToolbar,
+    gmailCount,
+    lastJob,
+    customerGroups,
+    ticketTasksOpen,
+    ticketTasksDone,
+    ticketTasksOverdue,
+  ] = await Promise.all([
     prisma.job.groupBy({
       by: ['boardStatus'],
       where: {
@@ -92,13 +130,45 @@ export async function loadDashboardSummary(): Promise<DashboardSummary> {
       },
     }),
     prisma.job.count({ where: { archiveReason: ArchiveReason.DONE } }),
-    prisma.quickBooksToken.count(),
+    prisma.job.count({
+      where: { archivedAt: null, googleDriveFolderId: { not: null } },
+    }),
+    loadQbTicketsToolbar(),
     prisma.gmailConnection.count(),
     prisma.job.findFirst({
       orderBy: { updatedAt: 'desc' },
       select: { updatedAt: true },
     }),
+    prisma.job.groupBy({
+      by: ['customerName'],
+      where: { archivedAt: null },
+      _count: { id: true },
+      _sum: { invoiceAmountCents: true, amountPaidCents: true },
+    }),
+    prisma.task.count({
+      where: { ...ticketTaskBaseWhere, status: TaskStatus.OPEN },
+    }),
+    prisma.task.count({
+      where: { ...ticketTaskBaseWhere, status: TaskStatus.DONE },
+    }),
+    prisma.task.count({
+      where: {
+        ...ticketTaskBaseWhere,
+        status: TaskStatus.OPEN,
+        dueAt: { lt: now },
+      },
+    }),
   ]);
+
+  const topCustomers: DashboardCustomerRollup[] = customerGroups
+    .map((g) => ({
+      customerName: g.customerName,
+      jobCount: g._count.id,
+      invoicedCents: g._sum.invoiceAmountCents ?? 0,
+      paidCents: g._sum.amountPaidCents ?? 0,
+    }))
+    .sort((a, b) => b.invoicedCents - a.invoicedCents)
+    .slice(0, 5);
 
   const tallies: Partial<Record<BoardStatus, number>> = {};
   let onBoardCount = 0;
@@ -113,8 +183,17 @@ export async function loadDashboardSummary(): Promise<DashboardSummary> {
     columnCounts: columnCountsFromBoardStatuses(tallies),
     money: computeMoneyRollup(moneyRows),
     doneCount,
-    quickBooksConnected: qbCount > 0,
+    quickBooksConnected: qbToolbar.hasToken,
+    quickBooksLastTicketSyncAt: qbToolbar.lastTicketSyncAt,
+    quickBooksLastSyncUnknown: qbToolbar.lastSyncUnknown,
+    driveFoldersLinkedCount,
     gmailMailboxCount: gmailCount,
     lastActivityAt: lastJob?.updatedAt ?? null,
+    ticketTasks: {
+      open: ticketTasksOpen,
+      done: ticketTasksDone,
+      overdue: ticketTasksOverdue,
+    },
+    topCustomers,
   };
 }

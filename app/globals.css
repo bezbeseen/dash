@@ -34,6 +34,48 @@ button:disabled {
   opacity: 0.5;
 }
 
+/* ——— Mobile shell: prevent horizontal drift, drawer backdrop (Maxton expects .toggled + overlay pattern) ——— */
+html {
+  overflow-x: clip;
+}
+body {
+  overflow-x: clip;
+}
+
+@media (max-width: 1199.98px) {
+  .dashboard-shell-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 11;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  body.toggled .dashboard-shell-overlay {
+    display: block;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .main-wrapper .main-content {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .main-wrapper .main-content {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+}
+
 /* SimpleBar’s `[data-simplebar]{position:relative}` ties with `.sidebar-wrapper` specificity; when
    that stylesheet loads after Maxton, it overrides `position:fixed`. The sidebar then participates
    in normal flow and `main` stacks below the full sidebar height — huge gap vs. the top bar. */
@@ -243,6 +285,13 @@ button:disabled {
   background-color: var(--bs-secondary-bg);
 }
 
+/* Top bar lives inside .main-wrapper; constrain inner toolbar to the same content width as the board. */
+.top-header-inner {
+  max-width: min(1520px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .board-page {
   flex: 1;
   display: flex;
@@ -345,12 +394,36 @@ button:disabled {
   width: 100%;
 }
 
+.ticket-detail-sync-row {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto 12px;
+  padding: 0 1px;
+}
+
+.ticket-detail-sync-row-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: var(--bs-border-width) solid var(--bs-border-color);
+  background-color: var(--bs-body-bg);
+  box-shadow: var(--bs-box-shadow-sm);
+}
+
+.ticket-detail-sync-meta {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
 .ticket-detail-main {
   min-width: 0;
 }
 
 .ticket-detail-panel {
-  scroll-margin-top: 20px;
+  scroll-margin-top: 5.5rem;
   background-color: var(--bs-body-bg);
   border: var(--bs-border-width) solid var(--bs-border-color);
   border-radius: 16px;
@@ -441,8 +514,12 @@ button:disabled {
 
 .ticket-detail-toc {
   position: sticky;
-  top: 16px;
+  top: 1rem;
   align-self: start;
+  z-index: 4;
+  max-height: calc(100vh - 70px - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .ticket-detail-toc-title {
@@ -1316,23 +1393,83 @@ button:disabled {
     border-right: none;
     border-bottom: var(--bs-border-width) solid var(--bs-border-color);
   }
-  .board-canvas {
+  /* Tickets & other pages use .board-page, not .board-workspace — same canvas behavior on phones */
+  .board-page .board-canvas,
+  .board-workspace .board-canvas {
     flex-direction: column;
     overflow-x: hidden;
     overflow-y: auto;
-    padding-left: 16px;
-    padding-right: 16px;
+    padding: 12px 12px 24px;
+    gap: 12px;
+    -webkit-overflow-scrolling: touch;
   }
-  .board-list {
+  .board-page .board-list,
+  .board-workspace .board-list {
     width: 100% !important;
     max-width: none;
     max-height: none;
     min-height: 200px;
+  }
+  .board-topbar {
+    padding: 12px 12px 10px;
+  }
+  .board-topbar-sub {
+    max-width: none;
+  }
+  .board-toasts {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .board-page-detail {
+    padding: 12px 12px 32px;
+  }
+  .ticket-detail-sync-row {
+    padding: 0;
+    margin-bottom: 10px;
   }
   .board-topbar-actions {
     flex-wrap: wrap;
   }
   .ticket-detail-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .top-header .navbar {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .ticket-detail-panel {
+    padding: 16px;
+    border-radius: 12px;
+    margin-bottom: 16px;
+  }
+
+  .detail-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .detail-title {
+    font-size: clamp(1.3rem, 6.5vw, 1.65rem);
+  }
+
+  .detail-subtitle {
+    font-size: 1rem;
+  }
+
+  .meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ticket-pdf-frame {
+    min-height: 260px;
+  }
+
+  .ticket-detail-sync-row-inner {
+    padding: 10px 12px;
   }
 }

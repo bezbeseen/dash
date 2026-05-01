@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import React from 'react';
 import { DashboardSidebarNav } from '@/components/dashboard-sidebar-nav';
+import { DashboardSidebarOverlay } from '@/components/dashboard-sidebar-overlay';
 import { PreserveShellScroll } from '@/components/preserve-shell-scroll';
 import { MaxtonDashboardEffects } from '@/components/maxton-dashboard-effects';
 import { MaxtonTopHeader } from '@/components/maxton-top-header';
@@ -9,7 +10,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <>
       <MaxtonDashboardEffects />
-      <MaxtonTopHeader />
+      <DashboardSidebarOverlay />
 
       <aside className="sidebar-wrapper" aria-label="Workspace navigation">
         <div className="sidebar-header">
@@ -44,6 +45,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </aside>
 
       <main className="main-wrapper">
+        <MaxtonTopHeader />
         <div className="main-content">
           <PreserveShellScroll />
           {children}

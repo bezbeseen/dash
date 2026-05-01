@@ -19,6 +19,8 @@ import { TicketDetailToc, type TicketTocItem } from '@/components/ticket-detail/
 import { TicketTasksSection } from '@/components/ticket-detail/ticket-tasks-section';
 import { TicketDriveSection } from '@/components/ticket-detail/ticket-drive-section';
 import { boardStatusForTicketHeader } from '@/lib/domain/derive-board-status';
+import { syncToastFromQuery } from '@/lib/domain/integration-query-toasts';
+import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import { listJobDriveFolderPreview } from '@/lib/drive/list-for-job';
 import { canCreateDriveJobFolderFromTemplate } from '@/lib/drive/config';
 import { fetchInvoiceById } from '@/lib/quickbooks/client';
@@ -31,6 +33,8 @@ import {
 import type { InvoiceActivityTimeline } from '@/lib/quickbooks/types-activity';
 import { resolveRealmIdForJob } from '@/lib/quickbooks/realm';
 import { GMAIL_UI_MESSAGE_CAP } from '@/lib/gmail/ui-limits';
+import { fmtDetailDate } from '@/lib/ticket/format';
+import Link from 'next/link';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -45,6 +49,8 @@ type PageProps = {
     drive_error?: string;
     drive_sync_ok?: string;
     drive_created?: string;
+    synced?: string;
+    sync_error?: string;
   }>;
 };
 
@@ -69,24 +75,28 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const driveSyncOk = sp.drive_sync_ok === 'moved' ? 'moved' : sp.drive_sync_ok === 'already' ? 'already' : null;
   const driveCreated = sp.drive_created === '1';
 
-  const gmailConnections = await prisma.gmailConnection.findMany({
-    orderBy: { googleEmail: 'asc' },
-    take: 3,
-    select: { id: true, googleEmail: true },
-  });
+  const { synced, syncError } = syncToastFromQuery(sp);
 
-  const job = await prisma.job.findUnique({
-    where: { id },
-    include: {
-      activityLogs: { orderBy: { createdAt: 'desc' } },
-      linkedEmails: { orderBy: { createdAt: 'desc' } },
-      gmailMessages: {
-        orderBy: { date: 'desc' },
-        take: GMAIL_UI_MESSAGE_CAP,
-        include: { attachments: true },
+  const [gmailConnections, job, qbToolbar] = await Promise.all([
+    prisma.gmailConnection.findMany({
+      orderBy: { googleEmail: 'asc' },
+      take: 3,
+      select: { id: true, googleEmail: true },
+    }),
+    prisma.job.findUnique({
+      where: { id },
+      include: {
+        activityLogs: { orderBy: { createdAt: 'desc' } },
+        linkedEmails: { orderBy: { createdAt: 'desc' } },
+        gmailMessages: {
+          orderBy: { date: 'desc' },
+          take: GMAIL_UI_MESSAGE_CAP,
+          include: { attachments: true },
+        },
       },
-    },
-  });
+    }),
+    loadQbTicketsToolbar(),
+  ]);
 
   if (!job) notFound();
 
@@ -193,8 +203,16 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
       driveSaved ||
       driveError ||
       driveSyncOk ||
-      driveCreated ? (
+      driveCreated ||
+      synced ||
+      syncError ? (
         <div className="board-toasts px-3 px-md-4 pt-3" role="status">
+          {syncError ? (
+            <div className="board-toast board-toast-error">QuickBooks sync error: {syncError}</div>
+          ) : null}
+          {synced ? (
+            <div className="board-toast board-toast-ok">Synced latest estimates/invoices from QuickBooks.</div>
+          ) : null}
           {qbImportedOk ? <div className="board-toast board-toast-ok">Invoice imported from QuickBooks.</div> : null}
           {driveSaved ? <div className="board-toast board-toast-ok">Drive folder link saved.</div> : null}
           {driveCreated ? (
@@ -209,6 +227,31 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
           ) : null}
         </div>
       ) : null}
+      <div className="ticket-detail-sync-row">
+        <div className="ticket-detail-sync-row-inner">
+          {qbToolbar.hasToken ? (
+            <form action="/api/jobs/sync" method="post" className="d-inline">
+              <input type="hidden" name="return_to" value={`/dashboard/jobs/${job.id}`} />
+              <button className="btn btn-toolbar" type="submit">
+                Sync from QuickBooks
+              </button>
+            </form>
+          ) : (
+            <Link href="/dashboard/settings" className="btn btn-toolbar">
+              Connect QuickBooks
+            </Link>
+          )}
+          <span className="small text-body-secondary ticket-detail-sync-meta">
+            {qbToolbar.lastSyncUnknown
+              ? 'Last sync: deploy DB migration (npx prisma migrate deploy), then reload'
+              : qbToolbar.lastTicketSyncAt
+                ? `Last sync ${fmtDetailDate(qbToolbar.lastTicketSyncAt)}`
+                : qbToolbar.hasToken
+                  ? 'Last sync: not yet (run Sync from QuickBooks once)'
+                  : 'Last sync: connect QuickBooks first'}
+          </span>
+        </div>
+      </div>
       <div className="ticket-detail-layout">
         <TicketDetailToc items={tocItems} />
         <div className="ticket-detail-main">

@@ -50,8 +50,11 @@ export default async function DashboardHome({ searchParams }: DashboardHomeProps
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Dashboard</h1>
           <p className="board-topbar-sub">
-            Live summary of the board, collections, open balances, and integrations. Layout matches the rest of Dash
-            (Bootstrap cards + Material icons, vertical shell).
+            Pipeline, money, ticket tasks, and top customers on active work. Open{' '}
+            <Link href="/dashboard/tickets" className="text-decoration-underline">
+              Tickets
+            </Link>{' '}
+            for the full board; sync QuickBooks from Tickets or any ticket.
           </p>
         </div>
       </header>

@@ -24,7 +24,7 @@
     "@ai-sdk/react": "^3.0.174",
     "@prisma/client": "^6.5.0",
     "ai": "^6.0.172",
-    "bootstrap": "^5.3.3",
+    "bootstrap": "^5.3.8",
     "googleapis": "^144.0.0",
     "next": "^15.2.8",
     "next-auth": "^4.24.13",
