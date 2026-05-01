@@ -36,14 +36,14 @@ export function DashboardHomeTodos({ module: m, assigneeOptions }: Props) {
             {m.openMine > 0 ? (
               <>
                 {' '}
-                ·{' '}
+                Â·{' '}
                 <span className="fw-semibold text-body">{m.openMine}</span> assigned to you
               </>
             ) : null}
             {m.openOverdue > 0 ? (
               <>
                 {' '}
-                ·{' '}
+                Â·{' '}
                 <span className="text-danger fw-semibold">{m.openOverdue}</span> overdue
               </>
             ) : null}
@@ -132,7 +132,7 @@ export function DashboardHomeTodos({ module: m, assigneeOptions }: Props) {
                     {t.assigneeEmail ? (
                       <>
                         {' '}
-                        · {t.assigneeEmail}
+                        Â· {t.assigneeEmail}
                       </>
                     ) : null}
                   </div>
