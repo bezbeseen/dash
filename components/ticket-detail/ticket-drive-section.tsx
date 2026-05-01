@@ -1,6 +1,6 @@
 import type { BoardStatus } from '@prisma/client';
 import type { DriveFolderListItem } from '@/lib/drive/api';
-import { isGoogleDriveBucketSyncConfigured } from '@/lib/drive/config';
+import { getJobFolderTemplateId, isGoogleDriveBucketSyncConfigured } from '@/lib/drive/config';
 import { driveBucketForJob } from '@/lib/drive/resolve-bucket';
 import { fmtDetailDate } from '@/lib/ticket/format';
 
@@ -71,6 +71,14 @@ export function TicketDriveSection({
         <div className="board-toast board-toast-error mb-3" role="status">
           {googleDriveLastError}
         </div>
+      ) : null}
+      {bucketsOk && !googleDriveFolderId && !getJobFolderTemplateId() ? (
+        <p className="small text-warning-emphasis mb-3" role="status">
+          <strong>Create folder from template</strong> is off until{' '}
+          <code className="small">GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID</code> is set (template folder id or Drive URL).
+          Add it for this Vercel environment (Production and/or Preview), redeploy, then hard-refresh. You can still paste
+          a folder link below.
+        </p>
       ) : null}
       {canCreateFromTemplate ? (
         <form action={`/api/jobs/${jobId}/drive-create-from-template`} method="post" className="mb-3">
