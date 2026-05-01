@@ -89,6 +89,14 @@ model Job {
   /// Coalesced sort: estimate QBO create, else invoice QBO create (see sync).
   qbOrderingAt         DateTime?
   productionStatus     ProductionStatus  @default(NOT_STARTED)
+  /// Captured when moving into production (planning).
+  prodPlanLaborHours      Float?
+  prodPlanMaterials       String?
+  prodPlanClientCommHours Float?
+  prodPlanDesignHours     Float?
+  /// Retrospective after the job is paid and/or marked done.
+  prodWrapUpNotes String?
+  prodWrapUpAt    DateTime?
   startedAt            DateTime?
   readyAt              DateTime?
   deliveredAt          DateTime?

@@ -251,7 +251,23 @@ export async function archiveJob(jobId: string, reason: ArchiveReason, message: 
   return updated;
 }
 
-export async function updateProductionStatus(jobId: string, productionStatus: ProductionStatus, eventName: string, message: string) {
+export type ProductionPlanFields = {
+  prodPlanLaborHours?: number | null;
+  prodPlanMaterials?: string | null;
+  prodPlanClientCommHours?: number | null;
+  prodPlanDesignHours?: number | null;
+};
+
+export async function updateProductionStatus(
+  jobId: string,
+  productionStatus: ProductionStatus,
+  eventName: string,
+  message: string,
+  opts?: {
+    /** Saved when entering production (`IN_PROGRESS`). */
+    productionPlan?: ProductionPlanFields | null;
+  },
+) {
   const current = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
 
   if (current.archivedAt != null) {
@@ -263,11 +279,24 @@ export async function updateProductionStatus(jobId: string, productionStatus: Pr
   if (productionStatus === ProductionStatus.READY && !current.readyAt) timestamps.readyAt = new Date();
   if (productionStatus === ProductionStatus.DELIVERED && !current.deliveredAt) timestamps.deliveredAt = new Date();
 
+  const plan =
+    productionStatus === ProductionStatus.IN_PROGRESS && opts?.productionPlan
+      ? {
+          prodPlanLaborHours: opts.productionPlan.prodPlanLaborHours ?? null,
+          prodPlanMaterials: opts.productionPlan.prodPlanMaterials?.trim()
+            ? opts.productionPlan.prodPlanMaterials.trim()
+            : null,
+          prodPlanClientCommHours: opts.productionPlan.prodPlanClientCommHours ?? null,
+          prodPlanDesignHours: opts.productionPlan.prodPlanDesignHours ?? null,
+        }
+      : {};
+
   const updated = await prisma.job.update({
     where: { id: jobId },
     data: {
       productionStatus,
       ...timestamps,
+      ...plan,
     },
   });
 
@@ -296,4 +325,35 @@ export async function updateProductionStatus(jobId: string, productionStatus: Pr
 
   scheduleSyncJobDriveFolder(jobId);
   return finalJob;
+}
+
+export async function saveJobWrapUp(jobId: string, notes: string) {
+  const trimmed = notes.trim();
+  if (!trimmed) {
+    throw new Error('Wrap-up notes cannot be empty.');
+  }
+
+  const current = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
+  if (current.archivedAt != null) {
+    throw new Error('This job is off the board.');
+  }
+
+  await prisma.job.update({
+    where: { id: jobId },
+    data: {
+      prodWrapUpNotes: trimmed,
+      prodWrapUpAt: new Date(),
+    },
+  });
+
+  await prisma.activityLog.create({
+    data: {
+      jobId,
+      source: EventSource.APP,
+      eventName: 'job.wrap_up',
+      message: 'Production wrap-up saved.',
+    },
+  });
+
+  return prisma.job.findUniqueOrThrow({ where: { id: jobId } });
 }

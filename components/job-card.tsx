@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Job } from '@prisma/client';
-import { JobCardActions } from '@/components/job-card-actions';
+import { JobWorkflowActions } from '@/components/job-workflow-actions';
+import { jobNeedsWrapUpReminder } from '@/lib/domain/production-workflow';
 import { boardStatusDisplayLabel } from '@/lib/domain/board-display';
 import { jobPrimaryHeading, jobSecondaryHeading } from '@/lib/domain/job-display';
 import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
@@ -21,6 +22,8 @@ export function JobCard({
   updatedAfterLastTicketSync = false,
   extraMeta,
 }: JobCardProps) {
+  const needsWrapUpReminder = jobNeedsWrapUpReminder(job, null);
+  const wrapUpRecorded = Boolean((job.prodWrapUpNotes ?? '').trim());
   const sub = jobSecondaryHeading(job);
   const hasQbEstimate =
     Boolean(job.quickbooksEstimateId) && !isSyntheticQuickBooksId(job.quickbooksEstimateId);
@@ -129,7 +132,12 @@ export function JobCard({
         <div className="job-card-status badge">{boardStatusDisplayLabel(job.boardStatus)}</div>
         <span className="job-card-open-hint card-open-hint">Open ticket →</span>
       </Link>
-      <JobCardActions jobId={job.id} archived={job.archivedAt != null} />
+      <JobWorkflowActions
+        jobId={job.id}
+        archived={job.archivedAt != null}
+        needsWrapUpReminder={needsWrapUpReminder}
+        wrapUpRecorded={wrapUpRecorded}
+      />
     </div>
   );
 }

@@ -19,6 +19,7 @@ import { TicketDetailToc, type TicketTocItem } from '@/components/ticket-detail/
 import { TicketTasksSection } from '@/components/ticket-detail/ticket-tasks-section';
 import { TicketDriveSection } from '@/components/ticket-detail/ticket-drive-section';
 import { boardStatusForTicketHeader } from '@/lib/domain/derive-board-status';
+import { jobNeedsWrapUpReminder } from '@/lib/domain/production-workflow';
 import { syncToastFromQuery } from '@/lib/domain/integration-query-toasts';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import { listJobDriveFolderPreview } from '@/lib/drive/list-for-job';
@@ -115,6 +116,8 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   }
 
   const headerBoardStatus = boardStatusForTicketHeader(job, qboInvoice);
+  const needsWrapUpReminder = jobNeedsWrapUpReminder(job, qboInvoice);
+  const wrapUpRecorded = Boolean((job.prodWrapUpNotes ?? '').trim());
   const { items: driveChildren, listError: driveListError } = await listJobDriveFolderPreview(id);
   const invoiceTotalDisplayCents = qboInvoice?.totalAmtCents ?? job.invoiceAmountCents;
   const paidDisplayCents = qboInvoice?.amountPaidCents ?? job.amountPaidCents;
@@ -292,6 +295,12 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             readyAt={job.readyAt}
             deliveredAt={job.deliveredAt}
             paidAt={job.paidAt}
+            prodPlanLaborHours={job.prodPlanLaborHours}
+            prodPlanMaterials={job.prodPlanMaterials}
+            prodPlanClientCommHours={job.prodPlanClientCommHours}
+            prodPlanDesignHours={job.prodPlanDesignHours}
+            prodWrapUpNotes={job.prodWrapUpNotes}
+            prodWrapUpAt={job.prodWrapUpAt}
           />
 
           <TicketDriveSection
@@ -359,6 +368,8 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             sectionId="ticket-actions"
             jobId={job.id}
             archived={job.archivedAt != null}
+            needsWrapUpReminder={needsWrapUpReminder}
+            wrapUpRecorded={wrapUpRecorded}
           />
 
           <TicketActivityLogSection sectionId="ticket-activity-log" logs={job.activityLogs} />

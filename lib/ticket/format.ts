@@ -25,6 +25,11 @@ export function fmtDetailDate(d: Date | null) {
   }).format(d);
 }
 
+export function fmtPlanHours(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return '—';
+  return `${n} h`;
+}
+
 /** Format QBO ISO-ish datetime or YYYY-MM-DD for display */
 export function fmtQboWhen(raw: string | undefined): string {
   if (!raw?.trim()) return '—';
