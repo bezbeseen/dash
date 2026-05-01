@@ -22,7 +22,12 @@ import { boardStatusForTicketHeader } from '@/lib/domain/derive-board-status';
 import { listJobDriveFolderPreview } from '@/lib/drive/list-for-job';
 import { canCreateDriveJobFolderFromTemplate } from '@/lib/drive/config';
 import { fetchInvoiceById } from '@/lib/quickbooks/client';
-import { fetchInvoiceActivityTimeline, isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
+import {
+  fetchEstimateActivityTimeline,
+  fetchInvoiceActivityTimeline,
+  isSyntheticQuickBooksId,
+  mergeActivityTimelines,
+} from '@/lib/quickbooks/invoice-activity';
 import type { InvoiceActivityTimeline } from '@/lib/quickbooks/types-activity';
 import { resolveRealmIdForJob } from '@/lib/quickbooks/realm';
 import { GMAIL_UI_MESSAGE_CAP } from '@/lib/gmail/ui-limits';
@@ -104,26 +109,56 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const invoiceTotalDisplayCents = qboInvoice?.totalAmtCents ?? job.invoiceAmountCents;
   const paidDisplayCents = qboInvoice?.amountPaidCents ?? job.amountPaidCents;
 
-  let invoiceActivity: InvoiceActivityTimeline | null = null;
+  let qbActivityTimeline: InvoiceActivityTimeline | null = null;
   let invoiceActivityError: string | null = null;
   let activitySkipped: InvoiceActivitySkipReason | null = null;
 
-  if (!job.quickbooksInvoiceId) {
-    activitySkipped = 'no_invoice';
-  } else if (isSyntheticQuickBooksId(job.quickbooksInvoiceId)) {
-    activitySkipped = 'synthetic_id';
-  } else if (!realmId) {
+  const hasEstimate = Boolean(job.quickbooksEstimateId);
+  const hasInvoice = Boolean(job.quickbooksInvoiceId);
+
+  if (!realmId) {
     activitySkipped = 'no_realm';
+  } else if (!hasEstimate && !hasInvoice) {
+    activitySkipped = 'no_qbo_docs';
   } else {
-    try {
-      invoiceActivity = await fetchInvoiceActivityTimeline(realmId, job.quickbooksInvoiceId);
-    } catch (e) {
-      invoiceActivityError = e instanceof Error ? e.message : 'Could not load invoice activity.';
+    const parts: InvoiceActivityTimeline[] = [];
+    const errs: string[] = [];
+
+    if (job.quickbooksEstimateId && !isSyntheticQuickBooksId(job.quickbooksEstimateId)) {
+      try {
+        parts.push(await fetchEstimateActivityTimeline(realmId, job.quickbooksEstimateId));
+      } catch (e) {
+        errs.push(e instanceof Error ? e.message : 'Could not load estimate activity.');
+      }
+    }
+
+    if (job.quickbooksInvoiceId) {
+      if (isSyntheticQuickBooksId(job.quickbooksInvoiceId)) {
+        errs.push(
+          'This ticket uses a local / CSV preview invoice id — QuickBooks payment activity is unavailable.',
+        );
+      } else {
+        try {
+          parts.push(await fetchInvoiceActivityTimeline(realmId, job.quickbooksInvoiceId));
+        } catch (e) {
+          errs.push(e instanceof Error ? e.message : 'Could not load invoice activity.');
+        }
+      }
+    }
+
+    qbActivityTimeline = mergeActivityTimelines(parts);
+    invoiceActivityError = errs.length ? errs.join(' ') : null;
+
+    if (
+      parts.length === 0 &&
+      job.quickbooksInvoiceId &&
+      isSyntheticQuickBooksId(job.quickbooksInvoiceId) &&
+      !hasEstimate
+    ) {
+      activitySkipped = 'synthetic_id';
     }
   }
 
-  const hasEstimate = Boolean(job.quickbooksEstimateId);
-  const hasInvoice = Boolean(job.quickbooksInvoiceId);
   const showPdfSection = hasEstimate || hasInvoice;
 
   const tocItems: TicketTocItem[] = [{ id: 'ticket-overview', label: 'Overview' }];
@@ -135,7 +170,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
     { id: 'ticket-production', label: 'Production' },
     { id: 'ticket-drive', label: 'Google Drive' },
     { id: 'ticket-quickbooks', label: 'QuickBooks IDs' },
-    { id: 'ticket-qb-activity', label: 'Invoice activity' },
+    { id: 'ticket-qb-activity', label: 'QuickBooks activity' },
   );
   if (showPdfSection) {
     tocItems.push({ id: 'ticket-pdfs', label: 'PDFs' });
@@ -239,7 +274,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
 
           <TicketQuickBooksInvoiceActivitySection
             sectionId="ticket-qb-activity"
-            timeline={invoiceActivity}
+            timeline={qbActivityTimeline}
             errorText={invoiceActivityError}
             skippedReason={activitySkipped}
           />

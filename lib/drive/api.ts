@@ -65,6 +65,51 @@ export async function listDriveFolderChildren(
   }));
 }
 
+function escapeDriveQueryLiteral(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+export async function getDriveFileName(auth: OAuth2Client, fileId: string): Promise<string> {
+  const drive = driveV3(auth);
+  const res = await drive.files.get({
+    fileId,
+    fields: 'name',
+    supportsAllDrives: true,
+  });
+  return res.data.name ?? '';
+}
+
+export async function renameDriveFileIfNeeded(auth: OAuth2Client, fileId: string, desiredName: string): Promise<void> {
+  const current = await getDriveFileName(auth, fileId);
+  if (current === desiredName) return;
+  const drive = driveV3(auth);
+  await drive.files.update({
+    fileId,
+    requestBody: { name: desiredName },
+    supportsAllDrives: true,
+    fields: 'id',
+  });
+}
+
+/** Find a direct child (any mime type) with exact name. */
+export async function findDriveChildByName(
+  auth: OAuth2Client,
+  parentId: string,
+  name: string,
+): Promise<string | null> {
+  const drive = driveV3(auth);
+  const esc = escapeDriveQueryLiteral(name);
+  const q = `'${parentId}' in parents and trashed = false and name = '${esc}'`;
+  const res = await drive.files.list({
+    q,
+    pageSize: 5,
+    fields: 'files(id)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  return res.data.files?.[0]?.id ?? null;
+}
+
 export function formatDriveUserError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (/insufficient authentication scopes|accessNotConfigured|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(msg)) {

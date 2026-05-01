@@ -23,6 +23,8 @@ export type EstimateSnapshot = {
   customerId?: string;
   customerName: string;
   projectName: string;
+  /** QBO DocNumber when present — useful for PDF filenames. */
+  docNumber?: string;
   /** CustomerMemo or first line Description from QBO (card / ticket subtitle). */
   projectDescription?: string;
   totalAmtCents: number;

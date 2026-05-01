@@ -27,7 +27,6 @@ export function TicketDocumentsSection({
         jobId={jobId}
         hasEstimate={hasEstimate}
         hasInvoice={hasInvoice}
-        qboInvoice={qboInvoice}
       />
       <TicketInvoiceEmailSection
         sectionId={invoiceEmailSectionId}

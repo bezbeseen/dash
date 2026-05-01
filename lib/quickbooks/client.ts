@@ -196,6 +196,7 @@ function estimateFromQbo(e: QboEstimate, fallbackId: string): EstimateSnapshot {
     customerId: e.CustomerRef?.value,
     customerName,
     projectName,
+    docNumber: e.DocNumber?.trim() || undefined,
     projectDescription,
     totalAmtCents: dollarsToCents(e.TotalAmt),
     status: mapEstimateTxnStatus(e.TxnStatus),

@@ -1,6 +1,29 @@
 import { quickBooksCompanyJson } from '@/lib/quickbooks/client';
 import type { InvoiceActivityEvent, InvoiceActivityTimeline } from '@/lib/quickbooks/types-activity';
 
+function activityTimeMs(ev: InvoiceActivityEvent): number {
+  const raw = (ev.at || ev.sortKey || '').trim();
+  if (!raw) return 0;
+  const t = Date.parse(raw);
+  if (!Number.isNaN(t)) return t;
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(raw);
+  if (m) return Date.parse(`${m[1]}T12:00:00.000Z`);
+  return 0;
+}
+
+/** Merge estimate + invoice timelines chronologically (titles should already distinguish doc type). */
+export function mergeActivityTimelines(parts: InvoiceActivityTimeline[]): InvoiceActivityTimeline {
+  if (parts.length === 0) return { events: [], notes: [] };
+  const events: InvoiceActivityEvent[] = [];
+  const notes = new Set<string>();
+  for (const p of parts) {
+    events.push(...p.events);
+    for (const n of p.notes ?? []) notes.add(n);
+  }
+  events.sort((a, b) => activityTimeMs(a) - activityTimeMs(b) || a.sortKey.localeCompare(b.sortKey));
+  return { events, notes: [...notes] };
+}
+
 function moneyToCents(amt: string | number | undefined): number {
   if (amt == null) return 0;
   if (typeof amt === 'number') {
@@ -19,6 +42,16 @@ function moneyToCents(amt: string | number | undefined): number {
 type QboRef = { value?: string; name?: string };
 type QboLinkedTxn = { TxnId?: string; TxnType?: string };
 type QboMeta = { CreateTime?: string; LastUpdatedTime?: string };
+
+type QboEstimateRaw = {
+  Id?: string;
+  TxnStatus?: string;
+  TxnDate?: string;
+  TotalAmt?: number | string;
+  DocNumber?: string;
+  EmailStatus?: string;
+  MetaData?: QboMeta;
+};
 
 type QboInvoiceRaw = {
   Id?: string;
@@ -107,7 +140,7 @@ export async function fetchInvoiceActivityTimeline(
   if (inv.MetaData?.CreateTime) {
     events.push({
       sortKey: inv.MetaData.CreateTime,
-      title: 'Opened',
+      title: 'Invoice — Opened',
       at: inv.MetaData.CreateTime,
     });
   }
@@ -115,7 +148,7 @@ export async function fetchInvoiceActivityTimeline(
   if (inv.TxnDate) {
     events.push({
       sortKey: sortIsoFromTxnDate(inv.TxnDate, inv.MetaData?.CreateTime),
-      title: 'Invoice date',
+      title: 'Invoice — Invoice date',
       at: inv.TxnDate,
     });
   }
@@ -124,7 +157,7 @@ export async function fetchInvoiceActivityTimeline(
   if (emailSt === 'emailsent' || emailSt === 'sent') {
     events.push({
       sortKey: inv.MetaData?.LastUpdatedTime || inv.MetaData?.CreateTime || sortIsoFromTxnDate(inv.TxnDate),
-      title: 'Sent (email)',
+      title: 'Invoice — Sent (email)',
       at: inv.MetaData?.LastUpdatedTime || inv.MetaData?.CreateTime,
       detail: `Email status in QBO: ${inv.EmailStatus}`,
       meta: inv.MetaData?.LastUpdatedTime
@@ -153,7 +186,7 @@ export async function fetchInvoiceActivityTimeline(
 
       events.push({
         sortKey: when,
-        title: 'Payment received',
+        title: 'Invoice — Payment received',
         detail: [instrument, ref ? `Ref ${ref}` : null, `Payment #${pay.Id}`].filter(Boolean).join(' · '),
         amountCents: applied > 0 ? applied : moneyToCents(pay.TotalAmt),
         meta: pay.DepositToAccountRef?.name
@@ -186,7 +219,7 @@ export async function fetchInvoiceActivityTimeline(
           const acct = dep.DepositToAccountRef?.name || dep.DepositToAccountRef?.value;
           events.push({
             sortKey: depWhen,
-            title: 'Payment deposited',
+            title: 'Invoice — Payment deposited',
             at: dep.TxnDate || dep.MetaData?.CreateTime,
             detail: [acct || 'Bank deposit', `View deposit #${dep.Id}`, `From payment #${pay.Id}`]
               .filter(Boolean)
@@ -196,7 +229,7 @@ export async function fetchInvoiceActivityTimeline(
         } catch {
           events.push({
             sortKey: `${when}Z-deposit-${depId}`,
-            title: 'Deposit (linked)',
+            title: 'Invoice — Deposit (linked)',
             detail: `Deposit #${depId} — open QuickBooks for details`,
             meta: `Payment #${pay.Id}`,
           });
@@ -205,10 +238,70 @@ export async function fetchInvoiceActivityTimeline(
     } catch {
       events.push({
         sortKey: `payment-${pid}`,
-        title: 'Payment (linked)',
+        title: 'Invoice — Payment (linked)',
         detail: `Payment #${pid} — could not load details from QuickBooks`,
       });
     }
+  }
+
+  events.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+  return { events, notes };
+}
+
+export async function fetchEstimateActivityTimeline(
+  realmId: string,
+  estimateId: string,
+): Promise<InvoiceActivityTimeline> {
+  const notes: string[] = [
+    'QuickBooks does not expose full estimate audit history in the API (only current metadata and status). Open QuickBooks Online for the complete activity list.',
+  ];
+
+  const body = await quickBooksCompanyJson(realmId, `estimate/${encodeURIComponent(estimateId)}`);
+  const est = (body as { Estimate?: QboEstimateRaw }).Estimate;
+  if (!est?.Id) {
+    return { events: [], notes: ['Estimate not found in QuickBooks.'] };
+  }
+
+  const events: InvoiceActivityEvent[] = [];
+
+  if (est.MetaData?.CreateTime) {
+    events.push({
+      sortKey: est.MetaData.CreateTime,
+      title: 'Estimate — Opened',
+      at: est.MetaData.CreateTime,
+    });
+  }
+
+  if (est.TxnDate) {
+    events.push({
+      sortKey: sortIsoFromTxnDate(est.TxnDate, est.MetaData?.CreateTime),
+      title: 'Estimate — Quote date',
+      at: est.TxnDate,
+    });
+  }
+
+  const emailSt = (est.EmailStatus || '').toLowerCase();
+  if (emailSt === 'emailsent' || emailSt === 'sent') {
+    events.push({
+      sortKey: est.MetaData?.LastUpdatedTime || est.MetaData?.CreateTime || sortIsoFromTxnDate(est.TxnDate),
+      title: 'Estimate — Sent (email)',
+      at: est.MetaData?.LastUpdatedTime || est.MetaData?.CreateTime,
+      detail: `Email status in QBO: ${est.EmailStatus}`,
+      meta: est.MetaData?.LastUpdatedTime
+        ? `Last metadata update in QBO ${est.MetaData.LastUpdatedTime}`
+        : undefined,
+    });
+  }
+
+  const st = (est.TxnStatus || '').trim();
+  if (st) {
+    events.push({
+      sortKey: `${est.MetaData?.LastUpdatedTime || sortIsoFromTxnDate(est.TxnDate, est.MetaData?.CreateTime)}-est-status`,
+      title: 'Estimate — Status',
+      at: est.MetaData?.LastUpdatedTime,
+      detail: `Current status in QBO: ${st}`,
+    });
   }
 
   events.sort((a, b) => a.sortKey.localeCompare(b.sortKey));

@@ -1,7 +1,7 @@
 import type { InvoiceActivityTimeline } from '@/lib/quickbooks/types-activity';
 import { fmtQboWhen, fmtUsd } from '@/lib/ticket/format';
 
-export type InvoiceActivitySkipReason = 'no_invoice' | 'synthetic_id' | 'no_realm';
+export type InvoiceActivitySkipReason = 'no_qbo_docs' | 'synthetic_id' | 'no_realm';
 
 type Props = {
   sectionId?: string;
@@ -18,24 +18,25 @@ export function TicketQuickBooksInvoiceActivitySection({
 }: Props) {
   return (
     <section id={sectionId} className="ticket-detail-panel">
-      <h2 className="detail-section-title">QuickBooks invoice activity</h2>
+      <h2 className="detail-section-title">QuickBooks activity</h2>
       <p className="meta ticket-doc-note" style={{ marginBottom: 16 }}>
-        Payments and deposits pulled from the QuickBooks API. Some lines in the QBO UI (email opens, exact
-        send time, &quot;viewed&quot; counts) are not available via API — compare with QuickBooks for the full
-        story.
+        Estimate and invoice milestones, plus payments and deposits from the QuickBooks API. Some lines in the QBO UI
+        (email opens, exact send time, &quot;viewed&quot; counts) are not available via API — compare with QuickBooks
+        for the full story.
       </p>
 
-      {skippedReason === 'no_invoice' ? (
-        <p className="meta">No invoice on this ticket yet — activity will appear after an invoice is linked.</p>
+      {skippedReason === 'no_qbo_docs' ? (
+        <p className="meta">No QuickBooks estimate or invoice on this ticket yet — activity will appear after one is linked.</p>
       ) : null}
       {skippedReason === 'synthetic_id' ? (
         <p className="meta">
-          This ticket uses a <strong>local / CSV preview</strong> id (not a real QuickBooks invoice). Connect
-          and sync real invoices to see payment activity here.
+          This ticket uses a <strong>local / CSV preview</strong> invoice id (not a real QuickBooks invoice). Connect
+          and sync real invoices to see invoice payment activity here. Estimate activity still loads when a real
+          estimate is linked.
         </p>
       ) : null}
       {skippedReason === 'no_realm' ? (
-        <p className="meta">Connect QuickBooks and sync so we can load invoice activity for this company.</p>
+        <p className="meta">Connect QuickBooks and sync so we can load activity for this company.</p>
       ) : null}
 
       {errorText ? (
@@ -61,7 +62,7 @@ export function TicketQuickBooksInvoiceActivitySection({
       ) : null}
 
       {timeline && timeline.events.length === 0 && !skippedReason && !errorText ? (
-        <p className="meta">No linked payments or metadata returned for this invoice yet.</p>
+        <p className="meta">No activity lines returned from QuickBooks for this ticket yet.</p>
       ) : null}
 
       {timeline?.notes?.length ? (

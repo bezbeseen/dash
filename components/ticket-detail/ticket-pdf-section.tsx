@@ -1,15 +1,11 @@
-import type { InvoiceSnapshot } from '@/lib/quickbooks/types';
-
 type Props = {
   sectionId?: string;
   jobId: string;
   hasEstimate: boolean;
   hasInvoice: boolean;
-  /** Only embed preview when live invoice loaded — avoids a broken iframe if QBO fetch failed */
-  qboInvoice: InvoiceSnapshot | null;
 };
 
-export function TicketPdfSection({ sectionId, jobId, hasEstimate, hasInvoice, qboInvoice }: Props) {
+export function TicketPdfSection({ sectionId, jobId, hasEstimate, hasInvoice }: Props) {
   if (!hasInvoice && !hasEstimate) return null;
 
   const invoicePdfUrl = `/api/jobs/${jobId}/invoice-pdf`;
@@ -45,7 +41,13 @@ export function TicketPdfSection({ sectionId, jobId, hasEstimate, hasInvoice, qb
           </>
         ) : null}
       </div>
-      {hasInvoice && qboInvoice ? (
+      {hasEstimate ? (
+        <div className="ticket-pdf-preview">
+          <p className="meta ticket-pdf-preview-label">Estimate preview</p>
+          <iframe className="ticket-pdf-frame" title="Estimate PDF" src={estimatePdfUrl} />
+        </div>
+      ) : null}
+      {hasInvoice ? (
         <div className="ticket-pdf-preview">
           <p className="meta ticket-pdf-preview-label">Invoice preview</p>
           <iframe className="ticket-pdf-frame" title="Invoice PDF" src={invoicePdfUrl} />

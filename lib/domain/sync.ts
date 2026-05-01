@@ -148,7 +148,10 @@ export async function upsertJobFromInvoice(
       invoiceCreatedAtQbo: nextInvCreated,
     });
 
-    const nextProjectName = target?.projectName ?? `Invoice #${snapshot.docNumber ?? snapshot.id}`;
+    const invDoc = snapshot.docNumber?.trim();
+    const invoiceTitle = invDoc ? `Invoice #${invDoc}` : null;
+    const nextProjectName =
+      invoiceTitle ?? target?.projectName ?? `Invoice #${snapshot.id}`;
     const fromInvoice = sanitizeJobProjectDescription(nextProjectName, snapshot.projectDescription);
     const preserved = sanitizeJobProjectDescription(
       target?.projectName ?? nextProjectName,

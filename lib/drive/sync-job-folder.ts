@@ -1,7 +1,14 @@
 import { prisma } from '@/lib/db/prisma';
 import { isGoogleDriveBucketSyncConfigured, driveParentIdForBucket } from '@/lib/drive/config';
 import { syncCustomerHubShortcut } from '@/lib/drive/customer-hub-shortcut';
-import { formatDriveUserError, getDriveFolderParents, moveDriveItemToParent } from '@/lib/drive/api';
+import {
+  formatDriveUserError,
+  getDriveFolderParents,
+  moveDriveItemToParent,
+  renameDriveFileIfNeeded,
+} from '@/lib/drive/api';
+import { buildDriveJobFolderName } from '@/lib/drive/job-folder-name';
+import { syncQboPdfsToJobDriveFolder } from '@/lib/drive/sync-qbo-pdfs-to-drive';
 import { driveBucketForJob } from '@/lib/drive/resolve-bucket';
 import { getGmailOAuth2ClientForConnection, getGmailOAuth2ClientForApi } from '@/lib/gmail/tokens-db';
 
@@ -33,8 +40,13 @@ export async function syncJobDriveFolder(jobId: string): Promise<SyncJobDriveFol
       archivedAt: true,
       boardStatus: true,
       customerName: true,
+      projectName: true,
+      createdAt: true,
       googleDriveFolderId: true,
       gmailConnectionId: true,
+      quickbooksInvoiceId: true,
+      quickbooksCompanyId: true,
+      quickbooksEstimateId: true,
     },
   });
 
@@ -52,27 +64,39 @@ export async function syncJobDriveFolder(jobId: string): Promise<SyncJobDriveFol
     const auth = await getAuthForDriveJob(job);
     const targetParent = bucketRoot;
     const parents = await getDriveFolderParents(auth, job.googleDriveFolderId);
-    if (parents.includes(targetParent)) {
-      await prisma.job.update({
-        where: { id: jobId },
-        data: { googleDriveSyncedAt: new Date(), googleDriveLastError: null },
-      });
-      try {
-        await syncCustomerHubShortcut(auth, job.customerName, job.googleDriveFolderId);
-      } catch (hubErr) {
-        console.error('[drive] customer hub shortcut', jobId, hubErr);
-      }
-      return { ok: true, skipped: true, reason: 'already_placed' };
+    const alreadyThere = parents.includes(targetParent);
+    if (!alreadyThere) {
+      await moveDriveItemToParent(auth, job.googleDriveFolderId, targetParent);
     }
-    await moveDriveItemToParent(auth, job.googleDriveFolderId, targetParent);
+
     await prisma.job.update({
       where: { id: jobId },
       data: { googleDriveSyncedAt: new Date(), googleDriveLastError: null },
     });
+
+    const desiredFolderName = buildDriveJobFolderName({
+      customerName: job.customerName,
+      projectName: job.projectName,
+      createdAt: job.createdAt,
+    });
+    try {
+      await renameDriveFileIfNeeded(auth, job.googleDriveFolderId, desiredFolderName);
+    } catch (renameErr) {
+      console.error('[drive] rename job folder', jobId, renameErr);
+    }
     try {
       await syncCustomerHubShortcut(auth, job.customerName, job.googleDriveFolderId);
     } catch (hubErr) {
       console.error('[drive] customer hub shortcut', jobId, hubErr);
+    }
+    try {
+      await syncQboPdfsToJobDriveFolder(auth, job);
+    } catch (pdfErr) {
+      console.error('[drive] QBO PDFs to folder', jobId, pdfErr);
+    }
+
+    if (alreadyThere) {
+      return { ok: true, skipped: true, reason: 'already_placed' };
     }
     return { ok: true, moved: true, bucket };
   } catch (e) {
