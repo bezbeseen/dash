@@ -28,4 +28,28 @@ if (/\blocalhost\b|127\.0\.0\.1|::1\b/.test(url)) {
   process.exit(1);
 }
 
+const directUrl = process.env.DIRECT_URL?.trim() ?? '';
+
+if (/-pooler\./i.test(url)) {
+  if (!directUrl) {
+    console.error(
+      '\n[build] DATABASE_URL looks like a Neon *pooler* URL (-pooler in host).\n' +
+        '  prisma migrate deploy uses DIRECT_URL; without a separate non-pooler URL, migrations often\n' +
+        '  time out (P1002 / pg_advisory_lock).\n' +
+        '  → Neon dashboard → Connection details:\n' +
+        '     Pooled / Prisma → DATABASE_URL\n' +
+        '     Direct / non-pooler (host WITHOUT "-pooler") → DIRECT_URL\n' +
+        '  → Vercel → Environment Variables → set both for this deployment environment → Redeploy\n',
+    );
+    process.exit(1);
+  }
+  if (/-pooler\./i.test(directUrl)) {
+    console.error(
+      '\n[build] DIRECT_URL still looks like a pooler URL (-pooler in host).\n' +
+        '  Use Neon\'s *direct* connection string for DIRECT_URL (host without "-pooler").\n',
+    );
+    process.exit(1);
+  }
+}
+
 process.exit(0);
