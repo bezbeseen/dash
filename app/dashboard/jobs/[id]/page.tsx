@@ -20,6 +20,7 @@ import { TicketTasksSection } from '@/components/ticket-detail/ticket-tasks-sect
 import { TicketDriveSection } from '@/components/ticket-detail/ticket-drive-section';
 import { boardStatusForTicketHeader } from '@/lib/domain/derive-board-status';
 import { listJobDriveFolderPreview } from '@/lib/drive/list-for-job';
+import { canCreateDriveJobFolderFromTemplate } from '@/lib/drive/config';
 import { fetchInvoiceById } from '@/lib/quickbooks/client';
 import { fetchInvoiceActivityTimeline, isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
 import type { InvoiceActivityTimeline } from '@/lib/quickbooks/types-activity';
@@ -38,6 +39,7 @@ type PageProps = {
     drive_saved?: string;
     drive_error?: string;
     drive_sync_ok?: string;
+    drive_created?: string;
   }>;
 };
 
@@ -60,6 +62,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
     }
   }
   const driveSyncOk = sp.drive_sync_ok === 'moved' ? 'moved' : sp.drive_sync_ok === 'already' ? 'already' : null;
+  const driveCreated = sp.drive_created === '1';
 
   const gmailConnections = await prisma.gmailConnection.findMany({
     orderBy: { googleEmail: 'asc' },
@@ -154,10 +157,14 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
       {qbImportedOk ||
       driveSaved ||
       driveError ||
-      driveSyncOk ? (
+      driveSyncOk ||
+      driveCreated ? (
         <div className="board-toasts px-3 px-md-4 pt-3" role="status">
           {qbImportedOk ? <div className="board-toast board-toast-ok">Invoice imported from QuickBooks.</div> : null}
           {driveSaved ? <div className="board-toast board-toast-ok">Drive folder link saved.</div> : null}
+          {driveCreated ? (
+            <div className="board-toast board-toast-ok">Drive folder created from template and linked to this ticket.</div>
+          ) : null}
           {driveError ? <div className="board-toast board-toast-error">{driveError}</div> : null}
           {driveSyncOk === 'moved' ? (
             <div className="board-toast board-toast-ok">Drive folder moved to match this ticket.</div>
@@ -219,6 +226,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             googleDriveLastError={job.googleDriveLastError}
             driveChildren={driveChildren}
             driveListError={driveListError}
+            canCreateFromTemplate={canCreateDriveJobFolderFromTemplate() && !job.googleDriveFolderId}
           />
 
           <TicketQuickBooksIdsSection

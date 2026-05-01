@@ -25,6 +25,7 @@ type Props = {
   googleDriveLastError: string | null;
   driveChildren: DriveFolderListItem[];
   driveListError: string | null;
+  canCreateFromTemplate: boolean;
 };
 
 export function TicketDriveSection({
@@ -37,6 +38,7 @@ export function TicketDriveSection({
   googleDriveLastError,
   driveChildren,
   driveListError,
+  canCreateFromTemplate,
 }: Props) {
   const bucketsOk = isGoogleDriveBucketSyncConfigured();
   const bucket = driveBucketForJob({ archivedAt, boardStatus });
@@ -48,9 +50,9 @@ export function TicketDriveSection({
     <section id={sectionId} className="ticket-detail-panel">
       <h2 className="detail-section-title">Google Drive</h2>
       <p className="small text-body-secondary mb-3">
-        Link the job folder once. The dash moves it under your Active, Completed, or Archive parent when the ticket changes
-        (and after QuickBooks sync). Uses the same Google account as the ticket Gmail mailbox when set, otherwise the most
-        recently connected mailbox.
+        Link the job folder once, or create one from your Drive template. The dash moves it under Active, Completed, or
+        Archive when the ticket changes (and after QuickBooks sync). Uses the same Google account as the ticket Gmail
+        mailbox when set, otherwise the most recently connected mailbox.
       </p>
       {!bucketsOk ? (
         <p className="small text-warning-emphasis mb-3">
@@ -70,9 +72,20 @@ export function TicketDriveSection({
           {googleDriveLastError}
         </div>
       ) : null}
+      {canCreateFromTemplate ? (
+        <form action={`/api/jobs/${jobId}/drive-create-from-template`} method="post" className="mb-3">
+          <button type="submit" className="btn btn-toolbar btn-sm">
+            Create folder from template
+          </button>
+          <p className="small text-body-secondary mt-2 mb-0">
+            Duplicates your template into <strong>Active</strong> and names it{' '}
+            <code className="small">customer - date - project</code>. Clear the link first if you already have a folder.
+          </p>
+        </form>
+      ) : null}
       <form action={`/api/jobs/${jobId}/drive-folder`} method="post" className="mb-3">
         <label className="form-label small fw-semibold" htmlFor={`drive-folder-${jobId}`}>
-          Job folder URL or ID
+          Or paste job folder URL or ID
         </label>
         <input
           id={`drive-folder-${jobId}`}
