@@ -1,13 +1,27 @@
 import Link from 'next/link';
+import { AccountingPnlRefreshButton } from '@/components/accounting-pnl-refresh';
 import type { DashboardSummary } from '@/lib/domain/dashboard-summary';
 import { boardColumnTitle, DASHBOARD_COLUMNS } from '@/lib/domain/board-display';
+import type { PnlErrorResult, PnlMonthToDateResult } from '@/lib/quickbooks/profit-loss';
 import { fmtDetailDate, fmtUsd } from '@/lib/ticket/format';
+
+type DashboardPnlLoaded = PnlMonthToDateResult | PnlErrorResult;
 
 type Props = {
   summary: DashboardSummary;
+  dashboardPnl: DashboardPnlLoaded | null;
+  pnlStart: string;
+  pnlEnd: string;
+  dashboardMtdHref: Parameters<typeof Link>[0]['href'];
 };
 
-export function DashboardOverview({ summary: s }: Props) {
+export function DashboardOverview({
+  summary: s,
+  dashboardPnl,
+  pnlStart,
+  pnlEnd,
+  dashboardMtdHref,
+}: Props) {
   const last = s.lastActivityAt ? fmtDetailDate(s.lastActivityAt) : '\u2014';
   const qbSyncLabel = s.quickBooksLastSyncUnknown
     ? 'Run a sync after DB migrate'
@@ -19,6 +33,8 @@ export function DashboardOverview({ summary: s }: Props) {
   const pipelineMax = Math.max(...DASHBOARD_COLUMNS.map((col) => s.columnCounts[col]), 1);
   const taskTotal = s.ticketTasks.open + s.ticketTasks.done;
   const taskDoneRate = taskTotal > 0 ? Math.round((s.ticketTasks.done / taskTotal) * 100) : null;
+  const accountingPnlHref =
+    `/dashboard/accounting?from=${encodeURIComponent(pnlStart)}&to=${encodeURIComponent(pnlEnd)}` as never;
 
   return (
     <div className="d-flex flex-column gap-4">
@@ -104,18 +120,128 @@ export function DashboardOverview({ summary: s }: Props) {
         <div className="col-12 col-xl-4">
           <div className="card border rounded-3 h-100 bg-body shadow-sm">
             <div className="card-body">
-              <h2 className="h6 fw-semibold mb-3 d-flex align-items-center gap-2">
-                <i className="material-icons-outlined text-body-secondary" style={{ fontSize: 22 }}>
-                  account_balance
-                </i>
-                Financial snapshot
-              </h2>
+              <div className="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
+                <h2 className="h6 fw-semibold mb-0 d-flex align-items-center gap-2">
+                  <i className="material-icons-outlined text-body-secondary" style={{ fontSize: 22 }}>
+                    account_balance
+                  </i>
+                  Financial snapshot
+                </h2>
+                <AccountingPnlRefreshButton label="Refresh P&L" />
+              </div>
               <p className="small text-body-secondary mb-3">
-                Active tickets only — same rollups as{' '}
-                <Link href="/dashboard/accounting" className="text-decoration-underline">
+                QuickBooks Profit &amp; Loss for the range below (defaults to{' '}
+                <strong>last 30 days</strong>, same as{' '}
+                <Link href={accountingPnlHref} className="text-decoration-underline">
                   Accounting
                 </Link>
-                .
+                ). Dates use <code className="detail-mono">QUICKBOOKS_REPORT_TIMEZONE</code>.
+              </p>
+
+              <form method="get" action="/dashboard" className="row row-cols-auto g-2 align-items-end mb-3">
+                <div className="col-12 col-sm-auto">
+                  <label className="form-label small mb-0" htmlFor="dash-pnl-from">
+                    From
+                  </label>
+                  <input
+                    id="dash-pnl-from"
+                    className="form-control form-control-sm"
+                    type="date"
+                    name="from"
+                    defaultValue={pnlStart}
+                    required
+                  />
+                </div>
+                <div className="col-12 col-sm-auto">
+                  <label className="form-label small mb-0" htmlFor="dash-pnl-to">
+                    To
+                  </label>
+                  <input
+                    id="dash-pnl-to"
+                    className="form-control form-control-sm"
+                    type="date"
+                    name="to"
+                    defaultValue={pnlEnd}
+                    required
+                  />
+                </div>
+                <div className="col-12 col-sm-auto d-flex flex-wrap gap-2">
+                  <button type="submit" className="btn btn-primary btn-sm">
+                    Apply
+                  </button>
+                  <Link href="/dashboard" className="btn btn-outline-secondary btn-sm">
+                    Last 30 days
+                  </Link>
+                  <Link href={dashboardMtdHref} className="btn btn-outline-secondary btn-sm">
+                    Month to date
+                  </Link>
+                </div>
+              </form>
+
+              {!s.quickBooksConnected || dashboardPnl === null ? (
+                <p className="text-body-secondary small mb-3">
+                  <Link href="/dashboard/settings">Connect QuickBooks</Link> to load P&amp;L on the dashboard.
+                </p>
+              ) : !dashboardPnl.ok ? (
+                <div className="alert alert-warning py-2 small mb-3" role="status">
+                  Could not load P&amp;L: {dashboardPnl.error}
+                </div>
+              ) : dashboardPnl.lines.length === 0 ? (
+                <p className="text-body-secondary small mb-3">No P&amp;L rows for this period.</p>
+              ) : (
+                <>
+                  <p className="small text-body-secondary mb-2">
+                    {dashboardPnl.companyName ? (
+                      <span className="fw-semibold text-body">{dashboardPnl.companyName}</span>
+                    ) : null}
+                    {dashboardPnl.companyName ? ' \u00b7 ' : null}
+                    {dashboardPnl.startPeriod} → {dashboardPnl.endPeriod} · {dashboardPnl.accountingMethod}
+                  </p>
+                  {dashboardPnl.netIncomeCents != null ? (
+                    <p className="fs-6 fw-semibold mb-2">
+                      Net income{' '}
+                      <span className={dashboardPnl.netIncomeCents < 0 ? 'text-danger' : 'text-body'}>
+                        {fmtUsd(dashboardPnl.netIncomeCents)}
+                      </span>
+                    </p>
+                  ) : null}
+                  <div
+                    className="table-responsive border rounded-2 mb-3"
+                    style={{ maxHeight: 'min(40vh, 14rem)' }}
+                  >
+                    <table className="table table-sm table-hover mb-0 align-middle">
+                      <thead className="table-light sticky-top">
+                        <tr>
+                          <th className="ps-2 small">Account</th>
+                          <th className="text-end pe-2 small" style={{ width: '6rem' }}>
+                            Amount
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dashboardPnl.lines.map((line, i) => (
+                          <tr key={`${line.label}-${i}`}>
+                            <td className="ps-2 py-1 small">
+                              <span style={{ paddingLeft: line.depth * 8 }}>{line.label}</span>
+                            </td>
+                            <td className="text-end pe-2 py-1 small text-nowrap detail-mono">
+                              {fmtUsd(line.amountCents)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <Link href={accountingPnlHref} className="btn btn-sm btn-outline-secondary mb-3">
+                    Open full P&amp;L
+                  </Link>
+                </>
+              )}
+
+              <hr className="my-3" />
+              <h3 className="h6 text-body-secondary text-uppercase small fw-semibold mb-2">Active tickets</h3>
+              <p className="small text-body-secondary mb-2">
+                Point-in-time rollups for all non-archived tickets (not limited to the P&amp;L range).
               </p>
               <ul className="list-unstyled mb-0 small">
                 <li className="d-flex justify-content-between py-2 border-bottom border-light">

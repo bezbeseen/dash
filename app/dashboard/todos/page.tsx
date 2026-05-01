@@ -5,24 +5,10 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db/prisma';
 import { loadTodoAssigneeOptions } from '@/lib/todo/assignee-options';
 import { groupOpenTodosByBucket, type TodoListItem } from '@/lib/todo/due-buckets';
+import { todoFormErrorMessage } from '@/lib/todo/todo-form-errors';
 import { calendarDateInTimeZone, todoListTimeZone } from '@/lib/todo/timezone';
 
 export const dynamic = 'force-dynamic';
-
-function todoErrorMessage(code: string | undefined): string | null {
-  switch (code) {
-    case 'title_required':
-      return 'Add a title for the to-do.';
-    case 'dueAt_invalid':
-      return 'Due date was not valid; use the date picker or yyyy-mm-dd.';
-    case 'assignee_invalid':
-      return 'Assignee must be a Google Workspace email for your organization, or leave unassigned.';
-    case 'not_found':
-      return 'That to-do no longer exists.';
-    default:
-      return code ? 'Something went wrong saving the to-do.' : null;
-  }
-}
 
 type TodosPageProps = {
   searchParams: Promise<{ todo_error?: string; filter?: string }>;
@@ -30,7 +16,7 @@ type TodosPageProps = {
 
 export default async function TodosPage({ searchParams }: TodosPageProps) {
   const q = await searchParams;
-  const todoError = todoErrorMessage(q.todo_error);
+  const todoError = todoFormErrorMessage(q.todo_error);
   const filter = (q.filter ?? 'all').toLowerCase();
   const timeZone = todoListTimeZone();
 

@@ -32,16 +32,73 @@ export function accountingMethodForPnl(): 'Accrual' | 'Cash' {
   return raw === 'cash' ? 'Cash' : 'Accrual';
 }
 
-/** First day of the month and "today" for P&L, as YYYY-MM-DD in the report timezone. */
-export function monthToDateRangeYmd(now = new Date(), timeZone = quickBooksReportTimeZone()) {
-  const end = new Intl.DateTimeFormat('en-CA', {
+/** YYYY-MM-DD for a UTC instant interpreted in `timeZone` (calendar date in that zone). */
+export function ymdInTimeZone(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
     timeZone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(now);
+  }).format(date);
+}
+
+/** First day of the month through "today" for P&L, as YYYY-MM-DD in the report timezone. */
+export function monthToDateRangeYmd(now = new Date(), timeZone = quickBooksReportTimeZone()) {
+  const end = ymdInTimeZone(now, timeZone);
   const start = `${end.slice(0, 8)}01`;
   return { start, end, timeZone };
+}
+
+/**
+ * End = today in report TZ; start ≈ N calendar days earlier (approximate using UTC day subtraction).
+ */
+export function rollingLastDaysRangeYmd(
+  dayCount: number,
+  now = new Date(),
+  timeZone = quickBooksReportTimeZone(),
+): { start: string; end: string; timeZone: string } {
+  const n = Math.min(366, Math.max(1, Math.floor(dayCount)));
+  const end = ymdInTimeZone(now, timeZone);
+  const approx = new Date(now.getTime() - (n - 1) * 86400000);
+  const start = ymdInTimeZone(approx, timeZone);
+  return { start, end, timeZone };
+}
+
+const YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+export function parseYmdParam(raw: string | undefined): string | null {
+  if (raw == null || typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (!YMD_RE.test(s)) return null;
+  const [y, m, d] = s.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return s;
+}
+
+/** Ensure from ≤ to and span ≤ maxDays (inclusive). Invalid query parts fall back per field. */
+export function normalizePnlDateRange(
+  fromRaw: string | undefined | null,
+  toRaw: string | undefined | null,
+  fallback: { start: string; end: string },
+  maxDays = 366,
+  timeZone = quickBooksReportTimeZone(),
+): { start: string; end: string } {
+  let from = (fromRaw ? parseYmdParam(fromRaw) : null) ?? fallback.start;
+  let to = (toRaw ? parseYmdParam(toRaw) : null) ?? fallback.end;
+  if (from > to) {
+    const t = from;
+    from = to;
+    to = t;
+  }
+  const t0 = Date.parse(`${from}T12:00:00.000Z`);
+  const t1 = Date.parse(`${to}T12:00:00.000Z`);
+  if (Number.isNaN(t0) || Number.isNaN(t1)) return fallback;
+  const span = Math.floor((t1 - t0) / 86400000) + 1;
+  if (span <= maxDays) return { start: from, end: to };
+  const newT0 = t1 - (maxDays - 1) * 86400000;
+  const start = ymdInTimeZone(new Date(newT0), timeZone);
+  return { start, end: to };
 }
 
 function parseMoneyCell(raw: string | undefined): number {
@@ -197,11 +254,20 @@ export async function loadProfitAndLossMonthToDate(
   realmId: string,
   opts?: { now?: Date },
 ): Promise<PnlMonthToDateResult | PnlErrorResult> {
-  const accountingMethod = accountingMethodForPnl();
   const tz = quickBooksReportTimeZone();
   const { start, end } = monthToDateRangeYmd(opts?.now ?? new Date(), tz);
+  return loadProfitAndLossForDateRange(realmId, start, end);
+}
+
+export async function loadProfitAndLossForDateRange(
+  realmId: string,
+  startYmd: string,
+  endYmd: string,
+): Promise<PnlMonthToDateResult | PnlErrorResult> {
+  const accountingMethod = accountingMethodForPnl();
+  const tz = quickBooksReportTimeZone();
   try {
-    const body = await fetchProfitAndLossReport(realmId, start, end, { accountingMethod });
+    const body = await fetchProfitAndLossReport(realmId, startYmd, endYmd, { accountingMethod });
     const parsed = parseProfitAndLossJson(body, accountingMethod, tz);
     return { ok: true, ...parsed };
   } catch (e) {

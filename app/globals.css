@@ -852,6 +852,16 @@ body {
   font-weight: bold;
   padding-bottom: 10px; 
 }
+.job-card-badges {
+  margin-bottom: 8px;
+  row-gap: 4px;
+}
+.job-card-badges .badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.2rem 0.4rem;
+}
 .job-card-estimate,
 .job-card-invoice,
 .job-card-quickbooks,

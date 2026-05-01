@@ -2,17 +2,37 @@ import Link from 'next/link';
 import { AccountingPnlRefreshButton } from '@/components/accounting-pnl-refresh';
 import { prisma } from '@/lib/db/prisma';
 import { computeMoneyRollup } from '@/lib/domain/money-rollup';
-import { loadProfitAndLossMonthToDate } from '@/lib/quickbooks/profit-loss';
+import {
+  loadProfitAndLossForDateRange,
+  monthToDateRangeYmd,
+  normalizePnlDateRange,
+  quickBooksReportTimeZone,
+  rollingLastDaysRangeYmd,
+} from '@/lib/quickbooks/profit-loss';
 import { fmtUsd } from '@/lib/ticket/format';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AccountingPage() {
+type AccountingPageProps = {
+  searchParams: Promise<{ from?: string; to?: string }>;
+};
+
+export default async function AccountingPage({ searchParams }: AccountingPageProps) {
+  const q = await searchParams;
+  const tz = quickBooksReportTimeZone();
+  const defaultRange = rollingLastDaysRangeYmd(30, new Date(), tz);
+  const { start: pnlStart, end: pnlEnd } = normalizePnlDateRange(q.from, q.to, {
+    start: defaultRange.start,
+    end: defaultRange.end,
+  });
+  const mtd = monthToDateRangeYmd(new Date(), tz);
+  const mtdQuery = `/dashboard/accounting?from=${encodeURIComponent(mtd.start)}&to=${encodeURIComponent(mtd.end)}`;
+
   const token = await prisma.quickBooksToken.findFirst({
     orderBy: { updatedAt: 'desc' },
     select: { realmId: true },
   });
-  const pnl = token ? await loadProfitAndLossMonthToDate(token.realmId) : null;
+  const pnl = token ? await loadProfitAndLossForDateRange(token.realmId, pnlStart, pnlEnd) : null;
 
   const rows = await prisma.job.findMany({
     where: { archivedAt: null },
@@ -55,16 +75,61 @@ export default async function AccountingPage() {
         <section className="card border rounded-3 p-4 mb-3 bg-body">
           <div className="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
             <div>
-              <h2 className="h6 fw-semibold mb-1">Profit &amp; Loss (month to date)</h2>
+              <h2 className="h6 fw-semibold mb-1">Profit &amp; Loss</h2>
               <p className="text-body-secondary small mb-0">
-                Pulled live from QuickBooks for the current calendar month through today in{' '}
-                <code className="detail-mono">{pnl?.ok ? pnl.reportTimeZone : 'your report timezone'}</code>.
-                Refresh the page or use the button for the latest numbers (typically accrual-basis unless you set{' '}
-                <code className="detail-mono">QUICKBOOKS_PNL_ACCOUNTING_METHOD=Cash</code>).
+                Pulled live from QuickBooks for the date range you set below. Dates are calendar days in{' '}
+                <code className="detail-mono">{pnl?.ok ? pnl.reportTimeZone : tz}</code>{' '}
+                (<code className="detail-mono">QUICKBOOKS_REPORT_TIMEZONE</code>). Default is the{' '}
+                <strong>last 30 days</strong> through today in that zone. Accrual vs cash follows{' '}
+                <code className="detail-mono">QUICKBOOKS_PNL_ACCOUNTING_METHOD</code>.
               </p>
             </div>
             <AccountingPnlRefreshButton />
           </div>
+
+          <form
+            method="get"
+            action="/dashboard/accounting"
+            className="row row-cols-auto g-2 align-items-end mb-3"
+          >
+            <div className="col-12 col-sm-auto">
+              <label className="form-label small mb-0" htmlFor="accounting-pnl-from">
+                From
+              </label>
+              <input
+                id="accounting-pnl-from"
+                className="form-control form-control-sm"
+                type="date"
+                name="from"
+                defaultValue={pnlStart}
+                required
+              />
+            </div>
+            <div className="col-12 col-sm-auto">
+              <label className="form-label small mb-0" htmlFor="accounting-pnl-to">
+                To
+              </label>
+              <input
+                id="accounting-pnl-to"
+                className="form-control form-control-sm"
+                type="date"
+                name="to"
+                defaultValue={pnlEnd}
+                required
+              />
+            </div>
+            <div className="col-12 col-sm-auto d-flex flex-wrap gap-2">
+              <button type="submit" className="btn btn-primary btn-sm">
+                Apply
+              </button>
+              <Link href="/dashboard/accounting" className="btn btn-outline-secondary btn-sm">
+                Last 30 days
+              </Link>
+              <Link href={mtdQuery as never} className="btn btn-outline-secondary btn-sm">
+                Month to date
+              </Link>
+            </div>
+          </form>
           {!token ? (
             <p className="text-body-secondary small mb-0">
               <Link href="/dashboard/settings">Connect QuickBooks</Link> to load P&amp;L.

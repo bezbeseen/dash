@@ -1,7 +1,9 @@
 import { BoardStatus } from '@prisma/client';
 import Link from 'next/link';
 import { JobCard } from '@/components/job-card';
+import { TicketBoardBadgeLegend } from '@/components/ticket-board-badge-legend';
 import { prisma } from '@/lib/db/prisma';
+import { taskCountsByJobId } from '@/lib/domain/job-task-counts';
 import {
   boardColumnTitle,
   DASHBOARD_COLUMNS,
@@ -41,6 +43,8 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     }),
     loadQbTicketsToolbar(),
   ]);
+  const taskByJob = await taskCountsByJobId(jobs.map((j) => j.id));
+  const lastTicketSyncAt = qbToolbar.lastTicketSyncAt;
   const q = await searchParams;
   const { synced, syncError } = syncToastFromQuery(q);
   const jobError = jobErrorFromQuery(q);
@@ -152,7 +156,14 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
               </div>
               <div className="board-list-body">
                 {columnJobs.map((job) => (
-                  <JobCard key={job.id} job={job} />
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    taskCounts={taskByJob.get(job.id) ?? { open: 0, done: 0 }}
+                    updatedAfterLastTicketSync={
+                      lastTicketSyncAt != null && job.updatedAt > lastTicketSyncAt
+                    }
+                  />
                 ))}
               </div>
               <div className="board-list-footer">
@@ -164,6 +175,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
           );
         })}
       </div>
+      <TicketBoardBadgeLegend />
     </div>
   );
 }
