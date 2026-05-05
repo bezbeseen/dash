@@ -24,6 +24,15 @@ export function jobIsLeadFirstTicket(
   return job.boardStatus === BoardStatus.REQUESTED && !jobIsQuickBooksDocumentBacked(job);
 }
 
+/**
+ * Inbound webhook lead still on the pre-quote lane — hide board production shortcuts until quoted / advanced.
+ */
+export function jobIsInboundMarketingRequested(
+  job: Pick<Job, 'inboundLeadKind' | 'boardStatus'>,
+): boolean {
+  return job.inboundLeadKind != null && job.boardStatus === BoardStatus.REQUESTED;
+}
+
 /** Short label for badges and compact UI. */
 export function inboundLeadKindShortLabel(kind: InboundLeadKind | null | undefined): string | null {
   if (kind == null) return null;

@@ -11,6 +11,8 @@ type Props = {
   needsWrapUpReminder: boolean;
   /** Already saved prod wrap-up notes. */
   wrapUpRecorded: boolean;
+  /** Hide Start work / Ready / … for inbound leads still on REQUESTED. */
+  suppressProductionShortcuts?: boolean;
 };
 
 function hideModal(modalDomId: string) {
@@ -25,6 +27,7 @@ export function JobWorkflowActions({
   archived,
   needsWrapUpReminder,
   wrapUpRecorded,
+  suppressProductionShortcuts = false,
 }: Props) {
   const router = useRouter();
   const [startBusy, setStartBusy] = useState(false);
@@ -44,6 +47,10 @@ export function JobWorkflowActions({
 
   if (archived) {
     return <p className="job-card-archived card-archived-note">This ticket is off the board.</p>;
+  }
+
+  if (suppressProductionShortcuts) {
+    return null;
   }
 
   async function submitStart(form: HTMLFormElement) {

@@ -6,6 +6,7 @@ type Props = {
   archived: boolean;
   needsWrapUpReminder: boolean;
   wrapUpRecorded: boolean;
+  suppressProductionShortcuts?: boolean;
 };
 
 export function TicketActionsSection({
@@ -14,7 +15,12 @@ export function TicketActionsSection({
   archived,
   needsWrapUpReminder,
   wrapUpRecorded,
+  suppressProductionShortcuts = false,
 }: Props) {
+  if (suppressProductionShortcuts) {
+    return null;
+  }
+
   return (
     <section id={sectionId} className="ticket-detail-panel">
       <h2 className="detail-section-title">Actions</h2>

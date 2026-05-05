@@ -20,7 +20,7 @@ import { TicketDetailToc, type TicketTocItem } from '@/components/ticket-detail/
 import { TicketTasksSection } from '@/components/ticket-detail/ticket-tasks-section';
 import { TicketDriveSection } from '@/components/ticket-detail/ticket-drive-section';
 import { boardStatusForTicketHeader } from '@/lib/domain/derive-board-status';
-import { jobIsLeadFirstTicket } from '@/lib/domain/lead-ticket';
+import { jobIsInboundMarketingRequested, jobIsLeadFirstTicket } from '@/lib/domain/lead-ticket';
 import { jobNeedsWrapUpReminder } from '@/lib/domain/production-workflow';
 import { syncToastFromQuery } from '@/lib/domain/integration-query-toasts';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
@@ -119,6 +119,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
 
   const headerBoardStatus = boardStatusForTicketHeader(job, qboInvoice);
   const isLeadFirst = jobIsLeadFirstTicket(job);
+  const suppressInboundWorkflow = jobIsInboundMarketingRequested(job);
   const hasLeadDetailsBody = Boolean(job.projectDescription?.trim());
   const needsWrapUpReminder = jobNeedsWrapUpReminder(job, qboInvoice);
   const wrapUpRecorded = Boolean((job.prodWrapUpNotes ?? '').trim());
@@ -209,7 +210,11 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   tocItems.push(
     { id: 'ticket-gmail', label: 'Gmail' },
     { id: 'ticket-seed-email', label: 'Seed email' },
-    { id: 'ticket-actions', label: 'Actions' },
+  );
+  if (!suppressInboundWorkflow) {
+    tocItems.push({ id: 'ticket-actions', label: 'Actions' });
+  }
+  tocItems.push(
     { id: 'ticket-activity-log', label: 'Activity' },
     { id: 'ticket-meta', label: 'Job meta' },
   );
@@ -400,6 +405,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             archived={job.archivedAt != null}
             needsWrapUpReminder={needsWrapUpReminder}
             wrapUpRecorded={wrapUpRecorded}
+            suppressProductionShortcuts={suppressInboundWorkflow}
           />
 
           <TicketActivityLogSection sectionId="ticket-activity-log" logs={job.activityLogs} />

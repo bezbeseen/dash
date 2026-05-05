@@ -138,11 +138,34 @@ export function formatConversationBody(fields: Record<string, unknown>): string 
   return text.length > 0 ? text : null;
 }
 
+/** Keys that are almost always CRM/workflow noise in GHL-style payloads (not shown in ticket text). */
+function isInboundSubmittedFieldNoise(key: string): boolean {
+  const k = key.toLowerCase().replace(/\s+/g, '_');
+  if (k.endsWith('_id')) return true;
+  if (k.startsWith('workflow')) return true;
+  if (k.startsWith('attribution')) return true;
+  if (k.startsWith('execution')) return true;
+  if (k.startsWith('trigger')) return true;
+  if (k.startsWith('location_')) return true;
+  if (k.startsWith('contact_') && !['contact_email', 'contact_phone', 'contact_name'].includes(k)) return true;
+  if (
+    /^date(_created|_updated|_added|_modified|created|updated|added|modified)/i.test(k) ||
+    k === 'datetime' ||
+    k === 'timestamp'
+  ) {
+    return true;
+  }
+  if (k === 'tags' || k === 'meta' || k === 'source' || k === 'type' || k === 'version') return true;
+  if (k === 'approved_accounts' || k === 'approvedaccounts') return true;
+  return false;
+}
+
 /** Every primitive field after normalize (helps when GHL uses unexpected key names). */
 export function formatSubmittedFieldsLines(body: Record<string, unknown>): string | null {
   const lines: string[] = [];
   let total = 0;
   for (const key of Object.keys(body).sort()) {
+    if (isInboundSubmittedFieldNoise(key)) continue;
     const v = body[key];
     if (v === null || v === undefined) continue;
     if (typeof v === 'object') continue;
