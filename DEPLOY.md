@@ -81,7 +81,8 @@ If you deploy on **Vercel**, you do not need the Docker image: connect the proje
 3. **`NEXTAUTH_URL`** and **`NEXT_PUBLIC_APP_URL`** — Set to the **exact origin** users open for that environment (no trailing slash), e.g. `https://your-project.vercel.app`. For **Preview** deployments, each `*.vercel.app` URL differs: use a **stable** domain you control, or accept that preview auth needs matching env per branch (see main README).
 4. **Google** — `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`; register every callback in Google Cloud (see main README). Optional: leave **`GOOGLE_REDIRECT_URI`** unset so the app builds the Gmail callback from the current host.
 5. **QuickBooks** — client id/secret, environment, webhook verifier per `.env.example`. Optional: leave **`QUICKBOOKS_REDIRECT_URI`** unset unless you need a fixed URL; if set, path must be **`/api/integrations/quickbooks/callback`** (not Gmail).
-6. **Redeploy** after changing secrets.
+6. **Inbound form webhook** (optional) — `INBOUND_FORM_WEBHOOK_SECRET` for **`POST /api/webhooks/inbound-form-lead`** (marketing automation). Disable Deployment Protection or allow that path publicly.
+7. **Redeploy** after changing secrets.
 
 **Sanity check:** while logged in, open **`/api/integrations/env-check`** on the deployment (safe JSON: no secrets, includes DB host hints).
 

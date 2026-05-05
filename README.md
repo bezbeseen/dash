@@ -102,6 +102,8 @@ Both paths use the same backend logic (`upsertJobFromInvoice` in `lib/domain/syn
 
 **Webhooks** (`/api/integrations/quickbooks/webhook`) are implemented and ready but **disabled by default**. They provide near-real-time updates when something changes in QBO. Setup requires registering the webhook URL in the Intuit Developer portal.
 
+**Marketing form → pre-quote** (`POST /api/webhooks/inbound-form-lead`): GoHighLevel (and similar) can POST JSON when a form is submitted. Set `INBOUND_FORM_WEBHOOK_SECRET` in `.env` / Vercel, then configure the workflow URL as **`https://<your-dash-domain>/api/webhooks/inbound-form-lead`** and add a header **`Authorization: Bearer <same secret>`** (or **`X-Dash-Webhook-Secret`**). New rows appear under **Pre-quote tickets** (`boardStatus` REQUESTED). Disable **Vercel Deployment Protection** for that path if webhooks return 401 HTML.
+
 ---
 
 ## Connect QuickBooks (real API, local)
