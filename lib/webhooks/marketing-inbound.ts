@@ -378,6 +378,40 @@ export function formatConversationBody(fields: Record<string, unknown>): string 
   return text.length > 0 ? text : null;
 }
 
+/** Twilio / telephony recording URL (audio — not a transcript; often needs Twilio auth to download). */
+const RECORDING_URL_CANDIDATES = [
+  'recording_url',
+  'RecordingUrl',
+  'recordingUrl',
+  'recording_uri',
+  'RecordingUri',
+  'twilio_recording_url',
+  'twilio_recording',
+  'call_recording_url',
+  'Call Recording URL',
+  'media_url',
+  'MediaUrl',
+  'recording',
+  'Recording',
+];
+
+export function formatRecordingLinkBlock(fields: Record<string, unknown>): string | null {
+  const raw = pickInboundString(fields, ...(RECORDING_URL_CANDIDATES as unknown as string[]));
+  if (!raw) return null;
+  const u = raw.trim();
+  if (!/^https?:\/\//i.test(u) || u.length > 2048) return null;
+  return `Recording: ${u}`;
+}
+
+/** Keys whose values are shown in {@link formatRecordingLinkBlock} — omit from submitted dump to avoid duplicate lines. */
+function isRecordingUrlFieldKey(key: string): boolean {
+  const k = normalizeInboundKey(key);
+  if (k === 'recording' || k === 'media_url' || k === 'recording_url' || k === 'recording_uri') return true;
+  if (k.includes('recording') && (k.includes('url') || k.includes('uri'))) return true;
+  if (k.includes('twilio') && k.includes('recording')) return true;
+  return false;
+}
+
 /** Keys that are almost always CRM/workflow noise in GHL-style payloads (not shown in ticket text). */
 function isInboundSubmittedFieldNoise(key: string): boolean {
   const k = key.toLowerCase().replace(/\s+/g, '_');
@@ -416,6 +450,7 @@ export function formatSubmittedFieldsLines(body: Record<string, unknown>): strin
   let total = 0;
   for (const key of Object.keys(body).sort()) {
     if (isInboundSubmittedFieldNoise(key)) continue;
+    if (isRecordingUrlFieldKey(key)) continue;
     const v = body[key];
     if (v === null || v === undefined) continue;
     if (typeof v === 'object') continue;
@@ -436,8 +471,11 @@ export function buildInboundTicketDescription(
 ): string | null {
   const contact = formatInboundContactBlock(body);
   const conv = opts.includeConversation ? formatConversationBody(body) : null;
+  const recording = opts.includeConversation ? formatRecordingLinkBlock(body) : null;
   const submitted = formatSubmittedFieldsLines(body);
-  const summaryParts = [contact, conv, submitted ? `Submitted fields:\n${submitted}` : null].filter(Boolean);
+  const summaryParts = [contact, conv, recording, submitted ? `Submitted fields:\n${submitted}` : null].filter(
+    Boolean,
+  );
   const merged = summaryParts.join('\n\n---\n\n').trim();
   return sanitizeJobProjectDescription(projectName, merged.length > 0 ? merged : null);
 }
