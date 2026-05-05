@@ -198,6 +198,60 @@ export function formatInboundContactBlock(fields: Record<string, unknown>): stri
   return text.length > 0 ? text.slice(0, 8000) : null;
 }
 
+/** Long-form transcript / recording text (often separate from last SMS in CRM). */
+const TRANSCRIPT_FIELD_CANDIDATES = [
+  'transcript',
+  'Transcript',
+  'conversation_transcript',
+  'Conversation Transcript',
+  'call_transcript',
+  'Call Transcript',
+  'full_transcript',
+  'Full Transcript',
+  'transcription',
+  'Transcription',
+  'transcript_text',
+  'Transcript Text',
+  'recording_transcript',
+  'Recording Transcript',
+  'ai_transcript',
+  'voice_transcript',
+  'voicemail_transcription',
+  'Voicemail Transcription',
+];
+
+/** Last message / short body (SMS, chat bubble) — overlaps transcript keys omitted here on purpose. */
+const MESSAGE_FIELD_CANDIDATES = [
+  'message',
+  'Message',
+  'last_message',
+  'lastMessage',
+  'Last Message',
+  'body',
+  'Body',
+  'summary',
+  'Summary',
+  'text',
+  'Text',
+  'content',
+  'Content',
+  'conversation_body',
+  'conversationBody',
+  'lastMessageBody',
+  'last_message_body',
+  'snippet',
+  'Snippet',
+  'incoming_message',
+  'outbound_message',
+  'sms_body',
+  'smsBody',
+  'chat_message',
+  'full_message',
+  'Full Message',
+  'message_body',
+  'Message Body',
+];
+
 /** Message / transcript block for conversation webhooks. */
 export function formatConversationBody(fields: Record<string, unknown>): string | null {
   const channel = pickInboundString(
@@ -210,43 +264,27 @@ export function formatConversationBody(fields: Record<string, unknown>): string 
     'Message Type',
     'conversation_type',
   );
-  const msg = pickInboundString(
-    fields,
-    'message',
-    'Message',
-    'last_message',
-    'lastMessage',
-    'Last Message',
-    'body',
-    'Body',
-    'transcript',
-    'Transcript',
-    'summary',
-    'Summary',
-    'text',
-    'Text',
-    'content',
-    'Content',
-    'conversation_body',
-    'conversationBody',
-    'lastMessageBody',
-    'last_message_body',
-    'snippet',
-    'Snippet',
-    'incoming_message',
-    'outbound_message',
-    'sms_body',
-    'smsBody',
-    'chat_message',
-    'full_message',
-    'Full Message',
-    'message_body',
-    'Message Body',
-  );
-  const parts: string[] = [];
-  if (channel) parts.push(`Channel: ${channel}`);
-  if (msg) parts.push(msg.slice(0, 12000));
-  const text = parts.join('\n\n').trim();
+  const transcript = pickInboundString(fields, ...(TRANSCRIPT_FIELD_CANDIDATES as unknown as string[]));
+  const msg = pickInboundString(fields, ...(MESSAGE_FIELD_CANDIDATES as unknown as string[]));
+
+  const bodyParts: string[] = [];
+  if (channel) bodyParts.push(`Channel: ${channel}`);
+
+  const t = transcript?.trim() ?? '';
+  const m = msg?.trim() ?? '';
+  if (t && m) {
+    if (t.includes(m) || m.includes(t)) {
+      bodyParts.push((t.length >= m.length ? t : m).slice(0, 12000));
+    } else {
+      bodyParts.push(`${m.slice(0, 6000)}\n\n---\n\n${t.slice(0, 12000)}`);
+    }
+  } else if (t) {
+    bodyParts.push(t.slice(0, 12000));
+  } else if (m) {
+    bodyParts.push(m.slice(0, 12000));
+  }
+
+  const text = bodyParts.join('\n\n').trim();
   return text.length > 0 ? text : null;
 }
 
