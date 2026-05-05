@@ -52,6 +52,12 @@ npm run dev
 
 For day-to-day schema changes: `npx prisma migrate dev --name your_change`
 
+To **wipe only Pre-quote tickets** (`boardStatus` REQUESTED) and start fresh (local or any DB with `DATABASE_URL` set):
+
+```bash
+npm run clear-prequoted
+```
+
 ### Local environment vs deploy
 
 Use a **local profile** so you can change behavior before anything hits Vercel:

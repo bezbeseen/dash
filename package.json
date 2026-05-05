@@ -16,6 +16,7 @@
     "prisma:migrate": "prisma migrate dev",
     "seed": "tsx prisma/seed.ts",
     "import-csv": "tsx scripts/import-transaction-csv.ts",
+    "clear-prequoted": "tsx scripts/clear-prequoted-jobs.ts",
     "docker:build": "docker build -t dash:latest .",
     "docker:up": "docker compose up -d --build"
   },

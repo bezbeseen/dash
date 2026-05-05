@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { sanitizeJobProjectDescription } from '@/lib/domain/job-display';
 
 export function webhookAuthorized(req: NextRequest, secret: string): boolean {
   const auth = req.headers.get('authorization');
@@ -25,7 +26,51 @@ const NESTED_PAYLOAD_KEYS = [
   'conversationData',
   'message',
   'lastMessage',
+  'submission',
+  'meta',
+  'properties',
+  'attribution',
 ] as const;
+
+function expandJsonStringsInValues(obj: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...obj };
+  for (const [k, v] of Object.entries(out)) {
+    if (typeof v !== 'string') continue;
+    const t = v.trim();
+    if (t.length < 2 || (!t.startsWith('{') && !t.startsWith('['))) continue;
+    try {
+      const parsed: unknown = JSON.parse(t);
+      const r = asRecord(parsed);
+      if (r) out[k] = r;
+    } catch {
+      /* keep string */
+    }
+  }
+  return out;
+}
+
+function flattenNestedObjects(input: Record<string, unknown>, rounds = 3): Record<string, unknown> {
+  let cur = { ...input };
+  for (let round = 0; round < rounds; round++) {
+    const next: Record<string, unknown> = { ...cur };
+    for (const [k, v] of Object.entries(cur)) {
+      const r = asRecord(v);
+      if (!r) continue;
+      for (const [k2, v2] of Object.entries(r)) {
+        const composite = `${k}_${k2}`;
+        if (next[composite] === undefined) next[composite] = v2;
+        if (
+          next[k2] === undefined &&
+          (typeof v2 === 'string' || typeof v2 === 'number' || typeof v2 === 'boolean')
+        ) {
+          next[k2] = v2;
+        }
+      }
+    }
+    cur = next;
+  }
+  return cur;
+}
 
 export function normalizeInboundPayload(raw: Record<string, unknown>): Record<string, unknown> {
   const merged: Record<string, unknown> = {};
@@ -34,7 +79,11 @@ export function normalizeInboundPayload(raw: Record<string, unknown>): Record<st
     if (r) Object.assign(merged, r);
   }
   Object.assign(merged, raw);
-  return merged;
+  let cur = expandJsonStringsInValues(merged);
+  cur = flattenNestedObjects(cur);
+  cur = expandJsonStringsInValues(cur);
+  cur = flattenNestedObjects(cur);
+  return cur;
 }
 
 export function pickStr(root: Record<string, unknown>, ...keys: string[]): string | undefined {
@@ -48,8 +97,8 @@ export function pickStr(root: Record<string, unknown>, ...keys: string[]): strin
 /** Contact block for ticket subtitle (email, phone, org, address). */
 export function formatInboundContactBlock(fields: Record<string, unknown>): string | null {
   const lines: string[] = [];
-  const email = pickStr(fields, 'email');
-  const phone = pickStr(fields, 'phone', 'phone_number');
+  const email = pickStr(fields, 'email', 'contact_email', 'Email');
+  const phone = pickStr(fields, 'phone', 'phone_number', 'contact_phone', 'mobile');
   const org = pickStr(fields, 'organization', 'company', 'company_name');
   const a1 = pickStr(fields, 'address_1', 'address1', 'street', 'address');
   const city = pickStr(fields, 'city');
@@ -79,12 +128,45 @@ export function formatConversationBody(fields: Record<string, unknown>): string 
     'conversation_body',
     'lastMessageBody',
     'snippet',
+    'incoming_message',
+    'outbound_message',
   );
   const parts: string[] = [];
   if (channel) parts.push(`Channel: ${channel}`);
   if (msg) parts.push(msg.slice(0, 12000));
   const text = parts.join('\n\n').trim();
   return text.length > 0 ? text : null;
+}
+
+/** Every primitive field after normalize (helps when GHL uses unexpected key names). */
+export function formatSubmittedFieldsLines(body: Record<string, unknown>): string | null {
+  const lines: string[] = [];
+  let total = 0;
+  for (const key of Object.keys(body).sort()) {
+    const v = body[key];
+    if (v === null || v === undefined) continue;
+    if (typeof v === 'object') continue;
+    const s = typeof v === 'string' ? v.trim() : String(v);
+    if (!s) continue;
+    const line = `${key}: ${s}`;
+    total += line.length + 1;
+    if (total > 6500) break;
+    lines.push(line);
+  }
+  return lines.length ? lines.join('\n') : null;
+}
+
+export function buildInboundTicketDescription(
+  projectName: string,
+  body: Record<string, unknown>,
+  opts: { includeConversation: boolean },
+): string | null {
+  const contact = formatInboundContactBlock(body);
+  const conv = opts.includeConversation ? formatConversationBody(body) : null;
+  const submitted = formatSubmittedFieldsLines(body);
+  const summaryParts = [contact, conv, submitted ? `Submitted fields:\n${submitted}` : null].filter(Boolean);
+  const merged = summaryParts.join('\n\n---\n\n').trim();
+  return sanitizeJobProjectDescription(projectName, merged.length > 0 ? merged : null);
 }
 
 export async function readInboundBody(

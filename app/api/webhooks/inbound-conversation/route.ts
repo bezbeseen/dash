@@ -1,10 +1,8 @@
 import { BoardStatus, EstimateStatus, EventSource, InvoiceStatus, ProductionStatus } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { sanitizeJobProjectDescription } from '@/lib/domain/job-display';
 import {
-  formatConversationBody,
-  formatInboundContactBlock,
+  buildInboundTicketDescription,
   inboundMarketingWebhookSecret,
   normalizeInboundPayload,
   pickStr,
@@ -55,11 +53,9 @@ export async function POST(req: NextRequest) {
   const projectName =
     pickStr(body, 'subject', 'title', 'organization', 'company', 'company_name') || 'Conversation / SMS lead';
 
-  const contactBlock = formatInboundContactBlock(body);
-  const convBlock = formatConversationBody(body);
-  const mergedDesc = [contactBlock, convBlock].filter(Boolean).join('\n\n---\n\n') || null;
-
-  const projectDescription = sanitizeJobProjectDescription(projectName, mergedDesc);
+  const projectDescription = buildInboundTicketDescription(projectName, body, {
+    includeConversation: true,
+  });
 
   const job = await prisma.job.create({
     data: {
