@@ -235,6 +235,11 @@ const TRANSCRIPT_FIELD_CANDIDATES = [
   /** Flattened from nested GHL objects e.g. voice_ai.transcript, conversations_ai.transcript. */
   'voice_ai_transcript',
   'conversations_ai_transcript',
+  /**
+   * GHL Custom Data often uses a numeric first row; user maps `1` → voice_ai.transcript.
+   * Last in list so named keys win.
+   */
+  '1',
 ];
 
 /** Last message / short body (SMS, chat bubble) — overlaps transcript keys omitted here on purpose. */
