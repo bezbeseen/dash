@@ -319,6 +319,8 @@ const MESSAGE_FIELD_CANDIDATES = [
   'Last Message',
   'body',
   'Body',
+  'voice_ai_summary',
+  'Voice AI Summary',
   'summary',
   'Summary',
   'text',
@@ -341,6 +343,30 @@ const MESSAGE_FIELD_CANDIDATES = [
   'message_body',
   'Message Body',
 ];
+
+/** GHL `{{voice_ai.duration}}` and similar (string or number, flattened `voice_ai_duration`). */
+function pickVoiceAiDuration(fields: Record<string, unknown>): string | undefined {
+  const candidates = [
+    'voice_ai_duration',
+    'Voice AI Duration',
+    'call_duration',
+    'callDuration',
+    'Call Duration',
+    'duration',
+    'Duration',
+  ];
+  for (const c of candidates) {
+    const v = fields[c];
+    if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  for (const [k, v] of Object.entries(fields)) {
+    if (!normalizeInboundKey(k).includes('duration')) continue;
+    if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return undefined;
+}
 
 /** Message / transcript block for conversation webhooks. */
 export function formatConversationBody(fields: Record<string, unknown>): string | null {
@@ -373,6 +399,9 @@ export function formatConversationBody(fields: Record<string, unknown>): string 
   } else if (m) {
     bodyParts.push(m.slice(0, 12000));
   }
+
+  const duration = pickVoiceAiDuration(fields);
+  if (duration) bodyParts.push(`Duration: ${duration}`);
 
   const text = bodyParts.join('\n\n').trim();
   return text.length > 0 ? text : null;
