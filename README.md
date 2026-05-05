@@ -104,6 +104,8 @@ Both paths use the same backend logic (`upsertJobFromInvoice` in `lib/domain/syn
 
 **Marketing form → pre-quote** (`POST /api/webhooks/inbound-form-lead`): GoHighLevel (and similar) can POST JSON when a form is submitted. Set `INBOUND_FORM_WEBHOOK_SECRET` in `.env` / Vercel, then configure the workflow URL as **`https://<your-dash-domain>/api/webhooks/inbound-form-lead`** and add a header **`Authorization: Bearer <same secret>`** (or **`X-Dash-Webhook-Secret`**). New rows appear under **Pre-quote tickets** (`boardStatus` REQUESTED). Disable **Vercel Deployment Protection** for that path if webhooks return 401 HTML.
 
+**Marketing conversation → pre-quote** (`POST /api/webhooks/inbound-conversation`): Same pattern for SMS/chat/conversation workflows. URL: **`https://<your-domain>/api/webhooks/inbound-conversation`**. Uses **`INBOUND_CONVERSATION_WEBHOOK_SECRET`** if set, otherwise the same secret as **`INBOUND_FORM_WEBHOOK_SECRET`**. Map message body fields in GHL custom data to keys like `message`, `body`, `transcript`, `summary`, plus contact merge fields as for forms.
+
 ---
 
 ## Connect QuickBooks (real API, local)

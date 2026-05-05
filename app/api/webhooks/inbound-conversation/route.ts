@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { sanitizeJobProjectDescription } from '@/lib/domain/job-display';
 import {
+  formatConversationBody,
   formatInboundContactBlock,
   inboundMarketingWebhookSecret,
   normalizeInboundPayload,
@@ -12,26 +13,22 @@ import {
 } from '@/lib/webhooks/marketing-inbound';
 
 /**
- * Quick check that the URL is correct and this deployment includes the route.
- * GoHighLevel must still use POST with the shared secret for real submissions.
+ * Confirms this URL is deployed. Real traffic must be POST + secret.
  */
 export async function GET() {
   return NextResponse.json({
     ok: true,
     message:
-      'Dash inbound form lead webhook. Use POST with Authorization: Bearer <INBOUND_FORM_WEBHOOK_SECRET> (or X-Dash-Webhook-Secret).',
+      'Dash inbound conversation webhook. Use POST with Authorization: Bearer <INBOUND_CONVERSATION_WEBHOOK_SECRET or INBOUND_FORM_WEBHOOK_SECRET>.',
   });
 }
 
 /**
- * POST from marketing automation (e.g. GoHighLevel "Send Form Data via Webhook").
- * Creates a pre-quote ticket (boardStatus REQUESTED). Secured with INBOUND_FORM_WEBHOOK_SECRET.
- *
- * Headers: Authorization: Bearer <secret> OR X-Dash-Webhook-Secret: <secret>
- * Body: JSON or form fields with keys like full_name / fullName, email, phone, organization (any subset).
+ * POST from marketing automation (e.g. GoHighLevel workflow when a conversation fires).
+ * Creates a pre-quote ticket (REQUESTED). Uses INBOUND_CONVERSATION_WEBHOOK_SECRET if set, else INBOUND_FORM_WEBHOOK_SECRET.
  */
 export async function POST(req: NextRequest) {
-  const expected = inboundMarketingWebhookSecret('form');
+  const expected = inboundMarketingWebhookSecret('conversation');
   if (!expected) {
     return NextResponse.json({ ok: false, error: 'webhook_not_configured' }, { status: 503 });
   }
@@ -46,21 +43,23 @@ export async function POST(req: NextRequest) {
 
   const body = normalizeInboundPayload(parsed.data);
 
-  const fullName = pickStr(body, 'full_name', 'fullName', 'name');
+  const fullName = pickStr(body, 'full_name', 'fullName', 'name', 'contact_name');
   const first = pickStr(body, 'first_name', 'firstName');
   const last = pickStr(body, 'last_name', 'lastName');
   const composed =
     fullName ||
     [first, last].filter(Boolean).join(' ').trim() ||
     pickStr(body, 'email') ||
-    'Form lead';
+    'Conversation lead';
 
   const projectName =
-    pickStr(body, 'organization', 'company', 'company_name') || 'Website / form lead';
-  const projectDescription = sanitizeJobProjectDescription(
-    projectName,
-    formatInboundContactBlock(body),
-  );
+    pickStr(body, 'subject', 'title', 'organization', 'company', 'company_name') || 'Conversation / SMS lead';
+
+  const contactBlock = formatInboundContactBlock(body);
+  const convBlock = formatConversationBody(body);
+  const mergedDesc = [contactBlock, convBlock].filter(Boolean).join('\n\n---\n\n') || null;
+
+  const projectDescription = sanitizeJobProjectDescription(projectName, mergedDesc);
 
   const job = await prisma.job.create({
     data: {
@@ -78,8 +77,8 @@ export async function POST(req: NextRequest) {
     data: {
       jobId: job.id,
       source: EventSource.SYSTEM,
-      eventName: 'inbound.form_lead',
-      message: 'Lead created from inbound form webhook.',
+      eventName: 'inbound.conversation',
+      message: 'Lead created from inbound conversation webhook.',
       metadata: parsed.data as object,
     },
   });
