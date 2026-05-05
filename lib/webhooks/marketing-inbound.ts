@@ -435,6 +435,66 @@ export function formatRecordingLinkBlock(fields: Record<string, unknown>): strin
   return `Recording: ${u}`;
 }
 
+/** Custom Webhook field OR built from GHL_CONTACT_URL_TEMPLATE + location + contact IDs. */
+const CRM_PORTAL_URL_CANDIDATES = [
+  'all_in_one_url',
+  'All in One URL',
+  'crm_url',
+  'crm_link',
+  'contact_url',
+  'ghl_contact_url',
+  'GHL Contact URL',
+  'leadconnector_url',
+  'LeadConnector URL',
+];
+
+function pickInboundLocationId(fields: Record<string, unknown>): string | undefined {
+  const loc = asRecord(fields.location);
+  const id = loc?.id;
+  if (typeof id === 'string' && id.trim()) return id.trim();
+  return pickInboundString(fields, 'location_id', 'locationId', 'Location Id');
+}
+
+function pickInboundContactIdForCrm(fields: Record<string, unknown>): string | undefined {
+  const fromRoot = pickInboundString(fields, 'contact_id', 'contactId', 'Contact Id');
+  if (fromRoot) return fromRoot;
+  const c = asRecord(fields.contact);
+  const cid = c?.id;
+  if (typeof cid === 'string' && cid.trim()) return cid.trim();
+  return undefined;
+}
+
+/**
+ * Open the lead in GHL / LeadConnector: explicit https URL from custom data, or
+ * GHL_CONTACT_URL_TEMPLATE with {locationId} and {contactId} from the webhook body.
+ */
+export function formatInboundCrmLinkBlock(fields: Record<string, unknown>): string | null {
+  const explicit = pickInboundString(fields, ...(CRM_PORTAL_URL_CANDIDATES as unknown as string[]));
+  if (explicit) {
+    const u = explicit.trim();
+    if (/^https?:\/\//i.test(u) && u.length <= 2048) return `CRM: ${u}`;
+  }
+  const template = process.env.GHL_CONTACT_URL_TEMPLATE?.trim();
+  if (!template) return null;
+  const locationId = pickInboundLocationId(fields);
+  const contactId = pickInboundContactIdForCrm(fields);
+  if (!locationId || !contactId) return null;
+  const url = template
+    .replace(/\{locationId\}/gi, encodeURIComponent(locationId))
+    .replace(/\{contactId\}/gi, encodeURIComponent(contactId));
+  if (!/^https?:\/\//i.test(url) || url.length > 2048) return null;
+  return `CRM: ${url}`;
+}
+
+function isCrmLinkFieldKey(key: string): boolean {
+  const k = normalizeInboundKey(key);
+  if (k.includes('all_in_one') && k.includes('url')) return true;
+  if (k === 'crm_url' || k === 'crm_link' || k === 'contact_url') return true;
+  if (k.includes('ghl') && k.includes('contact') && k.includes('url')) return true;
+  if (k.includes('leadconnector') && k.includes('url')) return true;
+  return false;
+}
+
 /** Keys whose values are shown in {@link formatRecordingLinkBlock} — omit from submitted dump to avoid duplicate lines. */
 function isRecordingUrlFieldKey(key: string): boolean {
   const k = normalizeInboundKey(key);
@@ -483,6 +543,7 @@ export function formatSubmittedFieldsLines(body: Record<string, unknown>): strin
   for (const key of Object.keys(body).sort()) {
     if (isInboundSubmittedFieldNoise(key)) continue;
     if (isRecordingUrlFieldKey(key)) continue;
+    if (isCrmLinkFieldKey(key)) continue;
     const v = body[key];
     if (v === null || v === undefined) continue;
     if (typeof v === 'object') continue;
@@ -504,8 +565,9 @@ export function buildInboundTicketDescription(
   const contact = formatInboundContactBlock(body);
   const conv = opts.includeConversation ? formatConversationBody(body) : null;
   const recording = opts.includeConversation ? formatRecordingLinkBlock(body) : null;
+  const crm = formatInboundCrmLinkBlock(body);
   const submitted = formatSubmittedFieldsLines(body);
-  const summaryParts = [contact, conv, recording, submitted ? `Submitted fields:\n${submitted}` : null].filter(
+  const summaryParts = [contact, conv, recording, crm, submitted ? `Submitted fields:\n${submitted}` : null].filter(
     Boolean,
   );
   const merged = summaryParts.join('\n\n---\n\n').trim();
