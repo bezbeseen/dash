@@ -1,4 +1,5 @@
 import type { Job } from '@prisma/client';
+import { ExpandableTicketPre } from '@/components/ticket-detail/expandable-ticket-pre';
 import { inboundLeadKindDetailLabel, inboundLeadKindPhrase } from '@/lib/domain/lead-ticket';
 
 type TicketLeadDetailsSectionProps = {
@@ -44,7 +45,7 @@ export function TicketLeadDetailsSection({ sectionId = 'ticket-lead-details', jo
         <dt>Project</dt>
         <dd>{job.projectName}</dd>
       </dl>
-      <pre className="ticket-lead-body">{body}</pre>
+      <ExpandableTicketPre text={body} />
     </section>
   );
 }

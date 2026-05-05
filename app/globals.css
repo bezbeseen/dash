@@ -490,6 +490,58 @@ body {
   margin-bottom: 0;
 }
 
+.ticket-lead-body.is-expanded {
+  max-height: min(85vh, 720px);
+  overflow: auto;
+}
+
+.ticket-expandable-pre {
+  position: relative;
+}
+
+.ticket-expandable-pre-fade {
+  pointer-events: none;
+  height: 56px;
+  margin-top: -56px;
+  position: relative;
+  background: linear-gradient(to bottom, transparent, var(--bs-body-bg, #fff));
+}
+
+.ticket-expandable-pre-toggle {
+  margin-top: 10px;
+}
+
+.activity-metadata-details {
+  margin-top: 10px;
+  border: var(--bs-border-width) solid var(--bs-border-color);
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: var(--bs-tertiary-bg);
+}
+
+.activity-metadata-summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bs-secondary-color);
+  list-style-position: outside;
+}
+
+.activity-metadata-pre {
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: min(50vh, 420px);
+  overflow: auto;
+  background: var(--bs-body-bg);
+  border: var(--bs-border-width) solid var(--bs-border-color);
+  border-radius: 8px;
+}
+
 /* Modern ticket detail styling — aligned with ticket-detail-lab.html */
 .detail-header {
   display: flex;
