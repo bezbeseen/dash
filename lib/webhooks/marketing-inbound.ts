@@ -21,16 +21,25 @@ const NESTED_PAYLOAD_KEYS = [
   'data',
   'payload',
   'customData',
+  /** GHL call / Voice AI (workflow merge tags often resolve under these). */
+  'activity',
+  'voice_ai',
+  'conversations_ai',
   'body',
   'conversation',
   'conversationData',
-  'message',
-  'lastMessage',
+  /** Omit `message` / `lastMessage` here — GHL often sends `{ "message": { "type": 1 } }` (metadata only). */
   'submission',
   'meta',
   'properties',
   'attribution',
 ] as const;
+
+function isEmptyScalarSlot(v: unknown): boolean {
+  if (v === undefined || v === null) return true;
+  if (typeof v === 'string') return !v.trim();
+  return false;
+}
 
 function expandJsonStringsInValues(obj: Record<string, unknown>): Record<string, unknown> {
   const out = { ...obj };
@@ -58,9 +67,11 @@ function flattenNestedObjects(input: Record<string, unknown>, rounds = 3): Recor
       if (!r) continue;
       for (const [k2, v2] of Object.entries(r)) {
         const composite = `${k}_${k2}`;
-        if (next[composite] === undefined) next[composite] = v2;
+        if (isEmptyScalarSlot(next[composite]) && (typeof v2 === 'string' || typeof v2 === 'number' || typeof v2 === 'boolean')) {
+          next[composite] = v2;
+        }
         if (
-          next[k2] === undefined &&
+          isEmptyScalarSlot(next[k2]) &&
           (typeof v2 === 'string' || typeof v2 === 'number' || typeof v2 === 'boolean')
         ) {
           next[k2] = v2;
@@ -72,6 +83,59 @@ function flattenNestedObjects(input: Record<string, unknown>, rounds = 3): Recor
   return cur;
 }
 
+/** Non-empty strings in customData / formData win after `Object.assign(merged, raw)` (overwrites empty top-level dupes). */
+function overlayNonEmptyStringsFromNested(
+  merged: Record<string, unknown>,
+  raw: Record<string, unknown>,
+  nestedKeys: readonly string[],
+) {
+  for (const key of nestedKeys) {
+    const r = asRecord(raw[key]);
+    if (!r) continue;
+    for (const [k, v] of Object.entries(r)) {
+      if (typeof v !== 'string' || !v.trim()) continue;
+      merged[k] = v;
+    }
+  }
+}
+
+/**
+ * GHL may send `message` as an object. Hoist real text fields; drop pure metadata envelopes so
+ * they do not sit on `merged.message` as a non-string.
+ */
+function hoistOrStripGhlMessageEnvelope(merged: Record<string, unknown>) {
+  const r = asRecord(merged.message);
+  if (!r) return;
+  const textKeys = [
+    'body',
+    'text',
+    'content',
+    'message',
+    'transcript',
+    'snippet',
+    'Body',
+    'Text',
+    'html',
+    'plainText',
+    'plain_text',
+    'markdown',
+  ];
+  for (const tk of textKeys) {
+    const v = r[tk];
+    if (typeof v === 'string' && v.trim()) {
+      merged.message = v;
+      return;
+    }
+  }
+  const keys = Object.keys(r);
+  const onlyMeta =
+    keys.length > 0 &&
+    keys.every((k) => /^type$|^id$|^status$|^direction$|^directiontype$/i.test(k));
+  if (onlyMeta) {
+    delete merged.message;
+  }
+}
+
 export function normalizeInboundPayload(raw: Record<string, unknown>): Record<string, unknown> {
   const merged: Record<string, unknown> = {};
   for (const key of NESTED_PAYLOAD_KEYS) {
@@ -79,10 +143,12 @@ export function normalizeInboundPayload(raw: Record<string, unknown>): Record<st
     if (r) Object.assign(merged, r);
   }
   Object.assign(merged, raw);
+  overlayNonEmptyStringsFromNested(merged, raw, ['customData', 'formData']);
   let cur = expandJsonStringsInValues(merged);
   cur = flattenNestedObjects(cur);
   cur = expandJsonStringsInValues(cur);
   cur = flattenNestedObjects(cur);
+  hoistOrStripGhlMessageEnvelope(cur);
   return cur;
 }
 
