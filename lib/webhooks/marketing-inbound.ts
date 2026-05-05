@@ -200,21 +200,48 @@ export function formatInboundContactBlock(fields: Record<string, unknown>): stri
 
 /** Message / transcript block for conversation webhooks. */
 export function formatConversationBody(fields: Record<string, unknown>): string | null {
-  const channel = pickStr(fields, 'channel', 'channel_type', 'medium', 'message_type');
-  const msg = pickStr(
+  const channel = pickInboundString(
+    fields,
+    'channel',
+    'channel_type',
+    'Channel',
+    'medium',
+    'message_type',
+    'Message Type',
+    'conversation_type',
+  );
+  const msg = pickInboundString(
     fields,
     'message',
+    'Message',
     'last_message',
+    'lastMessage',
+    'Last Message',
     'body',
+    'Body',
     'transcript',
+    'Transcript',
     'summary',
+    'Summary',
     'text',
+    'Text',
     'content',
+    'Content',
     'conversation_body',
+    'conversationBody',
     'lastMessageBody',
+    'last_message_body',
     'snippet',
+    'Snippet',
     'incoming_message',
     'outbound_message',
+    'sms_body',
+    'smsBody',
+    'chat_message',
+    'full_message',
+    'Full Message',
+    'message_body',
+    'Message Body',
   );
   const parts: string[] = [];
   if (channel) parts.push(`Channel: ${channel}`);
