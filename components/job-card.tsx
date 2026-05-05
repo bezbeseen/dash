@@ -1,9 +1,15 @@
 import Link from 'next/link';
-import { InboundLeadKind, Job } from '@prisma/client';
+import { Job } from '@prisma/client';
 import { JobWorkflowActions } from '@/components/job-workflow-actions';
 import { jobNeedsWrapUpReminder } from '@/lib/domain/production-workflow';
 import { boardStatusDisplayLabel } from '@/lib/domain/board-display';
-import { jobIsInboundMarketingRequested, jobIsLeadFirstTicket } from '@/lib/domain/lead-ticket';
+import {
+  inboundLeadKindPillClassName,
+  inboundLeadKindShortLabel,
+  inboundLeadKindTitleAttr,
+  jobIsInboundMarketingRequested,
+  jobIsLeadFirstTicket,
+} from '@/lib/domain/lead-ticket';
 import { inboundCardSubtitleFromStoredDescription, jobPrimaryHeading, jobSecondaryHeading } from '@/lib/domain/job-display';
 import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
 import { fmtDetailDate } from '@/lib/ticket/format';
@@ -62,18 +68,10 @@ export function JobCard({
         <div className="job-card-badges d-flex flex-wrap gap-1 align-items-center" aria-label="Ticket links">
           {job.inboundLeadKind != null ? (
             <span
-              className={`badge rounded-pill small fw-semibold border ${
-                job.inboundLeadKind === InboundLeadKind.FORM
-                  ? 'bg-primary-subtle text-primary-emphasis border-primary-subtle'
-                  : 'bg-info-subtle text-info-emphasis border-info-subtle'
-              }`}
-              title={
-                job.inboundLeadKind === InboundLeadKind.FORM
-                  ? 'Lead source: form submission'
-                  : 'Lead source: conversation (SMS / chat webhook)'
-              }
+              className={`badge rounded-pill small fw-semibold border ${inboundLeadKindPillClassName(job.inboundLeadKind)}`}
+              title={inboundLeadKindTitleAttr(job.inboundLeadKind)}
             >
-              {job.inboundLeadKind === InboundLeadKind.FORM ? 'Form' : 'Conversation'}
+              {inboundLeadKindShortLabel(job.inboundLeadKind)}
             </span>
           ) : null}
           {hasQbEstimate ? (

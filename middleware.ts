@@ -7,6 +7,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/integrations/quickbooks/webhook', // server-to-server
   '/api/webhooks/inbound-form-lead', // marketing form → pre-quote (Bearer secret)
   '/api/webhooks/inbound-conversation', // SMS/chat/conversation → pre-quote (Bearer secret)
+  '/api/webhooks/inbound-voice-call', // voice AI / call summary → pre-quote (Bearer secret)
 ];
 
 function isPublicApiPath(pathname: string): boolean {

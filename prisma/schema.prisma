@@ -69,6 +69,7 @@ enum TaskStatus {
 enum InboundLeadKind {
   FORM
   CONVERSATION
+  VOICE_CALL
 }
 
 model Job {

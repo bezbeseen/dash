@@ -1,6 +1,5 @@
 import type { Job } from '@prisma/client';
-import { InboundLeadKind } from '@prisma/client';
-import { inboundLeadKindPhrase } from '@/lib/domain/lead-ticket';
+import { inboundLeadKindDetailLabel, inboundLeadKindPhrase } from '@/lib/domain/lead-ticket';
 
 type TicketLeadDetailsSectionProps = {
   sectionId?: string;
@@ -14,12 +13,7 @@ export function TicketLeadDetailsSection({ sectionId = 'ticket-lead-details', jo
   }
 
   const sourcePhrase = inboundLeadKindPhrase(job.inboundLeadKind);
-  const sourceRowLabel =
-    job.inboundLeadKind === InboundLeadKind.FORM
-      ? 'Form submission'
-      : job.inboundLeadKind === InboundLeadKind.CONVERSATION
-        ? 'Conversation'
-        : null;
+  const sourceRowLabel = job.inboundLeadKind != null ? inboundLeadKindDetailLabel(job.inboundLeadKind) : null;
 
   return (
     <section id={sectionId} className="ticket-detail-panel">

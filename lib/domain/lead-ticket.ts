@@ -41,8 +41,12 @@ export function inboundLeadKindShortLabel(kind: InboundLeadKind | null | undefin
       return 'Form';
     case InboundLeadKind.CONVERSATION:
       return 'Conversation';
-    default:
-      return null;
+    case InboundLeadKind.VOICE_CALL:
+      return 'Voice';
+    default: {
+      const _n: never = kind;
+      return _n;
+    }
   }
 }
 
@@ -54,7 +58,57 @@ export function inboundLeadKindPhrase(kind: InboundLeadKind | null | undefined):
       return 'form submission';
     case InboundLeadKind.CONVERSATION:
       return 'conversation webhook';
-    default:
-      return null;
+    case InboundLeadKind.VOICE_CALL:
+      return 'voice / AI call summary';
+    default: {
+      const _n: never = kind;
+      return _n;
+    }
+  }
+}
+
+/** Card / header badge pill (Bootstrap subtle + border). */
+export function inboundLeadKindPillClassName(kind: InboundLeadKind): string {
+  switch (kind) {
+    case InboundLeadKind.FORM:
+      return 'bg-primary-subtle text-primary-emphasis border-primary-subtle';
+    case InboundLeadKind.CONVERSATION:
+      return 'bg-info-subtle text-info-emphasis border-info-subtle';
+    case InboundLeadKind.VOICE_CALL:
+      return 'bg-secondary-subtle text-secondary-emphasis border-secondary-subtle';
+    default: {
+      const _n: never = kind;
+      return _n;
+    }
+  }
+}
+
+export function inboundLeadKindDetailLabel(kind: InboundLeadKind): string {
+  switch (kind) {
+    case InboundLeadKind.FORM:
+      return 'Form submission';
+    case InboundLeadKind.CONVERSATION:
+      return 'Conversation';
+    case InboundLeadKind.VOICE_CALL:
+      return 'Voice call';
+    default: {
+      const _n: never = kind;
+      return _n;
+    }
+  }
+}
+
+export function inboundLeadKindTitleAttr(kind: InboundLeadKind): string {
+  switch (kind) {
+    case InboundLeadKind.FORM:
+      return 'Lead source: form submission webhook';
+    case InboundLeadKind.CONVERSATION:
+      return 'Lead source: conversation webhook';
+    case InboundLeadKind.VOICE_CALL:
+      return 'Lead source: voice / AI call summary';
+    default: {
+      const _n: never = kind;
+      return _n;
+    }
   }
 }

@@ -329,3 +329,10 @@ export function inboundMarketingWebhookSecret(which: 'form' | 'conversation'): s
   }
   return process.env.INBOUND_FORM_WEBHOOK_SECRET?.trim() ?? null;
 }
+
+/** Voice / AI call summaries (e.g. email body from Zapier). Falls back to form secret. */
+export function inboundVoiceCallWebhookSecret(): string | null {
+  const dedicated = process.env.INBOUND_VOICE_CALL_WEBHOOK_SECRET?.trim();
+  if (dedicated) return dedicated;
+  return process.env.INBOUND_FORM_WEBHOOK_SECRET?.trim() ?? null;
+}

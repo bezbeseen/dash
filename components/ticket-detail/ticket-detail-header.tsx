@@ -1,7 +1,11 @@
 import type { BoardStatus } from '@prisma/client';
-import { InboundLeadKind } from '@prisma/client';
+import type { Job } from '@prisma/client';
 import { boardStatusDisplayLabel } from '@/lib/domain/board-display';
-import { inboundLeadKindShortLabel } from '@/lib/domain/lead-ticket';
+import {
+  inboundLeadKindDetailLabel,
+  inboundLeadKindPillClassName,
+  inboundLeadKindTitleAttr,
+} from '@/lib/domain/lead-ticket';
 import { jobPrimaryHeading, jobSecondaryHeading } from '@/lib/domain/job-display';
 import { fmtDetailDate } from '@/lib/ticket/format';
 
@@ -16,7 +20,7 @@ type Props = {
   createdLabel?: string;
   updatedLabel?: string;
   /** Marketing webhook source; shown next to board status when set. */
-  inboundLeadKind?: InboundLeadKind | null;
+  inboundLeadKind?: Job['inboundLeadKind'];
 };
 
 export function TicketDetailHeader({
@@ -31,13 +35,6 @@ export function TicketDetailHeader({
   inboundLeadKind = null,
 }: Props) {
   const sub = jobSecondaryHeading({ projectName, projectDescription: projectDescription ?? undefined });
-  const sourceShort = inboundLeadKindShortLabel(inboundLeadKind);
-  const sourceTitle =
-    inboundLeadKind === InboundLeadKind.FORM
-      ? 'Lead source: form submission webhook'
-      : inboundLeadKind === InboundLeadKind.CONVERSATION
-        ? 'Lead source: conversation webhook'
-        : undefined;
   return (
     <header className="detail-header">
       <div>
@@ -45,16 +42,12 @@ export function TicketDetailHeader({
         {sub ? <p className="detail-subtitle">{sub}</p> : null}
       </div>
       <div className="detail-header-badges d-flex flex-column align-items-end gap-2 flex-shrink-0">
-        {sourceShort ? (
+        {inboundLeadKind != null ? (
           <span
-            className={`badge rounded-pill small fw-semibold border ${
-              inboundLeadKind === InboundLeadKind.FORM
-                ? 'bg-primary-subtle text-primary-emphasis border-primary-subtle'
-                : 'bg-info-subtle text-info-emphasis border-info-subtle'
-            }`}
-            title={sourceTitle}
+            className={`badge rounded-pill small fw-semibold border ${inboundLeadKindPillClassName(inboundLeadKind)}`}
+            title={inboundLeadKindTitleAttr(inboundLeadKind)}
           >
-            {inboundLeadKind === InboundLeadKind.FORM ? 'Form submission' : 'Conversation'}
+            {inboundLeadKindDetailLabel(inboundLeadKind)}
           </span>
         ) : null}
         <span className="badge badge-lg">{boardStatusDisplayLabel(boardStatus)}</span>
