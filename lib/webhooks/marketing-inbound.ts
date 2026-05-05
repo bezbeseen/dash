@@ -229,6 +229,12 @@ const TRANSCRIPT_FIELD_CANDIDATES = [
   'ai_summary',
   'convo',
   'Convo',
+  /** CustomData short key (screenshot: `trans` → {{activity.calltranscription}}). */
+  'trans',
+  'Trans',
+  /** Flattened from nested GHL objects e.g. voice_ai.transcript, conversations_ai.transcript. */
+  'voice_ai_transcript',
+  'conversations_ai_transcript',
 ];
 
 /** Last message / short body (SMS, chat bubble) — overlaps transcript keys omitted here on purpose. */
