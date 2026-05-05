@@ -319,6 +319,9 @@ const MESSAGE_FIELD_CANDIDATES = [
   'Last Message',
   'body',
   'Body',
+  /** GHL Custom Webhook: one row `Data` → many merge tags in one string (transcript + summary + duration). */
+  'Data',
+  'data',
   'voice_ai_summary',
   'Voice AI Summary',
   'summary',
