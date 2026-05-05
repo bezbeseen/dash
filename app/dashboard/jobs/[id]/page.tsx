@@ -15,10 +15,12 @@ import type { InvoiceActivitySkipReason } from '@/components/ticket-detail/ticke
 import { TicketActionsSection } from '@/components/ticket-detail/ticket-actions-section';
 import { TicketActivityLogSection } from '@/components/ticket-detail/ticket-activity-log-section';
 import { TicketDetailFooter } from '@/components/ticket-detail/ticket-detail-footer';
+import { TicketLeadDetailsSection } from '@/components/ticket-detail/ticket-lead-details-section';
 import { TicketDetailToc, type TicketTocItem } from '@/components/ticket-detail/ticket-detail-toc';
 import { TicketTasksSection } from '@/components/ticket-detail/ticket-tasks-section';
 import { TicketDriveSection } from '@/components/ticket-detail/ticket-drive-section';
 import { boardStatusForTicketHeader } from '@/lib/domain/derive-board-status';
+import { jobIsLeadFirstTicket } from '@/lib/domain/lead-ticket';
 import { jobNeedsWrapUpReminder } from '@/lib/domain/production-workflow';
 import { syncToastFromQuery } from '@/lib/domain/integration-query-toasts';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
@@ -116,6 +118,8 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   }
 
   const headerBoardStatus = boardStatusForTicketHeader(job, qboInvoice);
+  const isLeadFirst = jobIsLeadFirstTicket(job);
+  const hasLeadDetailsBody = Boolean(job.projectDescription?.trim());
   const needsWrapUpReminder = jobNeedsWrapUpReminder(job, qboInvoice);
   const wrapUpRecorded = Boolean((job.prodWrapUpNotes ?? '').trim());
   const { items: driveChildren, listError: driveListError } = await listJobDriveFolderPreview(id);
@@ -178,18 +182,28 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   if (job.archivedAt != null) {
     tocItems.push({ id: 'ticket-archived', label: 'Off board' });
   }
+  if (isLeadFirst) {
+    if (hasLeadDetailsBody) {
+      tocItems.push({ id: 'ticket-lead-details', label: 'Lead details' });
+    }
+  } else {
+    tocItems.push({ id: 'ticket-money', label: 'Money' });
+  }
   tocItems.push(
-    { id: 'ticket-money', label: 'Money' },
     { id: 'ticket-production', label: 'Production' },
     { id: 'ticket-drive', label: 'Google Drive' },
-    { id: 'ticket-quickbooks', label: 'QuickBooks IDs' },
-    { id: 'ticket-qb-activity', label: 'QuickBooks activity' },
   );
-  if (showPdfSection) {
-    tocItems.push({ id: 'ticket-pdfs', label: 'PDFs' });
-  }
-  if (hasInvoice) {
-    tocItems.push({ id: 'ticket-invoice-email', label: 'Invoice email' });
+  if (!isLeadFirst) {
+    tocItems.push(
+      { id: 'ticket-quickbooks', label: 'QuickBooks IDs' },
+      { id: 'ticket-qb-activity', label: 'QuickBooks activity' },
+    );
+    if (showPdfSection) {
+      tocItems.push({ id: 'ticket-pdfs', label: 'PDFs' });
+    }
+    if (hasInvoice) {
+      tocItems.push({ id: 'ticket-invoice-email', label: 'Invoice email' });
+    }
   }
   tocItems.push({ id: 'ticket-tasks', label: 'Tasks' });
   tocItems.push(
@@ -245,6 +259,11 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             </Link>
           )}
           <span className="small text-body-secondary ticket-detail-sync-meta">
+            {isLeadFirst ? (
+              <>
+                Lead ticket — sync after the job exists in QuickBooks to link estimates, invoices, and PDFs.{' '}
+              </>
+            ) : null}
             {qbToolbar.lastSyncUnknown
               ? 'Last sync: deploy DB migration (npx prisma migrate deploy), then reload'
               : qbToolbar.lastTicketSyncAt
@@ -267,6 +286,9 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
               boardStatus={headerBoardStatus}
               createdAt={job.createdAt}
               updatedAt={job.updatedAt}
+              createdLabel={isLeadFirst ? 'Created in Dash' : 'Created'}
+              updatedLabel={isLeadFirst ? 'Last updated' : 'Updated'}
+              inboundLeadKind={job.inboundLeadKind}
             />
           </div>
 
@@ -278,15 +300,19 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             />
           ) : null}
 
-          <TicketMoneySection
-            sectionId="ticket-money"
-            estimateAmountCents={job.estimateAmountCents}
-            estimateStatus={job.estimateStatus}
-            invoiceStatus={job.invoiceStatus}
-            invoiceTotalDisplayCents={invoiceTotalDisplayCents}
-            paidDisplayCents={paidDisplayCents}
-            qboInvoice={qboInvoice}
-          />
+          {isLeadFirst ? <TicketLeadDetailsSection job={job} /> : null}
+
+          {!isLeadFirst ? (
+            <TicketMoneySection
+              sectionId="ticket-money"
+              estimateAmountCents={job.estimateAmountCents}
+              estimateStatus={job.estimateStatus}
+              invoiceStatus={job.invoiceStatus}
+              invoiceTotalDisplayCents={invoiceTotalDisplayCents}
+              paidDisplayCents={paidDisplayCents}
+              qboInvoice={qboInvoice}
+            />
+          ) : null}
 
           <TicketProductionSection
             sectionId="ticket-production"
@@ -316,29 +342,33 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             canCreateFromTemplate={canCreateDriveJobFolderFromTemplate() && !job.googleDriveFolderId}
           />
 
-          <TicketQuickBooksIdsSection
-            sectionId="ticket-quickbooks"
-            realmId={job.quickbooksCompanyId}
-            customerId={job.quickbooksCustomerId}
-            estimateId={job.quickbooksEstimateId}
-            invoiceId={job.quickbooksInvoiceId}
-          />
+          {!isLeadFirst ? (
+            <>
+              <TicketQuickBooksIdsSection
+                sectionId="ticket-quickbooks"
+                realmId={job.quickbooksCompanyId}
+                customerId={job.quickbooksCustomerId}
+                estimateId={job.quickbooksEstimateId}
+                invoiceId={job.quickbooksInvoiceId}
+              />
 
-          <TicketQuickBooksInvoiceActivitySection
-            sectionId="ticket-qb-activity"
-            timeline={qbActivityTimeline}
-            errorText={invoiceActivityError}
-            skippedReason={activitySkipped}
-          />
+              <TicketQuickBooksInvoiceActivitySection
+                sectionId="ticket-qb-activity"
+                timeline={qbActivityTimeline}
+                errorText={invoiceActivityError}
+                skippedReason={activitySkipped}
+              />
 
-          <TicketDocumentsSection
-            jobId={job.id}
-            hasEstimate={hasEstimate}
-            hasInvoice={hasInvoice}
-            qboInvoice={qboInvoice}
-            pdfSectionId="ticket-pdfs"
-            invoiceEmailSectionId="ticket-invoice-email"
-          />
+              <TicketDocumentsSection
+                jobId={job.id}
+                hasEstimate={hasEstimate}
+                hasInvoice={hasInvoice}
+                qboInvoice={qboInvoice}
+                pdfSectionId="ticket-pdfs"
+                invoiceEmailSectionId="ticket-invoice-email"
+              />
+            </>
+          ) : null}
 
           <TicketTasksSection sectionId="ticket-tasks" jobId={job.id} />
 

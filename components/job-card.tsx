@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { Job } from '@prisma/client';
+import { InboundLeadKind, Job } from '@prisma/client';
 import { JobWorkflowActions } from '@/components/job-workflow-actions';
 import { jobNeedsWrapUpReminder } from '@/lib/domain/production-workflow';
 import { boardStatusDisplayLabel } from '@/lib/domain/board-display';
+import { jobIsLeadFirstTicket } from '@/lib/domain/lead-ticket';
 import { jobPrimaryHeading, jobSecondaryHeading } from '@/lib/domain/job-display';
 import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
 import { fmtDetailDate } from '@/lib/ticket/format';
@@ -25,6 +26,7 @@ export function JobCard({
   const needsWrapUpReminder = jobNeedsWrapUpReminder(job, null);
   const wrapUpRecorded = Boolean((job.prodWrapUpNotes ?? '').trim());
   const sub = jobSecondaryHeading(job);
+  const isLeadFirst = jobIsLeadFirstTicket(job);
   const hasQbEstimate =
     Boolean(job.quickbooksEstimateId) && !isSyntheticQuickBooksId(job.quickbooksEstimateId);
   const hasQbInvoice =
@@ -49,6 +51,22 @@ export function JobCard({
         </div>
         {sub ? <div className="job-card-subtitle">{sub}</div> : null}
         <div className="job-card-badges d-flex flex-wrap gap-1 align-items-center" aria-label="Ticket links">
+          {job.inboundLeadKind != null ? (
+            <span
+              className={`badge rounded-pill small fw-semibold border ${
+                job.inboundLeadKind === InboundLeadKind.FORM
+                  ? 'bg-primary-subtle text-primary-emphasis border-primary-subtle'
+                  : 'bg-info-subtle text-info-emphasis border-info-subtle'
+              }`}
+              title={
+                job.inboundLeadKind === InboundLeadKind.FORM
+                  ? 'Lead source: form submission'
+                  : 'Lead source: conversation (SMS / chat webhook)'
+              }
+            >
+              {job.inboundLeadKind === InboundLeadKind.FORM ? 'Form' : 'Conversation'}
+            </span>
+          ) : null}
           {hasQbEstimate ? (
             <span className="badge rounded-pill bg-primary-subtle text-primary-emphasis border border-primary-subtle small fw-semibold">
               Est
@@ -116,18 +134,26 @@ export function JobCard({
             </span>
           ) : null}
         </div>
-        <div className="job-card-estimate">
-          Estimate: ${(job.estimateAmountCents / 100).toFixed(2)}
-        </div>
-        <div className="job-card-invoice">
-          Invoice paid: ${(job.amountPaidCents / 100).toFixed(2)} / $
-          {(job.invoiceAmountCents / 100).toFixed(2)}
-        </div>
-        <div className="job-card-quickbooks">
-          QuickBooks date: {job.qbOrderingAt ? fmtDetailDate(job.qbOrderingAt) : 'n/a'}; Dash created{' '}
-          {fmtDetailDate(job.createdAt)}
-        </div>
-        <div className="job-card-updated">Updated {fmtDetailDate(job.updatedAt)}</div>
+        {isLeadFirst ? (
+          <div className="job-card-lead-meta text-body-secondary small">
+            Lead · Added {fmtDetailDate(job.createdAt)} · Updated {fmtDetailDate(job.updatedAt)}
+          </div>
+        ) : (
+          <>
+            <div className="job-card-estimate">
+              Estimate: ${(job.estimateAmountCents / 100).toFixed(2)}
+            </div>
+            <div className="job-card-invoice">
+              Invoice paid: ${(job.amountPaidCents / 100).toFixed(2)} / $
+              {(job.invoiceAmountCents / 100).toFixed(2)}
+            </div>
+            <div className="job-card-quickbooks">
+              QuickBooks date: {job.qbOrderingAt ? fmtDetailDate(job.qbOrderingAt) : 'n/a'}; Dash created{' '}
+              {fmtDetailDate(job.createdAt)}
+            </div>
+            <div className="job-card-updated">Updated {fmtDetailDate(job.updatedAt)}</div>
+          </>
+        )}
         {extraMeta ? <div className="job-card-extra card-extra-meta">{extraMeta}</div> : null}
         <div className="job-card-status badge">{boardStatusDisplayLabel(job.boardStatus)}</div>
         <span className="job-card-open-hint card-open-hint">Open ticket →</span>

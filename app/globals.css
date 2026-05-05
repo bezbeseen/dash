@@ -459,6 +459,37 @@ body {
   margin-bottom: 0;
 }
 
+.ticket-lead-intro {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--bs-secondary-color, #495057);
+}
+
+.ticket-lead-kv {
+  margin-bottom: 16px;
+}
+
+.ticket-lead-body {
+  margin: 0;
+  padding: 16px 18px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bs-tertiary-bg, #f8f9fa);
+  border: var(--bs-border-width) solid var(--bs-border-color);
+  border-radius: 12px;
+  max-height: min(70vh, 520px);
+  overflow: auto;
+}
+
+.detail-header .meta-grid {
+  flex-basis: 100%;
+  margin-bottom: 0;
+}
+
 /* Modern ticket detail styling — aligned with ticket-detail-lab.html */
 .detail-header {
   display: flex;

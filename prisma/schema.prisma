@@ -65,6 +65,12 @@ enum TaskStatus {
   DONE
 }
 
+/// How a marketing-sourced pre-quote ticket was created (webhooks only; null for QuickBooks / manual jobs).
+enum InboundLeadKind {
+  FORM
+  CONVERSATION
+}
+
 model Job {
   id                   String            @id @default(cuid())
   quickbooksCompanyId  String?
@@ -88,6 +94,8 @@ model Job {
   invoiceCreatedAtQbo  DateTime?
   /// Coalesced sort: estimate QBO create, else invoice QBO create (see sync).
   qbOrderingAt         DateTime?
+  /// Set when this ticket was created from an inbound marketing webhook (form vs conversation).
+  inboundLeadKind      InboundLeadKind?
   productionStatus     ProductionStatus  @default(NOT_STARTED)
   /// Captured when moving into production (planning).
   prodPlanLaborHours      Float?

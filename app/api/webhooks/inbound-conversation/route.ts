@@ -1,4 +1,11 @@
-import { BoardStatus, EstimateStatus, EventSource, InvoiceStatus, ProductionStatus } from '@prisma/client';
+import {
+  BoardStatus,
+  EstimateStatus,
+  EventSource,
+  InboundLeadKind,
+  InvoiceStatus,
+  ProductionStatus,
+} from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import {
@@ -62,6 +69,7 @@ export async function POST(req: NextRequest) {
       customerName: composed.slice(0, 512),
       projectName: projectName.slice(0, 512),
       projectDescription,
+      inboundLeadKind: InboundLeadKind.CONVERSATION,
       boardStatus: BoardStatus.REQUESTED,
       productionStatus: ProductionStatus.NOT_STARTED,
       estimateStatus: EstimateStatus.UNKNOWN,
