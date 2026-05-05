@@ -218,12 +218,21 @@ const TRANSCRIPT_FIELD_CANDIDATES = [
   'voice_transcript',
   'voicemail_transcription',
   'Voicemail Transcription',
+  'conversation_summary',
+  'Conversation Summary',
+  'call_summary',
+  'Call Summary',
+  'ai_summary',
+  'convo',
+  'Convo',
 ];
 
 /** Last message / short body (SMS, chat bubble) — overlaps transcript keys omitted here on purpose. */
 const MESSAGE_FIELD_CANDIDATES = [
   'message',
   'Message',
+  'convo',
+  'Convo',
   'last_message',
   'lastMessage',
   'Last Message',
