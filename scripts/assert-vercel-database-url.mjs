@@ -52,4 +52,12 @@ if (/-pooler\./i.test(url)) {
   }
 }
 
+if (process.env.VERCEL === '1' && /\.neon\.tech\b/i.test(url) && !directUrl) {
+  console.warn(
+    '\n[build] DATABASE_URL is Neon but DIRECT_URL is empty.\n' +
+      '  Prisma migrations use directUrl when set; without it, P1002 (advisory lock timeout) is common.\n' +
+      '  → Neon → Connection details → copy the *direct* URL into Vercel as DIRECT_URL.\n',
+  );
+}
+
 process.exit(0);
