@@ -65,6 +65,26 @@ export function jobPrimaryHeading(job: Pick<Job, 'customerName' | 'projectName'>
 }
 
 /**
+ * Board card line for inbound leads: contact + conversation snippet only, not the "Submitted fields" dump
+ * (that block stays on the ticket for debugging / completeness).
+ */
+export function inboundCardSubtitleFromStoredDescription(desc: string): string {
+  let t = desc.trim();
+  const withRule = t.search(/\n-{2,}\nSubmitted fields:\s*/i);
+  if (withRule !== -1) t = t.slice(0, withRule).trim();
+  else {
+    const nl = t.search(/\nSubmitted fields:\s*/i);
+    if (nl !== -1) t = t.slice(0, nl).trim();
+    else if (t.startsWith('Submitted fields:')) t = '';
+    else {
+      const k = t.indexOf('Submitted fields:');
+      if (k !== -1) t = t.slice(0, k).trim();
+    }
+  }
+  return t;
+}
+
+/**
  * Second line: QuickBooks memo / line description (`projectDescription` from sync), else legacy
  * free-text `projectName` when it is not an Estimate/Invoice doc label.
  */

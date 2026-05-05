@@ -14,6 +14,7 @@ import {
   normalizeInboundPayload,
   pickStr,
   readInboundBody,
+  resolveInboundLeadEmail,
   webhookAuthorized,
 } from '@/lib/webhooks/marketing-inbound';
 
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
   const composed =
     fullName ||
     [first, last].filter(Boolean).join(' ').trim() ||
-    pickStr(body, 'email') ||
+    resolveInboundLeadEmail(body) ||
     'Conversation lead';
 
   const projectName =
@@ -86,6 +87,17 @@ export async function POST(req: NextRequest) {
       metadata: parsed.data as object,
     },
   });
+
+  const leadEmail = resolveInboundLeadEmail(body);
+  if (leadEmail) {
+    await prisma.linkedEmail.create({
+      data: {
+        jobId: job.id,
+        fromAddr: leadEmail.slice(0, 512),
+        notes: 'Lead email (inbound conversation webhook).',
+      },
+    });
+  }
 
   return NextResponse.json({ ok: true, jobId: job.id });
 }

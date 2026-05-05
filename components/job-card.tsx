@@ -4,7 +4,7 @@ import { JobWorkflowActions } from '@/components/job-workflow-actions';
 import { jobNeedsWrapUpReminder } from '@/lib/domain/production-workflow';
 import { boardStatusDisplayLabel } from '@/lib/domain/board-display';
 import { jobIsInboundMarketingRequested, jobIsLeadFirstTicket } from '@/lib/domain/lead-ticket';
-import { jobPrimaryHeading, jobSecondaryHeading } from '@/lib/domain/job-display';
+import { inboundCardSubtitleFromStoredDescription, jobPrimaryHeading, jobSecondaryHeading } from '@/lib/domain/job-display';
 import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
 import { fmtDetailDate } from '@/lib/ticket/format';
 
@@ -27,8 +27,12 @@ export function JobCard({
   const wrapUpRecorded = Boolean((job.prodWrapUpNotes ?? '').trim());
   let sub = jobSecondaryHeading(job);
   if (sub && job.inboundLeadKind != null) {
-    const max = 400;
-    if (sub.length > max) sub = `${sub.slice(0, max).trimEnd()}…`;
+    sub = inboundCardSubtitleFromStoredDescription(sub);
+    if (!sub.trim()) sub = null;
+    else {
+      const max = 320;
+      if (sub.length > max) sub = `${sub.slice(0, max).trimEnd()}…`;
+    }
   }
   const isLeadFirst = jobIsLeadFirstTicket(job);
   const suppressCardWorkflow = jobIsInboundMarketingRequested(job);

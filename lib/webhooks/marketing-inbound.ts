@@ -94,16 +94,101 @@ export function pickStr(root: Record<string, unknown>, ...keys: string[]): strin
   return undefined;
 }
 
+/** Normalize keys for CRM payloads ("Contact Email", "contact-email" → "contact_email"). */
+function normalizeInboundKey(key: string): string {
+  return key.toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+/**
+ * Like pickStr, but also matches keys case-insensitively / with space vs underscore (GHL, etc.).
+ */
+export function pickInboundString(fields: Record<string, unknown>, ...candidates: string[]): string | undefined {
+  for (const c of candidates) {
+    const v = fields[c];
+    if (typeof v === 'string' && v.trim().length > 0) return v.trim();
+  }
+  const wanted = new Set(candidates.map(normalizeInboundKey));
+  for (const [k, v] of Object.entries(fields)) {
+    if (typeof v !== 'string' || !v.trim()) continue;
+    if (wanted.has(normalizeInboundKey(k))) return v.trim();
+  }
+  return undefined;
+}
+
+const INBOUND_EMAIL_KEY_CANDIDATES = [
+  'email',
+  'Email',
+  'contact_email',
+  'contactEmail',
+  'Contact Email',
+  'Contact_Email',
+  'primary_email',
+  'primaryEmail',
+  'email_address',
+  'emailAddress',
+  'e_mail',
+  'mail',
+  'user_email',
+  'lead_email',
+  'from_email',
+  'contact_email_address',
+] as const;
+
+const EMAIL_IN_STRING = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
+
+function inferEmailFromInboundFieldValues(fields: Record<string, unknown>): string | undefined {
+  for (const [k, v] of Object.entries(fields)) {
+    if (typeof v !== 'string' || !v.trim()) continue;
+    if (!normalizeInboundKey(k).includes('email')) continue;
+    const m = v.match(EMAIL_IN_STRING);
+    if (m) return m[0];
+  }
+  for (const v of Object.values(fields)) {
+    if (typeof v !== 'string' || !v.trim()) continue;
+    const m = v.match(EMAIL_IN_STRING);
+    if (m) return m[0];
+  }
+  return undefined;
+}
+
+/** Best-effort email for inbound webhooks (seed link, contact block, customer fallback). */
+export function resolveInboundLeadEmail(fields: Record<string, unknown>): string | undefined {
+  const direct = pickInboundString(fields, ...(INBOUND_EMAIL_KEY_CANDIDATES as unknown as string[]));
+  if (direct) return direct;
+  return inferEmailFromInboundFieldValues(fields);
+}
+
 /** Contact block for ticket subtitle (email, phone, org, address). */
 export function formatInboundContactBlock(fields: Record<string, unknown>): string | null {
   const lines: string[] = [];
-  const email = pickStr(fields, 'email', 'contact_email', 'Email');
-  const phone = pickStr(fields, 'phone', 'phone_number', 'contact_phone', 'mobile');
-  const org = pickStr(fields, 'organization', 'company', 'company_name');
-  const a1 = pickStr(fields, 'address_1', 'address1', 'street', 'address');
-  const city = pickStr(fields, 'city');
-  const state = pickStr(fields, 'state');
-  const zip = pickStr(fields, 'postal_code', 'zip', 'zip_code');
+  const email = resolveInboundLeadEmail(fields);
+  const phone = pickInboundString(
+    fields,
+    'phone',
+    'phone_number',
+    'contact_phone',
+    'mobile',
+    'cell',
+    'telephone',
+    'primary_phone',
+    'PrimaryPhone',
+    'contact_phone_number',
+    'Contact Phone',
+  );
+  const org = pickInboundString(
+    fields,
+    'organization',
+    'company',
+    'company_name',
+    'Company',
+    'companyName',
+    'business_name',
+    'Business Name',
+  );
+  const a1 = pickInboundString(fields, 'address_1', 'address1', 'street', 'address', 'Street Address');
+  const city = pickInboundString(fields, 'city', 'City');
+  const state = pickInboundString(fields, 'state', 'State', 'province');
+  const zip = pickInboundString(fields, 'postal_code', 'zip', 'zip_code', 'postalCode', 'Postal Code');
   if (email) lines.push(`Email: ${email}`);
   if (phone) lines.push(`Phone: ${phone}`);
   if (org) lines.push(`Org: ${org}`);
@@ -141,9 +226,19 @@ export function formatConversationBody(fields: Record<string, unknown>): string 
 /** Keys that are almost always CRM/workflow noise in GHL-style payloads (not shown in ticket text). */
 function isInboundSubmittedFieldNoise(key: string): boolean {
   const k = key.toLowerCase().replace(/\s+/g, '_');
+  if (k === 'id') return true;
+  if (k === 'address' || k === 'street' || k === 'street_address' || k === 'streetaddress') return true;
+  if (k === 'city') return true;
+  if (k === 'medium') return true;
+  if (k === 'country') return true;
+  if (k === 'state' || k === 'postalcode' || k === 'postal_code' || k === 'zip' || k === 'zip_code') {
+    return true;
+  }
+  if (k.includes('attribution')) return true;
+  if (k.includes('sessionsource') || k.includes('session_source')) return true;
+  if (/^full_?address$/i.test(k) || k === 'fulladdress') return true;
   if (k.endsWith('_id')) return true;
   if (k.startsWith('workflow')) return true;
-  if (k.startsWith('attribution')) return true;
   if (k.startsWith('execution')) return true;
   if (k.startsWith('trigger')) return true;
   if (k.startsWith('location_')) return true;
