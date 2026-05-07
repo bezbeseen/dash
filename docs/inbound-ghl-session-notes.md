@@ -4,6 +4,20 @@ Operational notes from wiring **Go High Level → Dash** (`/api/webhooks/inbound
 
 ---
 
+## All-in-One “add a form” snippets
+
+Some builders suggest an HTML `<form>` + `fetch()` to `inbound-conversation` with **`Authorization: Bearer …` in client-side JavaScript**.
+
+**Do not ship that.** Anyone can view source, copy the secret, and spam or abuse your webhook.
+
+- Prefer **GHL Workflow → Custom Webhook** (server-side POST, no browser).
+- If a web form is required, submit to **your own** backend route that reads the secret from **server env** and forwards to Dash.
+
+Dash **`POST /api/webhooks/inbound-conversation`** accepts JSON with All-in-One style fields, e.g.  
+`callDuration`, `callFrom`, `callTo`, `callStatus`, `callStartTime`, `callEndTime`, `callTranscript` (see `formatInboundCallDetailMeta` and transcript candidates in `lib/webhooks/marketing-inbound.ts`).
+
+---
+
 ## Neon + Vercel / Prisma
 
 - **`DATABASE_URL`**: Neon **pooled** URL (host usually contains `-pooler`). Used for normal app queries.

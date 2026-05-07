@@ -272,6 +272,7 @@ const TRANSCRIPT_FIELD_CANDIDATES = [
   'Conversation Transcript',
   'call_transcript',
   'Call Transcript',
+  'callTranscript',
   'calltranscription',
   'callTranscription',
   'Call Transcription',
@@ -371,6 +372,22 @@ function pickVoiceAiDuration(fields: Record<string, unknown>): string | undefine
   return undefined;
 }
 
+/** All-in-One / custom integrations: call metadata + transcript (camelCase POST bodies). */
+function formatInboundCallDetailMeta(fields: Record<string, unknown>): string | null {
+  const from = pickInboundString(fields, 'callFrom', 'call_from', 'Call From');
+  const to = pickInboundString(fields, 'callTo', 'call_to', 'Call To');
+  const status = pickInboundString(fields, 'callStatus', 'call_status', 'Call Status');
+  const start = pickInboundString(fields, 'callStartTime', 'call_start_time', 'Call Start Time');
+  const end = pickInboundString(fields, 'callEndTime', 'call_end_time', 'Call End Time');
+  const lines: string[] = [];
+  if (from) lines.push(`From: ${from}`);
+  if (to) lines.push(`To: ${to}`);
+  if (status) lines.push(`Status: ${status}`);
+  if (start) lines.push(`Start: ${start}`);
+  if (end) lines.push(`End: ${end}`);
+  return lines.length ? lines.join('\n').slice(0, 2000) : null;
+}
+
 /** Message / transcript block for conversation webhooks. */
 export function formatConversationBody(fields: Record<string, unknown>): string | null {
   const channel = pickInboundString(
@@ -388,6 +405,8 @@ export function formatConversationBody(fields: Record<string, unknown>): string 
 
   const bodyParts: string[] = [];
   if (channel) bodyParts.push(`Channel: ${channel}`);
+  const callMeta = formatInboundCallDetailMeta(fields);
+  if (callMeta) bodyParts.push(callMeta);
 
   const t = transcript?.trim() ?? '';
   const m = msg?.trim() ?? '';
@@ -533,6 +552,18 @@ function isInboundSubmittedFieldNoise(key: string): boolean {
   }
   if (k === 'tags' || k === 'meta' || k === 'source' || k === 'type' || k === 'version') return true;
   if (k === 'approved_accounts' || k === 'approvedaccounts') return true;
+  /** Shown in {@link formatInboundCallDetailMeta} / duration / transcript blocks — avoid duplicate dump lines. */
+  if (
+    k === 'callfrom' ||
+    k === 'callto' ||
+    k === 'callstatus' ||
+    k === 'callstarttime' ||
+    k === 'callendtime' ||
+    k === 'callduration' ||
+    k === 'calltranscript'
+  ) {
+    return true;
+  }
   return false;
 }
 
