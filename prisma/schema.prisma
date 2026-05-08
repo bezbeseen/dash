@@ -70,6 +70,7 @@ enum InboundLeadKind {
   FORM
   CONVERSATION
   VOICE_CALL
+  YELP_LEAD
 }
 
 model Job {
@@ -95,6 +96,8 @@ model Job {
   invoiceCreatedAtQbo  DateTime?
   /// Coalesced sort: estimate QBO create, else invoice QBO create (see sync).
   qbOrderingAt         DateTime?
+  /// Yelp Leads API webhook (Request a Quote / inbox) — deduped by yelpLeadId.
+  yelpLeadId           String?           @unique
   /// Set when this ticket was created from an inbound marketing webhook (form vs conversation).
   inboundLeadKind      InboundLeadKind?
   productionStatus     ProductionStatus  @default(NOT_STARTED)

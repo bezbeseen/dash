@@ -8,6 +8,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/webhooks/inbound-form-lead', // marketing form → pre-quote (Bearer secret)
   '/api/webhooks/inbound-conversation', // SMS/chat/conversation → pre-quote (Bearer secret)
   '/api/webhooks/inbound-voice-call', // voice AI / call summary → pre-quote (Bearer secret)
+  '/api/webhooks/yelp-leads', // Yelp Leads webhooks (verify token + server fetches lead)
 ];
 
 function isPublicApiPath(pathname: string): boolean {

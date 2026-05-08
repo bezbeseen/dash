@@ -43,6 +43,8 @@ export function inboundLeadKindShortLabel(kind: InboundLeadKind | null | undefin
       return 'Conversation';
     case InboundLeadKind.VOICE_CALL:
       return 'Voice';
+    case InboundLeadKind.YELP_LEAD:
+      return 'Yelp';
     default: {
       const _n: never = kind;
       return _n;
@@ -60,6 +62,8 @@ export function inboundLeadKindPhrase(kind: InboundLeadKind | null | undefined):
       return 'conversation webhook';
     case InboundLeadKind.VOICE_CALL:
       return 'voice / AI call summary';
+    case InboundLeadKind.YELP_LEAD:
+      return 'Yelp Leads';
     default: {
       const _n: never = kind;
       return _n;
@@ -76,6 +80,8 @@ export function inboundLeadKindPillClassName(kind: InboundLeadKind): string {
       return 'bg-info-subtle text-info-emphasis border-info-subtle';
     case InboundLeadKind.VOICE_CALL:
       return 'bg-secondary-subtle text-secondary-emphasis border-secondary-subtle';
+    case InboundLeadKind.YELP_LEAD:
+      return 'bg-danger-subtle text-danger-emphasis border-danger-subtle';
     default: {
       const _n: never = kind;
       return _n;
@@ -91,6 +97,8 @@ export function inboundLeadKindDetailLabel(kind: InboundLeadKind): string {
       return 'Conversation';
     case InboundLeadKind.VOICE_CALL:
       return 'Voice call';
+    case InboundLeadKind.YELP_LEAD:
+      return 'Yelp';
     default: {
       const _n: never = kind;
       return _n;
@@ -106,6 +114,8 @@ export function inboundLeadKindTitleAttr(kind: InboundLeadKind): string {
       return 'Lead source: conversation webhook';
     case InboundLeadKind.VOICE_CALL:
       return 'Lead source: voice / AI call summary';
+    case InboundLeadKind.YELP_LEAD:
+      return 'Lead source: Yelp Leads (Request a Quote)';
     default: {
       const _n: never = kind;
       return _n;
