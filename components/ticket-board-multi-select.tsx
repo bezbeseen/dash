@@ -1,6 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import {
   createContext,
   useCallback,
@@ -131,8 +130,6 @@ function failureMessage(code: string): string {
       return 'not found';
     case 'already_archived':
       return 'already off the board';
-    case 'wrap_up_required':
-      return 'needs wrap-up (paid in full) — open the ticket first';
     default:
       return code === 'This job is already off the board.' ? 'already off the board' : code;
   }
@@ -140,7 +137,6 @@ function failureMessage(code: string): string {
 
 export function TicketBoardSelectionBar() {
   const ctx = useTicketBoardMultiSelectOptional();
-  const router = useRouter();
   const [doneBusy, setDoneBusy] = useState(false);
   const [doneError, setDoneError] = useState<string | null>(null);
 
@@ -200,14 +196,15 @@ export function TicketBoardSelectionBar() {
 
       if (succeeded > 0) {
         ctx.clear();
-        router.refresh();
+        // Full reload: this page is mostly RSC; router.refresh() often left the board stale after batch archive.
+        window.location.reload();
       }
     } catch {
       setDoneError('Network error. Check your connection and try again.');
     } finally {
       setDoneBusy(false);
     }
-  }, [ctx, router]);
+  }, [ctx]);
 
   if (!ctx || ctx.selected.size === 0) return null;
 
@@ -239,7 +236,7 @@ export function TicketBoardSelectionBar() {
       ) : null}
       <span className="small text-body-secondary d-none d-md-inline">
         Tip: Shift+click a checkbox to select a range (board order). Cmd/Ctrl+click toggles one without changing the
-        range anchor. Paid-in-full tickets need wrap-up logged on the ticket before batch Done.
+        range anchor.
       </span>
     </div>
   );
