@@ -1,6 +1,15 @@
 'use client';
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 
 type Ctx = {
   orderedJobIds: readonly string[];
@@ -111,13 +120,95 @@ export function TicketBoardCheckbox({ jobId, orderIndex }: { jobId: string; orde
       onChange={(e) => ctx.toggle(jobId, orderIndex, e)}
       onClick={(e) => e.stopPropagation()}
       aria-label="Select ticket"
-      title="Select for bulk actions. Shift+click: range. Cmd/Ctrl+click: toggle without changing range anchor."
+      title="Select for bulk actions (Mark done, copy links). Shift+click: range. Cmd/Ctrl+click: toggle without changing range anchor."
     />
   );
 }
 
+function failureMessage(code: string): string {
+  switch (code) {
+    case 'not_found':
+      return 'not found';
+    case 'already_archived':
+      return 'already off the board';
+    case 'wrap_up_required':
+      return 'needs wrap-up (paid in full) — open the ticket first';
+    default:
+      return code === 'This job is already off the board.' ? 'already off the board' : code;
+  }
+}
+
 export function TicketBoardSelectionBar() {
   const ctx = useTicketBoardMultiSelectOptional();
+  const router = useRouter();
+  const [doneBusy, setDoneBusy] = useState(false);
+  const [doneError, setDoneError] = useState<string | null>(null);
+
+  const markSelectedDone = useCallback(async () => {
+    if (!ctx || ctx.selected.size === 0) return;
+    const n = ctx.selected.size;
+    if (
+      !window.confirm(
+        `Mark ${n} ticket${n === 1 ? '' : 's'} as done? They will be removed from the board (same as Done on each card).`,
+      )
+    ) {
+      return;
+    }
+
+    setDoneBusy(true);
+    setDoneError(null);
+    const jobIds = [...ctx.selected];
+
+    try {
+      const res = await fetch('/api/jobs/batch-done', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ jobIds }),
+      });
+
+      const data: unknown = await res.json().catch(() => null);
+      if (!res.ok || !data || typeof data !== 'object' || !('ok' in data) || data.ok !== true) {
+        setDoneError('Could not mark tickets done. Try again or use Done on each ticket.');
+        setDoneBusy(false);
+        return;
+      }
+
+      const failed = 'failed' in data && Array.isArray(data.failed) ? data.failed : [];
+      const succeeded =
+        'succeeded' in data && Array.isArray(data.succeeded) ? (data.succeeded as string[]).length : 0;
+
+      const failedRows = failed as { id: string; error: string }[];
+      const skipSummary = failedRows
+        .slice(0, 8)
+        .map((f) => failureMessage(f.error))
+        .join('\n• ');
+      const skipExtra = failedRows.length > 8 ? `\n… and ${failedRows.length - 8} more` : '';
+
+      if (failedRows.length > 0 && succeeded > 0) {
+        window.alert(
+          `Marked ${succeeded} ticket${succeeded === 1 ? '' : 's'} done.\n\nSkipped (${failedRows.length}):\n• ${skipSummary}${skipExtra}`,
+        );
+      } else if (failedRows.length > 0) {
+        const parts = failedRows.slice(0, 5).map((f) => failureMessage(f.error));
+        const extra = failedRows.length > 5 ? ` (+${failedRows.length - 5} more)` : '';
+        setDoneError(`None marked done: ${parts.join('; ')}${extra}`);
+      }
+
+      if (succeeded > 0) {
+        ctx.clear();
+        router.refresh();
+      }
+    } catch {
+      setDoneError('Network error. Check your connection and try again.');
+    } finally {
+      setDoneBusy(false);
+    }
+  }, [ctx, router]);
+
   if (!ctx || ctx.selected.size === 0) return null;
 
   return (
@@ -130,12 +221,25 @@ export function TicketBoardSelectionBar() {
       <button type="button" className="btn btn-sm btn-outline-secondary" onClick={ctx.clear}>
         Clear
       </button>
+      <button
+        type="button"
+        className="btn btn-sm btn-success"
+        disabled={doneBusy}
+        onClick={() => void markSelectedDone()}
+      >
+        {doneBusy ? 'Working…' : 'Mark done'}
+      </button>
       <button type="button" className="btn btn-sm btn-primary" onClick={() => void ctx.copySelectedLinks()}>
         Copy ticket links
       </button>
+      {doneError ? (
+        <span className="small text-danger" role="alert">
+          {doneError}
+        </span>
+      ) : null}
       <span className="small text-body-secondary d-none d-md-inline">
         Tip: Shift+click a checkbox to select a range (board order). Cmd/Ctrl+click toggles one without changing the
-        range anchor.
+        range anchor. Paid-in-full tickets need wrap-up logged on the ticket before batch Done.
       </span>
     </div>
   );

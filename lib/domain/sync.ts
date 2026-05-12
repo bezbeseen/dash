@@ -53,6 +53,9 @@ export async function upsertJobFromEstimate(
 
   const updated = await prisma.$transaction(async (tx) => {
     const existing = await tx.job.findUnique({ where: { quickbooksEstimateId: snapshot.id } });
+    if (existing?.archivedAt != null) {
+      return existing;
+    }
     const parsedEst = estimateCreatedAtFromSnapshot(snapshot);
     const nextEstCreated = parsedEst ?? existing?.estimateCreatedAtQbo ?? null;
     const nextInvCreated = existing?.invoiceCreatedAtQbo ?? null;
@@ -136,7 +139,22 @@ export async function upsertJobFromInvoice(
       ? await tx.job.findUnique({ where: { quickbooksEstimateId: snapshot.linkedEstimateId } })
       : null;
 
-    const target = byInvoice ?? byEstimate;
+    /**
+     * Prefer an on-board job. If we always used `byInvoice ?? byEstimate`, a Done (archived) row
+     * would absorb invoice sync while a newer active row (e.g. estimate-only, created after the
+     * archive) kept showing on the board — tickets “reappearing” after sync.
+     */
+    const activeTarget =
+      [byInvoice, byEstimate].find((j) => j != null && j.archivedAt == null) ?? null;
+    const anyMatch = byInvoice ?? byEstimate;
+
+    if (!activeTarget) {
+      if (anyMatch != null && anyMatch.archivedAt != null) {
+        return anyMatch;
+      }
+    }
+
+    const target = activeTarget;
 
     const parsedInv = invoiceCreatedAtFromSnapshot(snapshot);
     const nextInvCreated = parsedInv ?? target?.invoiceCreatedAtQbo ?? null;
@@ -172,6 +190,19 @@ export async function upsertJobFromInvoice(
       qbOrderingAt,
       ...(realmId ? { quickbooksCompanyId: realmId } : {}),
     };
+
+    if (
+      target &&
+      byInvoice != null &&
+      byInvoice.archivedAt != null &&
+      byInvoice.id !== target.id &&
+      byInvoice.quickbooksInvoiceId === snapshot.id
+    ) {
+      await tx.job.update({
+        where: { id: byInvoice.id },
+        data: { quickbooksInvoiceId: null },
+      });
+    }
 
     const job = target
       ? await tx.job.update({ where: { id: target.id }, data: updatePayload })

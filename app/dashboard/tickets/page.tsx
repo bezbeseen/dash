@@ -75,7 +75,8 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
           <p className="board-topbar-sub">
             Sales to production to billing - one board. Cards are ordered by QuickBooks document time (estimate
             created, or invoice created if no estimate), not by last sync. Click a card to open the ticket. Use the
-            checkbox to select several tickets (Shift+click for a range, Cmd/Ctrl+click to add/remove). Invoices
+            checkbox to select several tickets (Shift+click for a range, Cmd/Ctrl+click to add/remove), then use{' '}
+            <strong>Mark done</strong> or <strong>Copy ticket links</strong> in the bar above the board. Invoices
             you create{' '}
             <strong>without</strong> an estimate show under <strong>Ready / invoiced</strong> after sync (not Quoted).
             If one is missing, use <strong>Invoice # → Import</strong> in the toolbar (a few QuickBooks API calls only).
