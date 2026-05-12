@@ -6,7 +6,7 @@ import { getGmailOAuth2ClientForSendMailbox } from '@/lib/gmail/tokens-db';
 import { buildHtmlRfc822Message, gmailSendRfc822 } from '@/lib/gmail/send-rfc822';
 
 /** Default mailbox that must appear in Settings → Gmail (same as typical `contact@` sender). */
-const DEFAULT_SEND_AS = 'contact@getbeseen.com';
+const DEFAULT_SEND_AS = 'contact@beseensignshop.com';
 
 export function reviewRequestEmailFeatureEnabled(): boolean {
   const v = (process.env.REVIEW_REQUEST_EMAIL_ENABLED ?? '').trim().toLowerCase();
@@ -108,13 +108,13 @@ ${linkBlock}
 
 /**
  * After a ticket is marked Done, optionally email the customer (invoice Bill email) asking for a review.
- * Sends via **Gmail API** using the connected mailbox `REVIEW_REQUEST_SEND_AS_EMAIL` (default `contact@getbeseen.com`).
+ * Sends via **Gmail API** using the connected mailbox `REVIEW_REQUEST_SEND_AS_EMAIL` (default `contact@beseensignshop.com`).
  *
  * Requires Gmail OAuth to include **send** scope — reconnect that mailbox in Settings after upgrading Dash.
  *
  * Env:
  * - `REVIEW_REQUEST_EMAIL_ENABLED` — optional; `0` / `false` / `off` disables.
- * - `REVIEW_REQUEST_SEND_AS_EMAIL` — optional; default `contact@getbeseen.com` (must match a row in Settings → Gmail).
+ * - `REVIEW_REQUEST_SEND_AS_EMAIL` — optional; default `contact@beseensignshop.com` (must match a row in Settings → Gmail).
  * - `REVIEW_REQUEST_REVIEW_URL` — optional review link (e.g. Google) for a button in the HTML.
  */
 export async function sendReviewRequestEmailAfterJobDone(job: Job): Promise<void> {

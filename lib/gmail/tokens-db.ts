@@ -61,7 +61,7 @@ export async function getGmailOAuth2ClientForApi() {
   return buildClientForConnectionRow(conn);
 }
 
-/** OAuth client for the mailbox that sends automated mail (e.g. `contact@getbeseen.com`). */
+/** OAuth client for the mailbox that sends automated mail (e.g. `contact@beseensignshop.com`). */
 export async function getGmailOAuth2ClientForSendMailbox(sendAsEmail: string) {
   const e = sendAsEmail.trim().toLowerCase();
   if (!e) {
