@@ -22,7 +22,7 @@ import { TicketDriveSection } from '@/components/ticket-detail/ticket-drive-sect
 import { boardStatusForTicketHeader } from '@/lib/domain/derive-board-status';
 import { jobIsInboundMarketingRequested, jobIsLeadFirstTicket } from '@/lib/domain/lead-ticket';
 import { jobNeedsWrapUpReminder, jobWrapUpRecorded } from '@/lib/domain/production-workflow';
-import { syncToastFromQuery } from '@/lib/domain/integration-query-toasts';
+import { jobErrorFromQuery, syncToastFromQuery } from '@/lib/domain/integration-query-toasts';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import { listJobDriveFolderPreview } from '@/lib/drive/list-for-job';
 import { canCreateDriveJobFolderFromTemplate } from '@/lib/drive/config';
@@ -54,6 +54,8 @@ type PageProps = {
     drive_created?: string;
     synced?: string;
     sync_error?: string;
+    restored?: string;
+    job_error?: string;
   }>;
 };
 
@@ -79,6 +81,8 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const driveCreated = sp.drive_created === '1';
 
   const { synced, syncError } = syncToastFromQuery(sp);
+  const restoredOk = sp.restored === '1';
+  const jobError = jobErrorFromQuery(sp);
 
   const [gmailConnections, job, qbToolbar] = await Promise.all([
     prisma.gmailConnection.findMany({
@@ -227,8 +231,14 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
       driveSyncOk ||
       driveCreated ||
       synced ||
-      syncError ? (
+      syncError ||
+      restoredOk ||
+      jobError ? (
         <div className="board-toasts px-3 px-md-4 pt-3" role="status">
+          {jobError ? <div className="board-toast board-toast-error">{jobError}</div> : null}
+          {restoredOk ? (
+            <div className="board-toast board-toast-ok">Ticket restored to the board.</div>
+          ) : null}
           {syncError ? (
             <div className="board-toast board-toast-error">QuickBooks sync error: {syncError}</div>
           ) : null}
@@ -300,6 +310,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
           {job.archivedAt != null ? (
             <TicketArchivedBanner
               sectionId="ticket-archived"
+              jobId={job.id}
               archivedAt={job.archivedAt}
               archiveReason={job.archiveReason}
             />

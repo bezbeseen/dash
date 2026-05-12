@@ -291,6 +291,41 @@ export async function archiveJob(jobId: string, reason: ArchiveReason, message: 
   return updated;
 }
 
+/** Put a Done/Lost ticket back on the board. Clears `reviewRequestEmailSentAt` so you can re-test the review email. */
+export async function restoreJobToBoard(jobId: string) {
+  const current = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
+  if (current.archivedAt == null) {
+    throw new Error('This job is already on the board.');
+  }
+
+  const cleared = await prisma.job.update({
+    where: { id: jobId },
+    data: {
+      archivedAt: null,
+      archiveReason: null,
+      reviewRequestEmailSentAt: null,
+    },
+  });
+
+  const boardStatus = deriveBoardStatus(cleared);
+  const updated = await prisma.job.update({
+    where: { id: jobId },
+    data: { boardStatus },
+  });
+
+  await prisma.activityLog.create({
+    data: {
+      jobId,
+      source: EventSource.APP,
+      eventName: 'job.restored_to_board',
+      message: 'Ticket restored to the board from Done/Lost.',
+    },
+  });
+
+  scheduleSyncJobDriveFolder(jobId);
+  return updated;
+}
+
 export type ProductionPlanFields = {
   prodPlanLaborHours?: number | null;
   prodPlanMaterials?: string | null;

@@ -95,5 +95,8 @@ export function jobErrorFromQuery(q: { job_error?: string }): string | null {
   if (q.job_error === 'archive') {
     return 'Could not remove that ticket - it may already be off the board.';
   }
+  if (q.job_error === 'restore') {
+    return 'Could not restore that ticket - it may already be on the board.';
+  }
   return null;
 }
