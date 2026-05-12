@@ -1,4 +1,5 @@
 import type { Job } from '@prisma/client';
+import { EventSource } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { fetchInvoiceById } from '@/lib/quickbooks/client';
 import { jobDisplayTitle } from '@/lib/domain/job-display';
@@ -49,16 +50,43 @@ async function resolveRealmId(job: Pick<Job, 'quickbooksCompanyId'>): Promise<st
 
 async function resolveBillToEmail(
   job: Pick<Job, 'quickbooksCompanyId' | 'quickbooksInvoiceId'>,
-): Promise<string | null> {
-  if (!job.quickbooksInvoiceId?.trim()) return null;
+): Promise<{ to: string | null; skipReason: string | null }> {
+  if (!job.quickbooksInvoiceId?.trim()) {
+    return { to: null, skipReason: 'No QuickBooks invoice on this ticket.' };
+  }
   const realmId = await resolveRealmId(job);
-  if (!realmId) return null;
+  if (!realmId) {
+    return { to: null, skipReason: 'QuickBooks is not connected (no company token).' };
+  }
   try {
     const inv = await fetchInvoiceById(realmId, job.quickbooksInvoiceId);
     const to = inv.billEmail?.trim();
-    return to || null;
-  } catch {
-    return null;
+    if (!to) {
+      return {
+        to: null,
+        skipReason:
+          'Invoice has no Bill email in QuickBooks. Add Bill email on the invoice in QBO, run Sync from QuickBooks, then mark Done on a ticket that still has the invoice.',
+      };
+    }
+    return { to, skipReason: null };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { to: null, skipReason: `Could not load invoice from QuickBooks: ${msg.slice(0, 400)}` };
+  }
+}
+
+async function logReviewEmailActivity(jobId: string, eventName: string, message: string) {
+  try {
+    await prisma.activityLog.create({
+      data: {
+        jobId,
+        source: EventSource.APP,
+        eventName,
+        message: message.slice(0, 8000),
+      },
+    });
+  } catch (e) {
+    console.error('[review-request-email] activity log failed', e);
   }
 }
 
@@ -125,18 +153,22 @@ export async function sendReviewRequestEmailAfterJobDone(job: Job): Promise<void
   let oauth2;
   try {
     oauth2 = await getGmailOAuth2ClientForSendMailbox(sendAs);
-  } catch {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('[review-request-email] skipped: Gmail not connected for', sendAs);
-    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[review-request-email] skipped (mailbox):', msg);
+    await logReviewEmailActivity(
+      job.id,
+      'review_request_email.skipped',
+      `Review email not sent: ${msg}`,
+    );
     return;
   }
 
-  const to = await resolveBillToEmail(job);
+  const { to, skipReason } = await resolveBillToEmail(job);
   if (!to) {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('[review-request-email] skipped: no invoice bill email for job', job.id);
-    }
+    const line = skipReason ?? 'No recipient.';
+    console.warn('[review-request-email] skipped (recipient):', line, { jobId: job.id });
+    await logReviewEmailActivity(job.id, 'review_request_email.skipped', line);
     return;
   }
 
@@ -158,10 +190,27 @@ export async function sendReviewRequestEmailAfterJobDone(job: Job): Promise<void
     text,
   });
 
-  await gmailSendRfc822(oauth2, rfc822);
+  try {
+    await gmailSendRfc822(oauth2, rfc822);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[review-request-email] Gmail send failed:', msg);
+    await logReviewEmailActivity(
+      job.id,
+      'review_request_email.failed',
+      `Gmail API did not send: ${msg.slice(0, 2000)}`,
+    );
+    return;
+  }
 
   await prisma.job.update({
     where: { id: job.id },
     data: { reviewRequestEmailSentAt: new Date() },
   });
+
+  await logReviewEmailActivity(
+    job.id,
+    'review_request_email.sent',
+    `Review request sent from ${sendAs} to invoice Bill email: ${to}`,
+  );
 }
