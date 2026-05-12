@@ -6,7 +6,7 @@ import {
   inboundLeadKindPillClassName,
   inboundLeadKindTitleAttr,
 } from '@/lib/domain/lead-ticket';
-import { jobPrimaryHeading, jobSecondaryHeading } from '@/lib/domain/job-display';
+import { inboundLeadCardDisplayParts, jobPrimaryHeading, jobSecondaryHeading } from '@/lib/domain/job-display';
 import { fmtDetailDate } from '@/lib/ticket/format';
 
 type Props = {
@@ -34,7 +34,22 @@ export function TicketDetailHeader({
   updatedLabel = 'Updated',
   inboundLeadKind = null,
 }: Props) {
-  const sub = jobSecondaryHeading({ projectName, projectDescription: projectDescription ?? undefined });
+  let sub: string | null = null;
+  if (inboundLeadKind != null) {
+    const parts = inboundLeadCardDisplayParts({
+      projectName,
+      projectDescription: projectDescription ?? null,
+      inboundLeadKind,
+    });
+    if (parts) {
+      sub = parts.synopsis.trim() || null;
+    } else {
+      sub = jobSecondaryHeading({ projectName, projectDescription: projectDescription ?? undefined });
+    }
+  } else {
+    sub = jobSecondaryHeading({ projectName, projectDescription: projectDescription ?? undefined });
+  }
+
   return (
     <header className="detail-header">
       <div>

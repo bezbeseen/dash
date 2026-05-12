@@ -36,6 +36,7 @@ export function TicketProductionSection({
     prodPlanClientCommHours != null ||
     prodPlanDesignHours != null;
   const wrap = (prodWrapUpNotes ?? '').trim();
+  const wrapSectionVisible = Boolean(wrap) || prodWrapUpAt != null;
 
   return (
     <section id={sectionId} className="ticket-detail-panel">
@@ -63,12 +64,14 @@ export function TicketProductionSection({
             <dd>{fmtPlanHours(prodPlanDesignHours)}</dd>
           </>
         ) : null}
-        {wrap ? (
+        {wrapSectionVisible ? (
           <>
             <dt>Wrap-up recorded</dt>
             <dd className="text-body-secondary small">{fmtDetailDate(prodWrapUpAt)}</dd>
             <dt>What happened</dt>
-            <dd className="text-break ticket-wrap-up-notes">{wrap}</dd>
+            <dd className={wrap ? 'text-break ticket-wrap-up-notes' : 'text-body-secondary'}>
+              {wrap || 'No notes added.'}
+            </dd>
           </>
         ) : null}
       </dl>

@@ -84,6 +84,122 @@ export function inboundCardSubtitleFromStoredDescription(desc: string): string {
   return t;
 }
 
+const INBOUND_DESC_SPLIT_PRIMARY = /\n\n---\n\n/;
+const INBOUND_DESC_SPLIT_FALLBACK_NL = /\n---\n/;
+/** GHL / chat payloads sometimes glue `---` on the same line before `Channel:`. */
+const INBOUND_DESC_SPLIT_FALLBACK_INLINE = /\s+---\s+(?=(?:Channel|bot):)/i;
+
+function isSubmittedFieldsSegment(s: string): boolean {
+  return /^Submitted fields:/im.test(s.trim());
+}
+
+function isRecordingSegment(s: string): boolean {
+  return /^Recording:/im.test(s.trim());
+}
+
+function isCrmSegment(s: string): boolean {
+  return /^CRM:/im.test(s.trim());
+}
+
+/**
+ * Splits `projectDescription` from inbound marketing webhooks: contact block, optional
+ * conversation/transcript, Recording/CRM lines, then Submitted fields (see `buildInboundTicketDescription`).
+ */
+export function splitInboundStoredDescription(raw: string): {
+  contactSummary: string;
+  conversationTranscript: string | null;
+  metaBlocks: string[];
+  submittedFields: string | null;
+} {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { contactSummary: '', conversationTranscript: null, metaBlocks: [], submittedFields: null };
+  }
+
+  let parts: string[];
+  if (INBOUND_DESC_SPLIT_PRIMARY.test(trimmed)) {
+    parts = trimmed.split(INBOUND_DESC_SPLIT_PRIMARY).map((p) => p.trim()).filter((p) => p.length > 0);
+  } else if (INBOUND_DESC_SPLIT_FALLBACK_NL.test(trimmed)) {
+    parts = trimmed.split(INBOUND_DESC_SPLIT_FALLBACK_NL).map((p) => p.trim()).filter((p) => p.length > 0);
+  } else {
+    const m = trimmed.match(INBOUND_DESC_SPLIT_FALLBACK_INLINE);
+    if (m && m.index != null && m.index > 0) {
+      parts = [trimmed.slice(0, m.index).trim(), trimmed.slice(m.index + m[0].length).trim()].filter(
+        (p) => p.length > 0,
+      );
+    } else {
+      parts = [trimmed];
+    }
+  }
+
+  if (parts.length <= 1) {
+    return {
+      contactSummary: trimmed,
+      conversationTranscript: null,
+      metaBlocks: [],
+      submittedFields: null,
+    };
+  }
+
+  const contactSummary = parts[0] ?? '';
+  const metaBlocks: string[] = [];
+  const convoChunks: string[] = [];
+  let submittedFields: string | null = null;
+
+  for (let i = 1; i < parts.length; i++) {
+    const p = parts[i];
+    if (!p) continue;
+    if (isSubmittedFieldsSegment(p)) {
+      submittedFields = submittedFields ? `${submittedFields}\n\n---\n\n${p}` : p;
+      continue;
+    }
+    if (isRecordingSegment(p) || isCrmSegment(p)) {
+      metaBlocks.push(p);
+      continue;
+    }
+    convoChunks.push(p);
+  }
+
+  const conversationTranscript =
+    convoChunks.length > 0 ? convoChunks.join('\n\n---\n\n').trim() : null;
+
+  return { contactSummary, conversationTranscript, metaBlocks, submittedFields };
+}
+
+export type InboundLeadCardDisplayParts = {
+  synopsis: string;
+  transcript: string | null;
+  metaBlocks: string[];
+};
+
+/**
+ * For inbound marketing cards: contact-only synopsis for the subtitle line, transcript/meta split out.
+ * Returns null when the job is not an inbound lead kind.
+ */
+export function inboundLeadCardDisplayParts(
+  job: Pick<Job, 'projectName' | 'projectDescription' | 'inboundLeadKind'>,
+): InboundLeadCardDisplayParts | null {
+  if (job.inboundLeadKind == null) return null;
+  const full = sanitizeJobProjectDescription(job.projectName, job.projectDescription);
+  if (!full) return null;
+
+  const split = splitInboundStoredDescription(full);
+  const synopsisRaw = split.contactSummary.trim();
+  const synopsisStripped = inboundCardSubtitleFromStoredDescription(synopsisRaw).trim();
+  const synopsis = synopsisStripped || synopsisRaw;
+
+  const transcript = split.conversationTranscript?.trim() || null;
+  const metaBlocks = split.metaBlocks;
+
+  if (!transcript && metaBlocks.length === 0) {
+    const legacy = inboundCardSubtitleFromStoredDescription(full).trim();
+    if (!legacy) return null;
+    return { synopsis: legacy, transcript: null, metaBlocks: [] };
+  }
+
+  return { synopsis: synopsis.trim() || synopsisRaw, transcript, metaBlocks };
+}
+
 /**
  * Second line: QuickBooks memo / line description (`projectDescription` from sync), else legacy
  * free-text `projectName` when it is not an Estimate/Invoice doc label.

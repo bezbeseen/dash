@@ -329,9 +329,6 @@ export async function updateProductionStatus(
 
 export async function saveJobWrapUp(jobId: string, notes: string) {
   const trimmed = notes.trim();
-  if (!trimmed) {
-    throw new Error('Wrap-up notes cannot be empty.');
-  }
 
   const current = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
   if (current.archivedAt != null) {
@@ -341,7 +338,7 @@ export async function saveJobWrapUp(jobId: string, notes: string) {
   await prisma.job.update({
     where: { id: jobId },
     data: {
-      prodWrapUpNotes: trimmed,
+      prodWrapUpNotes: trimmed || null,
       prodWrapUpAt: new Date(),
     },
   });
@@ -351,7 +348,7 @@ export async function saveJobWrapUp(jobId: string, notes: string) {
       jobId,
       source: EventSource.APP,
       eventName: 'job.wrap_up',
-      message: 'Production wrap-up saved.',
+      message: trimmed ? 'Production wrap-up saved.' : 'Production wrap-up acknowledged (no notes).',
     },
   });
 

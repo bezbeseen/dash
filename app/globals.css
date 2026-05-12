@@ -923,6 +923,63 @@ body {
   margin-top: 2px;
 }
 
+/* Tickets board: multi-select checkbox + main link (components/job-card.tsx + ticket-board-multi-select.tsx) */
+.job-card-with-select {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.job-card-select-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.job-card-select-control {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+.job-card-with-select .job-card-main-link-fill {
+  flex: 1;
+  min-width: 0;
+}
+.job-card-select-row:has(.job-board-ticket-checkbox:checked) {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.ticket-board-select-bar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+/* Inbound marketing: transcript panel (components/inbound-lead-conversation-panel.tsx) */
+.inbound-lead-conversation-panel {
+  background-color: var(--bs-tertiary-bg);
+}
+.inbound-lead-conversation-panel-summary {
+  cursor: pointer;
+  list-style-position: outside;
+}
+.inbound-lead-conversation-panel-summary::-webkit-details-marker {
+  color: var(--bs-secondary-color);
+}
+.ticket-inbound-transcript-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--bs-body-color);
+  max-height: 11rem;
+  overflow: auto;
+}
+
+.job-card-inbound-panel-wrap {
+  margin-top: 2px;
+}
+
 /* Job card rows (components/job-card.tsx) — named hooks for layout and overrides */
 .job-card-title {
   line-height: 1.3;

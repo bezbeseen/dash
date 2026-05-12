@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Modal from 'bootstrap/js/dist/modal';
 
 type Props = {
@@ -9,17 +9,44 @@ type Props = {
   archived: boolean;
   /** Paid (per sync/live rules) — show wrap-up banner + card hint. */
   needsWrapUpReminder: boolean;
-  /** Already saved prod wrap-up notes. */
+  /** Wrap-up saved or acknowledged (clears paid reminder). */
   wrapUpRecorded: boolean;
   /** Hide Start work / Ready / … for inbound leads still on REQUESTED. */
   suppressProductionShortcuts?: boolean;
 };
 
-function hideModal(modalDomId: string) {
+/** If no modal is open, strip orphan Bootstrap backdrops (e.g. refresh during hide). */
+function cleanupStaleModalBackdrop() {
+  if (typeof document === 'undefined') return;
+  if (document.querySelector('.modal.show')) return;
+  document.querySelectorAll('.modal-backdrop').forEach((el) => {
+    el.remove();
+  });
+  document.body.classList.remove('modal-open');
+  document.body.style.removeProperty('padding-right');
+}
+
+function hideModalThen(modalDomId: string, then: () => void) {
   if (typeof document === 'undefined') return;
   const el = document.getElementById(modalDomId);
-  if (!el) return;
-  Modal.getInstance(el)?.hide();
+  const finalize = () => {
+    cleanupStaleModalBackdrop();
+    then();
+  };
+  if (!el) {
+    finalize();
+    return;
+  }
+  if (!el.classList.contains('show')) {
+    finalize();
+    return;
+  }
+  const onHidden = () => {
+    el.removeEventListener('hidden.bs.modal', onHidden);
+    finalize();
+  };
+  el.addEventListener('hidden.bs.modal', onHidden);
+  Modal.getOrCreateInstance(el).hide();
 }
 
 export function JobWorkflowActions({
@@ -44,6 +71,27 @@ export function JobWorkflowActions({
   const refresh = useCallback(() => {
     router.refresh();
   }, [router]);
+
+  useEffect(() => {
+    const ids = [startModalId, wrapModalId];
+    if (!wrapUpRecorded) ids.push(doneModalId);
+    const els: HTMLElement[] = [];
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (el) els.push(el);
+    }
+    const onHidden = () => {
+      cleanupStaleModalBackdrop();
+    };
+    for (const el of els) {
+      el.addEventListener('hidden.bs.modal', onHidden);
+    }
+    return () => {
+      for (const el of els) {
+        el.removeEventListener('hidden.bs.modal', onHidden);
+      }
+    };
+  }, [startModalId, wrapModalId, doneModalId, wrapUpRecorded]);
 
   if (archived) {
     return <p className="job-card-archived card-archived-note">This ticket is off the board.</p>;
@@ -102,9 +150,10 @@ export function JobWorkflowActions({
       return;
     }
 
-    hideModal(startModalId);
-    form.reset();
-    refresh();
+    hideModalThen(startModalId, () => {
+      form.reset();
+      refresh();
+    });
   }
 
   async function submitWrapNotes(notes: string) {
@@ -124,8 +173,7 @@ export function JobWorkflowActions({
       setWrapError('Could not save wrap-up.');
       return;
     }
-    hideModal(wrapModalId);
-    refresh();
+    hideModalThen(wrapModalId, refresh);
   }
 
   async function submitDone(form: HTMLFormElement) {
@@ -149,16 +197,18 @@ export function JobWorkflowActions({
       setDoneError('Could not mark done. The ticket may already be off the board.');
       return;
     }
-    hideModal(doneModalId);
-    window.location.assign('/dashboard/tickets');
+    hideModalThen(doneModalId, () => {
+      window.location.assign('/dashboard/tickets');
+    });
   }
 
   return (
     <>
       {needsWrapUpReminder && !wrapUpRecorded ? (
         <div className="alert alert-secondary small mb-3 d-flex flex-wrap align-items-center gap-2" role="status">
-          <span>
-            <strong>Paid in full</strong> — log what happened (outcomes, issues, follow-ups) for the team record.
+            <span>
+            <strong>Paid in full</strong> — optional team notes (outcomes, issues, follow-ups). Save with an empty field to
+            clear this reminder.
           </span>
           <button
             type="button"
@@ -330,18 +380,19 @@ export function JobWorkflowActions({
               onSubmit={(e) => {
                 e.preventDefault();
                 const fd = new FormData(e.currentTarget);
-                const notes = (fd.get('notes') as string)?.trim();
-                if (notes) void submitWrapNotes(notes);
+                const notes = (fd.get('notes') as string)?.trim() ?? '';
+                void submitWrapNotes(notes);
               }}
             >
               <div className="modal-body">
-                <p className="small text-body-secondary mb-2">What happened on this job? (Paid / wrapping up)</p>
+                <p className="small text-body-secondary mb-2">
+                  What happened on this job? Optional — leave blank and save to dismiss the reminder only.
+                </p>
                 {wrapError ? <p className="text-danger small">{wrapError}</p> : null}
                 <textarea
                   className="form-control"
                   name="notes"
                   rows={5}
-                  required
                   placeholder="Delivered outcomes, surprises, rework, lessons for next time…"
                 />
               </div>
@@ -382,15 +433,14 @@ export function JobWorkflowActions({
               >
                 <div className="modal-body">
                   <p className="small text-body-secondary mb-2">
-                    This removes the ticket from the board. Add a short retrospective so paid/done jobs stay easy to learn
-                    from.
+                    This removes the ticket from the board. Retrospective notes are optional but help the team learn from
+                    paid jobs.
                   </p>
                   {doneError ? <p className="text-danger small">{doneError}</p> : null}
                   <textarea
                     className="form-control"
                     name="prodWrapUpNotes"
                     rows={5}
-                    required
                     placeholder="What shipped, friction, timeline vs plan, client feedback…"
                   />
                 </div>

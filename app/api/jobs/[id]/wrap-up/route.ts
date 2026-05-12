@@ -4,7 +4,7 @@ import { wantsJsonResponse } from '@/lib/http/wants-json-response';
 import { saveJobWrapUp } from '@/lib/domain/sync';
 
 const bodySchema = z.object({
-  notes: z.string().min(1, 'Describe what happened.').max(12000),
+  notes: z.string().max(12000),
 });
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {

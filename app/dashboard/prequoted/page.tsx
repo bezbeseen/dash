@@ -143,7 +143,9 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
         </h2>
         <p className="small text-body-secondary mb-3">
           These rows use board status <strong>Lead</strong> until QuickBooks shows a sent estimate (or invoice-only
-          rules move them elsewhere).
+          rules move them elsewhere). A ticket can already show estimate totals from QuickBooks while it is still a{' '}
+          <strong>draft</strong> there — only <strong>sent</strong> estimates move to the main Tickets board under{' '}
+          <strong>Quoted</strong>.
         </p>
         {jobs.length === 0 ? (
           <p className="text-body-secondary small">No pre-quote tickets right now.</p>

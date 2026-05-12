@@ -1,8 +1,9 @@
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Job } from '@prisma/client';
 import { JobWorkflowActions } from '@/components/job-workflow-actions';
-import { jobNeedsWrapUpReminder } from '@/lib/domain/production-workflow';
-import { boardStatusDisplayLabel } from '@/lib/domain/board-display';
+import { jobNeedsWrapUpReminder, jobWrapUpRecorded } from '@/lib/domain/production-workflow';
+import { boardStatusDisplayLabel, leadTicketQuotedColumnHint } from '@/lib/domain/board-display';
 import {
   inboundLeadKindPillClassName,
   inboundLeadKindShortLabel,
@@ -10,7 +11,13 @@ import {
   jobIsInboundMarketingRequested,
   jobIsLeadFirstTicket,
 } from '@/lib/domain/lead-ticket';
-import { inboundCardSubtitleFromStoredDescription, jobPrimaryHeading, jobSecondaryHeading } from '@/lib/domain/job-display';
+import {
+  inboundCardSubtitleFromStoredDescription,
+  inboundLeadCardDisplayParts,
+  jobPrimaryHeading,
+  jobSecondaryHeading,
+} from '@/lib/domain/job-display';
+import { InboundLeadConversationPanel } from '@/components/inbound-lead-conversation-panel';
 import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
 import { fmtDetailDate } from '@/lib/ticket/format';
 
@@ -21,6 +28,8 @@ type JobCardProps = {
   /** True when this ticket was edited in Dash after the last “Sync from QuickBooks” (totals may need a refresh). */
   updatedAfterLastTicketSync?: boolean;
   extraMeta?: string;
+  /** When set (e.g. main Tickets board), shows a checkbox for multi-select. Must render inside `TicketBoardMultiSelectProvider`. */
+  selectionSlot?: ReactNode;
 };
 
 export function JobCard({
@@ -28,18 +37,37 @@ export function JobCard({
   taskCounts = { open: 0, done: 0 },
   updatedAfterLastTicketSync = false,
   extraMeta,
+  selectionSlot,
 }: JobCardProps) {
   const needsWrapUpReminder = jobNeedsWrapUpReminder(job, null);
-  const wrapUpRecorded = Boolean((job.prodWrapUpNotes ?? '').trim());
-  let sub = jobSecondaryHeading(job);
-  if (sub && job.inboundLeadKind != null) {
-    sub = inboundCardSubtitleFromStoredDescription(sub);
-    if (!sub.trim()) sub = null;
-    else {
-      const max = 320;
-      if (sub.length > max) sub = `${sub.slice(0, max).trimEnd()}…`;
+  const wrapUpRecorded = jobWrapUpRecorded(job);
+
+  const inboundParts = inboundLeadCardDisplayParts(job);
+  let sub: string | null = null;
+  let inboundPanel: ReactNode = null;
+
+  if (inboundParts) {
+    let syn = inboundParts.synopsis.trim();
+    if (syn.length > 320) syn = `${syn.slice(0, 320).trimEnd()}…`;
+    sub = syn.length > 0 ? syn : null;
+    if (inboundParts.transcript || inboundParts.metaBlocks.length > 0) {
+      inboundPanel = (
+        <InboundLeadConversationPanel transcript={inboundParts.transcript} metaBlocks={inboundParts.metaBlocks} />
+      );
     }
+  } else {
+    let raw = jobSecondaryHeading(job);
+    if (raw && job.inboundLeadKind != null) {
+      raw = inboundCardSubtitleFromStoredDescription(raw);
+      if (!raw.trim()) raw = null;
+      else {
+        const max = 320;
+        if (raw.length > max) raw = `${raw.slice(0, max).trimEnd()}…`;
+      }
+    }
+    sub = raw;
   }
+
   const isLeadFirst = jobIsLeadFirstTicket(job);
   const suppressCardWorkflow = jobIsInboundMarketingRequested(job);
   const hasQbEstimate =
@@ -58,9 +86,14 @@ export function JobCard({
           ? `${taskDone} completed`
           : '';
 
-  return (
-    <div className="card">
-      <Link href={`/dashboard/jobs/${job.id}`} className="card-main-link">
+  const qbQuotedHint = leadTicketQuotedColumnHint(job);
+
+  const mainLink = (
+    <>
+      <Link
+        href={`/dashboard/jobs/${job.id}`}
+        className={selectionSlot ? 'card-main-link job-card-main-link-fill' : 'card-main-link'}
+      >
         <div className="job-card-title">
           <strong>{jobPrimaryHeading(job)}</strong>
         </div>
@@ -150,6 +183,7 @@ export function JobCard({
             <div className="job-card-estimate">
               Estimate: ${(job.estimateAmountCents / 100).toFixed(2)}
             </div>
+            {qbQuotedHint ? <div className="job-card-prequote-qb-hint small text-body-secondary">{qbQuotedHint}</div> : null}
             <div className="job-card-invoice">
               Invoice paid: ${(job.amountPaidCents / 100).toFixed(2)} / $
               {(job.invoiceAmountCents / 100).toFixed(2)}
@@ -165,6 +199,20 @@ export function JobCard({
         <div className="job-card-status badge">{boardStatusDisplayLabel(job.boardStatus)}</div>
         <span className="job-card-open-hint card-open-hint">Open ticket →</span>
       </Link>
+      {inboundPanel ? <div className="job-card-inbound-panel-wrap">{inboundPanel}</div> : null}
+    </>
+  );
+
+  return (
+    <div className={selectionSlot ? 'card job-card-with-select' : 'card'}>
+      {selectionSlot ? (
+        <div className="job-card-select-row">
+          <div className="job-card-select-control">{selectionSlot}</div>
+          {mainLink}
+        </div>
+      ) : (
+        mainLink
+      )}
       <JobWorkflowActions
         jobId={job.id}
         archived={job.archivedAt != null}

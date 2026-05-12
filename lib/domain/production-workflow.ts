@@ -11,7 +11,16 @@ export type JobPaidLike = {
   invoiceAmountCents: number;
   amountPaidCents: number;
   prodWrapUpNotes?: string | null;
+  prodWrapUpAt?: Date | null;
 };
+
+/** True once wrap-up was saved (with or without notes) or legacy rows with notes only. */
+export function jobWrapUpRecorded(job: {
+  prodWrapUpNotes?: string | null;
+  prodWrapUpAt?: Date | null;
+}): boolean {
+  return Boolean((job.prodWrapUpNotes ?? '').trim()) || job.prodWrapUpAt != null;
+}
 
 /** Same rule as the board Paid column — works on last-sync Job row only. */
 export function jobStoredRowLooksPaid(job: JobPaidLike): boolean {
@@ -31,6 +40,7 @@ export function jobNeedsWrapUpReminder(
   liveInvoice: Pick<InvoiceSnapshot, 'status' | 'totalAmtCents' | 'amountPaidCents'> | null,
 ): boolean {
   if (ctx.archivedAt) return false;
+  if (ctx.prodWrapUpAt != null) return false;
   if ((ctx.prodWrapUpNotes ?? '').trim()) return false;
   if (liveInvoice && invoiceSnapshotEffectivelyPaid(liveInvoice)) return true;
   return jobStoredRowLooksPaid(ctx);

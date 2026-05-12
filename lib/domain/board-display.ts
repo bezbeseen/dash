@@ -1,4 +1,5 @@
-import { BoardStatus } from '@prisma/client';
+import { BoardStatus, EstimateStatus, type Job } from '@prisma/client';
+import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
 
 /** Dashboard merges some lanes; DB still uses separate BoardStatus values. */
 export type DashboardColumnKey = BoardStatus | 'READY_INVOICED';
@@ -43,4 +44,29 @@ export function boardStatusDisplayLabel(status: BoardStatus): string {
     default:
       return status.replaceAll('_', ' ');
   }
+}
+
+/**
+ * When a ticket is still Lead (pre-quote) but already has a QuickBooks estimate link, explain why it is not on the
+ * main board **Quoted** column — we only move there when QuickBooks marks the estimate as {@link EstimateStatus.SENT}
+ * (see `deriveBoardStatus`).
+ */
+export function leadTicketQuotedColumnHint(
+  job: Pick<Job, 'boardStatus' | 'estimateStatus' | 'quickbooksEstimateId'>,
+): string | null {
+  if (job.boardStatus !== BoardStatus.REQUESTED) return null;
+  const estId = job.quickbooksEstimateId;
+  if (!estId || isSyntheticQuickBooksId(estId)) return null;
+  if (job.estimateStatus === EstimateStatus.SENT) return null;
+
+  if (job.estimateStatus === EstimateStatus.DRAFT) {
+    return 'Estimate is still a draft in QuickBooks. After you send it there, sync — it will move to Quoted on the main Tickets board.';
+  }
+  if (job.estimateStatus === EstimateStatus.REJECTED) {
+    return 'QuickBooks shows this estimate as rejected.';
+  }
+  if (job.estimateStatus === EstimateStatus.ACCEPTED) {
+    return null;
+  }
+  return 'QuickBooks has not marked this estimate as sent yet (or status is unknown). Sent estimates appear under Quoted on the main board after sync.';
 }

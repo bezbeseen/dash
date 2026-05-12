@@ -6,7 +6,7 @@ import { postActionRedirect } from '@/lib/http/post-action-redirect';
 import { wantsJsonResponse } from '@/lib/http/wants-json-response';
 
 const doneJsonSchema = z.object({
-  prodWrapUpNotes: z.string().min(1, 'Describe what happened.').max(12000).optional(),
+  prodWrapUpNotes: z.string().max(12000).optional(),
 });
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
