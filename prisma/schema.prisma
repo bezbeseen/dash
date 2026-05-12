@@ -116,6 +116,8 @@ model Job {
   boardStatus          BoardStatus       @default(REQUESTED)
   archivedAt           DateTime?
   archiveReason        ArchiveReason?
+  /// Set when the post–mark-done review-request email was accepted by Resend (dedupe).
+  reviewRequestEmailSentAt DateTime?
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
   activityLogs         ActivityLog[]

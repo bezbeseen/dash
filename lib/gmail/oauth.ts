@@ -2,6 +2,8 @@ import { google } from 'googleapis';
 import { requireGoogleOAuthClient } from '@/lib/gmail/config';
 
 const GMAIL_READONLY = 'https://www.googleapis.com/auth/gmail.readonly';
+/** Send email as the connected account (e.g. post–mark-done review asks). Reconnect Gmail in Settings after this ships. */
+const GMAIL_SEND = 'https://www.googleapis.com/auth/gmail.send';
 /** Move job folders under shared-drive parents configured in env (Reconnect Gmail after enabling). */
 const DRIVE_FILE_MANAGEMENT = 'https://www.googleapis.com/auth/drive';
 
@@ -11,7 +13,7 @@ export function buildGmailAuthorizationUrl(state: string, redirectUri: string): 
   return oauth2.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: [GMAIL_READONLY, DRIVE_FILE_MANAGEMENT],
+    scope: [GMAIL_READONLY, GMAIL_SEND, DRIVE_FILE_MANAGEMENT],
     state,
     include_granted_scopes: true,
   });

@@ -60,3 +60,20 @@ export async function getGmailOAuth2ClientForApi() {
   }
   return buildClientForConnectionRow(conn);
 }
+
+/** OAuth client for the mailbox that sends automated mail (e.g. `contact@getbeseen.com`). */
+export async function getGmailOAuth2ClientForSendMailbox(sendAsEmail: string) {
+  const e = sendAsEmail.trim().toLowerCase();
+  if (!e) {
+    throw new Error('Send-as email is empty. Set REVIEW_REQUEST_SEND_AS_EMAIL or connect contact@ in Settings.');
+  }
+  const conn = await prisma.gmailConnection.findFirst({
+    where: { googleEmail: { equals: e, mode: 'insensitive' } },
+  });
+  if (!conn) {
+    throw new Error(
+      `No Gmail connection for ${sendAsEmail.trim()}. Connect that mailbox under Settings (same Google OAuth client).`,
+    );
+  }
+  return buildClientForConnectionRow(conn);
+}

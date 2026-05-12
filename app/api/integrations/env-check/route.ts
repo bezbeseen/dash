@@ -4,6 +4,11 @@ import { getQuickBooksEnvironment, QUICKBOOKS_OAUTH_CALLBACK_PATH } from '@/lib/
 import { quickBooksOAuthCredentialsConfigured } from '@/lib/quickbooks/oauth';
 import { GMAIL_OAUTH_CALLBACK_PATH } from '@/lib/gmail/config';
 import { GBP_OAUTH_CALLBACK_PATH } from '@/lib/google-business/config';
+import {
+  getReviewRequestSendAsEmail,
+  reviewRequestEmailFeatureEnabled,
+  reviewRequestGmailMailboxConnected,
+} from '@/lib/email/review-request-after-done';
 
 /**
  * Safe config snapshot (no secrets). For debugging OAuth on production.
@@ -149,6 +154,13 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  let reviewGmailReady = false;
+  try {
+    reviewGmailReady = await reviewRequestGmailMailboxConnected();
+  } catch {
+    reviewGmailReady = false;
+  }
+
   return NextResponse.json({
     requestHost,
     database: {
@@ -209,6 +221,15 @@ export async function GET(req: NextRequest) {
     },
     yelpFusion: {
       hasApiKey: Boolean(process.env.YELP_API_KEY?.trim()),
+    },
+    reviewRequestEmail: {
+      featureEnabled: reviewRequestEmailFeatureEnabled(),
+      sendAsEmail: getReviewRequestSendAsEmail(),
+      gmailMailboxConnected: reviewGmailReady,
+      configured: reviewRequestEmailFeatureEnabled() && reviewGmailReady,
+      hasReviewUrl: Boolean(process.env.REVIEW_REQUEST_REVIEW_URL?.trim()),
+      gmailSendScope:
+        'OAuth must include https://www.googleapis.com/auth/gmail.send — reconnect the send mailbox in Settings after upgrading Dash.',
     },
     hints,
   });

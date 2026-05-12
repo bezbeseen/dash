@@ -23,6 +23,7 @@ import {
   slackNotifyProductionChange,
 } from '@/lib/slack/notify';
 import { scheduleSyncJobDriveFolder } from '@/lib/drive/sync-job-folder';
+import { sendReviewRequestEmailAfterJobDone } from '@/lib/email/review-request-after-done';
 
 function mapEstimateStatus(value: EstimateSnapshot['status']): EstimateStatus {
   switch (value) {
@@ -276,6 +277,14 @@ export async function archiveJob(jobId: string, reason: ArchiveReason, message: 
   const label = reason === ArchiveReason.DONE ? 'Done' : 'Lost';
   if (slackArchiveNotificationsEnabled()) {
     await slackNotifyArchived({ label, job: current, jobId });
+  }
+
+  if (reason === ArchiveReason.DONE) {
+    try {
+      await sendReviewRequestEmailAfterJobDone(current);
+    } catch (err) {
+      console.error('[review-request-email]', err instanceof Error ? err.message : String(err));
+    }
   }
 
   scheduleSyncJobDriveFolder(jobId);
