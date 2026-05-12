@@ -180,7 +180,7 @@ function buildBodies(params: {
       <tr>
         <td style="padding:26px 28px;background:linear-gradient(125deg,#0f172a 0%,#1e3a5f 55%,#1e40af 100%);">
           <div style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.03em;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">Be Seen</div>
-          <div style="font-size:13px;color:#93c5fd;margin-top:6px;font-family:system-ui,sans-serif;">Signs &amp; visual branding · Pacific Northwest</div>
+          <div style="font-size:13px;color:#93c5fd;margin-top:6px;font-family:system-ui,sans-serif;">Signs &amp; visual branding</div>
         </td>
       </tr>
       <tr>
