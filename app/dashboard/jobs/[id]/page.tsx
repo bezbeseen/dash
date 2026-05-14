@@ -38,6 +38,10 @@ import { resolveRealmIdForJob } from '@/lib/quickbooks/realm';
 import { GMAIL_UI_MESSAGE_CAP } from '@/lib/gmail/ui-limits';
 import { fmtDetailDate } from '@/lib/ticket/format';
 import Link from 'next/link';
+import {
+  reviewRequestEmailFeatureEnabled,
+  reviewRequestGmailMailboxConnected,
+} from '@/lib/email/review-request-after-done';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -106,6 +110,9 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   ]);
 
   if (!job) notFound();
+
+  const reviewEmailFeatureOn = reviewRequestEmailFeatureEnabled();
+  const reviewEmailMailboxReady = reviewEmailFeatureOn ? await reviewRequestGmailMailboxConnected() : false;
 
   const gmailMessageTotalCount = await prisma.gmailSyncedMessage.count({ where: { jobId: id } });
   const gmailMessagesChronological = [...job.gmailMessages].reverse();
@@ -417,6 +424,9 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             needsWrapUpReminder={needsWrapUpReminder}
             wrapUpRecorded={wrapUpRecorded}
             suppressProductionShortcuts={suppressInboundWorkflow}
+            reviewEmailFeatureEnabled={reviewEmailFeatureOn}
+            reviewEmailMailboxReady={reviewEmailMailboxReady}
+            reviewEmailSentAtIso={job.reviewRequestEmailSentAt?.toISOString() ?? null}
           />
 
           <TicketActivityLogSection sectionId="ticket-activity-log" logs={job.activityLogs} />

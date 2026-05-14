@@ -1,5 +1,7 @@
 import type { Job } from '@prisma/client';
 import { EventSource } from '@prisma/client';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { prisma } from '@/lib/db/prisma';
 import { fetchInvoiceById } from '@/lib/quickbooks/client';
 import { jobDisplayTitle } from '@/lib/domain/job-display';
@@ -37,6 +39,73 @@ function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/** Only http(s) URLs are allowed in href/src after substitution. */
+function safeHttpUrl(u: string): string {
+  const t = u.trim();
+  if (!t) return '';
+  try {
+    const parsed = new URL(t);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    return parsed.href;
+  } catch {
+    return '';
+  }
+}
+
+function escapeHtmlAttr(s: string): string {
+  return escapeHtml(s);
+}
+
+const DEFAULT_REVIEW_LOGO_URL = 'https://getbeseen.com/assets/images/logo/BeSeen_1.png';
+const DEFAULT_REVIEW_BG_URL =
+  'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=1400&q=75';
+const DEFAULT_YELP_REVIEW_URL = 'https://www.yelp.com/biz/be-seen-print-sign-and-design-santa-clara';
+
+let cachedReviewEmailHtmlTemplate: string | null = null;
+
+function reviewRequestEmailTemplatePaths(): string[] {
+  const custom = process.env.REVIEW_REQUEST_EMAIL_TEMPLATE_PATH?.trim();
+  return [
+    ...(custom ? [custom] : []),
+    path.join(process.cwd(), 'email.html'),
+    path.join(process.cwd(), 'lib/email/templates/review-request.html'),
+  ];
+}
+
+async function loadReviewRequestEmailHtmlTemplate(): Promise<string> {
+  if (cachedReviewEmailHtmlTemplate && process.env.NODE_ENV === 'production') {
+    return cachedReviewEmailHtmlTemplate;
+  }
+  const tried: string[] = [];
+  for (const filePath of reviewRequestEmailTemplatePaths()) {
+    try {
+      const html = await readFile(filePath, 'utf-8');
+      if (process.env.NODE_ENV === 'production') cachedReviewEmailHtmlTemplate = html;
+      return html;
+    } catch (e) {
+      tried.push(`${filePath}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  throw new Error(
+    `[review-request-email] No HTML template found. Tried:\n${tried.join(
+      '\n',
+    )}\nAdd email.html at the project root, lib/email/templates/review-request.html, or set REVIEW_REQUEST_EMAIL_TEMPLATE_PATH.`,
+  );
+}
+
+function applyReviewEmailTemplate(tpl: string, vars: Record<string, string>): string {
+  let out = tpl;
+  const keys = Object.keys(vars).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    out = out.split(`{{${key}}}`).join(vars[key] ?? '');
+  }
+  const leftover = out.match(/\{\{[a-z0-9_]+\}\}/gi);
+  if (leftover?.length) {
+    console.warn('[review-request-email] unreplaced template tokens:', [...new Set(leftover)].slice(0, 12).join(', '));
+  }
+  return out;
 }
 
 async function resolveRealmId(job: Pick<Job, 'quickbooksCompanyId'>): Promise<string | null> {
@@ -115,114 +184,73 @@ function resolveReviewEmailLinks(): {
   };
 }
 
-function buildBodies(params: {
+async function buildBodies(params: {
   customerName: string;
   projectLabel: string;
   reviewUrl: string | null;
   links: ReturnType<typeof resolveReviewEmailLinks>;
-}): {
+  sendAs: string;
+}): Promise<{
   subject: string;
   html: string;
   text: string;
-} {
+}> {
   const { googleReviewUrl, googlePageUrl, yelpPageUrl } = params.links;
-  const who = escapeHtml(params.customerName.trim());
-  const label = escapeHtml(params.projectLabel.trim());
-  const subject = `Thanks, ${params.customerName.trim()} — quick favor?`;
+  const customer = params.customerName.trim();
+  const label = params.projectLabel.trim();
+  const subject = `Thanks, ${customer} — quick favor?`;
 
-  const primaryReview = params.reviewUrl?.trim() || googleReviewUrl;
-  const primaryBlock = primaryReview
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:20px 0 8px 0;">
-  <tr><td align="center">
-    <a href="${primaryReview}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:14px 28px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:700;font-size:16px;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">Leave a Google review</a>
-  </td></tr>
-  <tr><td align="center" style="padding-top:10px;font-size:12px;color:#64748b;font-family:system-ui,sans-serif;">Opens in your browser — thank you for taking a moment.</td></tr>
-</table>`
-    : `<p style="margin:18px 0 8px 0;font-size:15px;color:#334155;font-family:system-ui,sans-serif;line-height:1.55;">If you are happy with our work, we would love a quick review on <strong>Google</strong> or <strong>Yelp</strong> — it helps other businesses find us.</p>`;
+  const primaryReview =
+    params.reviewUrl?.trim() || googleReviewUrl || googlePageUrl || (process.env.NEXT_PUBLIC_APP_URL ?? '').trim();
+  const googleCtaUrl = safeHttpUrl(primaryReview) || 'https://getbeseen.com';
+  const reviewLink = escapeHtmlAttr(googleCtaUrl);
+  const yelpLink = escapeHtmlAttr(safeHttpUrl(yelpPageUrl ?? '') || safeHttpUrl(DEFAULT_YELP_REVIEW_URL));
 
-  const secondaryRow =
-    googlePageUrl || yelpPageUrl
-      ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:24px 0 4px 0;">
-  <tr>
-    <td style="font-size:13px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;font-family:system-ui,sans-serif;padding-bottom:12px;">Find us online</td>
-  </tr>
-  <tr>
-    <td>
-      <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-        <tr>
-          ${
-            googlePageUrl
-              ? `<td style="padding:6px 8px 6px 0;vertical-align:top;" width="50%">
-            <a href="${googlePageUrl}" target="_blank" rel="noopener noreferrer" style="display:block;text-align:center;padding:12px 14px;border:2px solid #e2e8f0;border-radius:10px;color:#0f172a;text-decoration:none;font-weight:600;font-size:14px;font-family:system-ui,sans-serif;background:#f8fafc;">Google Business</a>
-          </td>`
-              : '<td width="50%"></td>'
-          }
-          ${
-            yelpPageUrl
-              ? `<td style="padding:6px 0 6px 8px;vertical-align:top;" width="50%">
-            <a href="${yelpPageUrl}" target="_blank" rel="noopener noreferrer" style="display:block;text-align:center;padding:12px 14px;border:2px solid #ffcca8;border-radius:10px;color:#7c2d12;text-decoration:none;font-weight:600;font-size:14px;font-family:system-ui,sans-serif;background:#fff7ed;">Yelp</a>
-          </td>`
-              : '<td width="50%"></td>'
-          }
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`
-      : '';
+  const companyName = (process.env.REVIEW_REQUEST_COMPANY_NAME ?? 'Be Seen').trim();
+  const logoUrl =
+    safeHttpUrl((process.env.REVIEW_REQUEST_EMAIL_LOGO_URL ?? '').trim()) ||
+    safeHttpUrl(DEFAULT_REVIEW_LOGO_URL);
+  const bgUrl =
+    safeHttpUrl((process.env.REVIEW_REQUEST_EMAIL_BACKGROUND_URL ?? '').trim()) ||
+    safeHttpUrl(DEFAULT_REVIEW_BG_URL);
 
-  const html = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
-<body style="margin:0;padding:0;background:#e8edf3;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#e8edf3;padding:28px 12px;">
-  <tr><td align="center">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 30px rgba(15,23,42,0.1);">
-      <tr>
-        <td style="padding:26px 28px;background:linear-gradient(125deg,#0f172a 0%,#1e3a5f 55%,#1e40af 100%);">
-          <div style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.03em;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">Be Seen</div>
-          <div style="font-size:13px;color:#93c5fd;margin-top:6px;font-family:system-ui,sans-serif;">Signs &amp; visual branding</div>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:32px 28px 28px 28px;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;line-height:1.6;">
-          <p style="margin:0 0 14px 0;font-size:17px;">Hi ${who},</p>
-          <p style="margin:0 0 18px 0;font-size:15px;color:#334155;">We have wrapped up <strong style="color:#0f172a;">${label}</strong>. Thank you for choosing us — we hope everything exceeded expectations.</p>
-          <p style="margin:0 0 6px 0;font-size:15px;color:#334155;">If you have a moment, would you share a quick review? It makes a real difference for a small shop like ours.</p>
-          ${primaryBlock}
-          ${secondaryRow}
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px;padding-top:22px;border-top:1px solid #e2e8f0;">
-            <tr>
-              <td style="font-size:14px;color:#475569;">With gratitude,<br/><strong style="color:#0f172a;">The Be Seen team</strong></td>
-            </tr>
-          </table>
-          <p style="margin:20px 0 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">Questions? Reply to this email or write to <a href="mailto:${escapeHtml(getReviewRequestSendAsEmail())}" style="color:#2563eb;text-decoration:none;">${escapeHtml(getReviewRequestSendAsEmail())}</a>.</p>
-        </td>
-      </tr>
-    </table>
-  </td></tr>
-</table>
-</body></html>`;
+  const unsubHref = `mailto:${params.sendAs}?subject=${encodeURIComponent('Unsubscribe from review request emails')}`;
+  const unsubLink = escapeHtmlAttr(unsubHref);
 
-  const sendAs = getReviewRequestSendAsEmail();
+  const tpl = await loadReviewRequestEmailHtmlTemplate();
+  const html = applyReviewEmailTemplate(tpl, {
+    customer_name: escapeHtml(customer),
+    company_name: escapeHtml(companyName),
+    company_logo: escapeHtmlAttr(logoUrl),
+    background_image: escapeHtmlAttr(bgUrl),
+    review_link: reviewLink,
+    yelp_review_link: yelpLink,
+    unsubscribe_link: unsubLink,
+  });
+
+  const sendAs = params.sendAs;
   const textLines: string[] = [
-    `Hi ${params.customerName.trim()},`,
+    `Hi ${customer},`,
     '',
-    `We have wrapped up ${params.projectLabel.trim()}. Thank you for choosing Be Seen.`,
+    `We have wrapped up ${label}. Thank you for choosing ${companyName}.`,
     '',
     'If you have a moment, we would love a quick review:',
   ];
-  if (primaryReview) textLines.push(`- Google review: ${primaryReview}`);
-  if (googlePageUrl) textLines.push(`- Google Business: ${googlePageUrl}`);
+  const plainGoogle = params.reviewUrl?.trim() || googleReviewUrl;
+  if (plainGoogle) textLines.push(`- Google review: ${plainGoogle}`);
+  if (googlePageUrl && googlePageUrl !== plainGoogle) textLines.push(`- Google Business: ${googlePageUrl}`);
   if (yelpPageUrl) textLines.push(`- Yelp: ${yelpPageUrl}`);
-  if (!primaryReview && !googlePageUrl && !yelpPageUrl) {
+  if (!plainGoogle && !googlePageUrl && !yelpPageUrl) {
     textLines.push('- Thank you — we appreciate your business.');
   }
   textLines.push(
     '',
     'Thank you again,',
-    'Be Seen',
+    companyName,
     '',
     `Questions? ${sendAs}`,
+    '',
+    `To stop review reminder emails, reply or email: ${sendAs} with subject "Unsubscribe".`,
   );
 
   return { subject, html, text: textLines.join('\n') };
@@ -239,10 +267,27 @@ function buildBodies(params: {
  * - `REVIEW_REQUEST_SEND_AS_EMAIL` — optional; default `contact@beseensignshop.com` (must match a row in Settings → Gmail).
  * - `REVIEW_REQUEST_REVIEW_URL` — optional direct **Google review** link (primary blue button).
  * - Same **NEXT_PUBLIC_** URLs as the app sidebar add **Google Business** + **Yelp** outline buttons (`…INSIGHTS_URL` preferred when set).
+ * - `REVIEW_REQUEST_EMAIL_TEMPLATE_PATH` — optional absolute path to the HTML template (otherwise `email.html` at repo root, then `lib/email/templates/review-request.html`).
+ * - `REVIEW_REQUEST_EMAIL_LOGO_URL` — optional logo image URL for `{{company_logo}}` (default: hosted Be Seen logo).
+ * - `REVIEW_REQUEST_EMAIL_BACKGROUND_URL` — optional hero background image URL (default: neutral interior stock image).
+ * - `REVIEW_REQUEST_COMPANY_NAME` — optional display name for `{{company_name}}` (default: `Be Seen`).
  */
-export async function sendReviewRequestEmailAfterJobDone(job: Job): Promise<void> {
-  if (!reviewRequestEmailFeatureEnabled()) return;
-  if (job.reviewRequestEmailSentAt != null) return;
+type ReviewEmailSendOnceResult =
+  | { kind: 'sent'; to: string }
+  | { kind: 'skipped'; reason: string; logToActivity: boolean }
+  | { kind: 'failed'; reason: string };
+
+async function sendReviewRequestEmailOnce(job: Job, mode: 'auto' | 'manual'): Promise<ReviewEmailSendOnceResult> {
+  if (!reviewRequestEmailFeatureEnabled()) {
+    return {
+      kind: 'skipped',
+      reason: 'Review request emails are disabled (REVIEW_REQUEST_EMAIL_ENABLED).',
+      logToActivity: false,
+    };
+  }
+  if (mode === 'auto' && job.reviewRequestEmailSentAt != null) {
+    return { kind: 'skipped', reason: 'already_sent', logToActivity: false };
+  }
 
   const sendAs = getReviewRequestSendAsEmail();
   let oauth2;
@@ -250,32 +295,24 @@ export async function sendReviewRequestEmailAfterJobDone(job: Job): Promise<void
     oauth2 = await getGmailOAuth2ClientForSendMailbox(sendAs);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.warn('[review-request-email] skipped (mailbox):', msg);
-    await logReviewEmailActivity(
-      job.id,
-      'review_request_email.skipped',
-      `Review email not sent: ${msg}`,
-    );
-    return;
+    return { kind: 'skipped', reason: `Review email not sent: ${msg}`, logToActivity: true };
   }
 
   const { to, skipReason } = await resolveBillToEmail(job);
   if (!to) {
-    const line = skipReason ?? 'No recipient.';
-    console.warn('[review-request-email] skipped (recipient):', line, { jobId: job.id });
-    await logReviewEmailActivity(job.id, 'review_request_email.skipped', line);
-    return;
+    return { kind: 'skipped', reason: skipReason ?? 'No recipient.', logToActivity: true };
   }
 
   const reviewUrl = (process.env.REVIEW_REQUEST_REVIEW_URL ?? '').trim() || null;
   const projectLabel = jobDisplayTitle(job);
   const links = resolveReviewEmailLinks();
 
-  const { subject, html, text } = buildBodies({
+  const { subject, html, text } = await buildBodies({
     customerName: job.customerName,
     projectLabel,
     reviewUrl,
     links,
+    sendAs,
   });
 
   const fromHeader = `Be Seen <${sendAs}>`;
@@ -291,13 +328,7 @@ export async function sendReviewRequestEmailAfterJobDone(job: Job): Promise<void
     await gmailSendRfc822(oauth2, rfc822);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error('[review-request-email] Gmail send failed:', msg);
-    await logReviewEmailActivity(
-      job.id,
-      'review_request_email.failed',
-      `Gmail API did not send: ${msg.slice(0, 2000)}`,
-    );
-    return;
+    return { kind: 'failed', reason: `Gmail API did not send: ${msg.slice(0, 2000)}` };
   }
 
   await prisma.job.update({
@@ -305,9 +336,44 @@ export async function sendReviewRequestEmailAfterJobDone(job: Job): Promise<void
     data: { reviewRequestEmailSentAt: new Date() },
   });
 
-  await logReviewEmailActivity(
-    job.id,
-    'review_request_email.sent',
-    `Review request sent from ${sendAs} to invoice Bill email: ${to}`,
-  );
+  const eventName = mode === 'manual' ? 'review_request_email.sent_manual' : 'review_request_email.sent';
+  const message =
+    mode === 'manual'
+      ? `Manual review request sent from ${sendAs} to invoice Bill email: ${to}`
+      : `Review request sent from ${sendAs} to invoice Bill email: ${to}`;
+  await logReviewEmailActivity(job.id, eventName, message);
+
+  return { kind: 'sent', to };
+}
+
+export async function sendReviewRequestEmailAfterJobDone(job: Job): Promise<void> {
+  const r = await sendReviewRequestEmailOnce(job, 'auto');
+  if (r.kind === 'sent') return;
+  if (r.kind === 'failed') {
+    console.error('[review-request-email] Gmail send failed:', r.reason);
+    await logReviewEmailActivity(job.id, 'review_request_email.failed', r.reason);
+    return;
+  }
+  if (r.logToActivity) {
+    console.warn('[review-request-email] skipped:', r.reason, { jobId: job.id });
+    await logReviewEmailActivity(job.id, 'review_request_email.skipped', r.reason);
+  }
+}
+
+export type SendReviewRequestEmailManualResult =
+  | { ok: true; to: string }
+  | { ok: false; error: string };
+
+/** Send the review-request email on demand (ticket detail). Ignores `reviewRequestEmailSentAt` so you can resend. */
+export async function sendReviewRequestEmailManual(job: Job): Promise<SendReviewRequestEmailManualResult> {
+  const r = await sendReviewRequestEmailOnce(job, 'manual');
+  if (r.kind === 'sent') return { ok: true, to: r.to };
+  if (r.kind === 'failed') {
+    await logReviewEmailActivity(job.id, 'review_request_email.failed', r.reason);
+    return { ok: false, error: r.reason };
+  }
+  if (r.logToActivity) {
+    await logReviewEmailActivity(job.id, 'review_request_email.skipped', r.reason);
+  }
+  return { ok: false, error: r.reason };
 }
