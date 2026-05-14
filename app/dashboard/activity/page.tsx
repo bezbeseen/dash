@@ -1,13 +1,27 @@
 import Link from 'next/link';
 import { ActivityFeed } from '@/components/activity-feed';
-import { loadRecentActions } from '@/lib/domain/dashboard-summary';
+import {
+  loadRecentActions,
+  REVIEW_REQUEST_EMAIL_ACTIVITY_PREFIX,
+} from '@/lib/domain/dashboard-summary';
 
 export const dynamic = 'force-dynamic';
 
 const ACTIVITY_PAGE_LIMIT = 100;
 
-export default async function ActivityPage() {
-  const actions = await loadRecentActions(ACTIVITY_PAGE_LIMIT);
+type ActivityPageProps = {
+  searchParams: Promise<{ kind?: string | string[] }>;
+};
+
+export default async function ActivityPage({ searchParams }: ActivityPageProps) {
+  const q = await searchParams;
+  const kindRaw = q.kind;
+  const kind = Array.isArray(kindRaw) ? kindRaw[0] : kindRaw;
+  const reviewEmailOnly = kind === 'review_email';
+  const actions = await loadRecentActions(
+    ACTIVITY_PAGE_LIMIT,
+    reviewEmailOnly ? { eventNamePrefix: REVIEW_REQUEST_EMAIL_ACTIVITY_PREFIX } : undefined,
+  );
 
   return (
     <div className="board-page">
@@ -15,8 +29,17 @@ export default async function ActivityPage() {
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Activity</h1>
           <p className="board-topbar-sub">
-            Latest events from board actions, QuickBooks sync, and Gmail on tickets. Showing up to{' '}
-            {ACTIVITY_PAGE_LIMIT} entries.
+            {reviewEmailOnly ? (
+              <>
+                Review request email events (auto send after Done, manual resend, skips, failures). Showing up to{' '}
+                {ACTIVITY_PAGE_LIMIT} entries.
+              </>
+            ) : (
+              <>
+                Latest events from board actions, QuickBooks sync, Gmail, and review request emails. Showing up to{' '}
+                {ACTIVITY_PAGE_LIMIT} entries.
+              </>
+            )}
           </p>
         </div>
         <div className="board-topbar-actions">
@@ -41,11 +64,18 @@ export default async function ActivityPage() {
               </i>
               Recent activity
             </h2>
+            {reviewEmailOnly ? (
+              <p className="small mb-3">
+                <Link href="/dashboard/activity" className="text-decoration-underline">
+                  Show all activity
+                </Link>
+              </p>
+            ) : null}
             <p className="text-body-secondary small mb-3">
-              Logged automatically when you use production buttons on a ticket, sync from QuickBooks, or connect
-              Gmail. For QuickBooks estimate/invoice sync, the <strong>QuickBooks</strong> date is the transaction
-              date from QBO; <strong>Recorded in Dash</strong> is when this app wrote the log. Open a row to jump to
-              that ticket.
+              Logged automatically when you use production buttons on a ticket, sync from QuickBooks, connect Gmail, or
+              send review request emails. For QuickBooks estimate/invoice sync, the <strong>QuickBooks</strong> date is
+              the transaction date from QBO; <strong>Recorded in Dash</strong> is when this app wrote the log. Open a row
+              to jump to that ticket.
             </p>
             <ActivityFeed actions={actions} />
           </div>

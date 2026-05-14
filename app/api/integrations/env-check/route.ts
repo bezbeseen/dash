@@ -6,6 +6,7 @@ import { GMAIL_OAUTH_CALLBACK_PATH } from '@/lib/gmail/config';
 import { GBP_OAUTH_CALLBACK_PATH } from '@/lib/google-business/config';
 import {
   getReviewRequestSendAsEmail,
+  reviewRequestEmailAttachInvoicePdfEnabled,
   reviewRequestEmailFeatureEnabled,
   reviewRequestGmailMailboxConnected,
 } from '@/lib/email/review-request-after-done';
@@ -228,6 +229,7 @@ export async function GET(req: NextRequest) {
       gmailMailboxConnected: reviewGmailReady,
       configured: reviewRequestEmailFeatureEnabled() && reviewGmailReady,
       hasReviewUrl: Boolean(process.env.REVIEW_REQUEST_REVIEW_URL?.trim()),
+      attachInvoicePdfEnabled: reviewRequestEmailAttachInvoicePdfEnabled(),
       gmailSendScope:
         'OAuth must include https://www.googleapis.com/auth/gmail.send — reconnect the send mailbox in Settings after upgrading Dash.',
     },

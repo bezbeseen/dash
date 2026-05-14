@@ -38,7 +38,7 @@ export function DashboardOverview({
 
   return (
     <div className="d-flex flex-column gap-4">
-      <div className="row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-5 g-3">
+      <div className="row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-6 g-3">
         <div className="col">
           <Link
             href="/dashboard/tickets"
@@ -112,6 +112,38 @@ export function DashboardOverview({
             </div>
             <p className="fs-3 fw-bold mb-0">{s.driveFoldersLinkedCount}</p>
             <p className="meta small mb-0 mt-1">Active tickets with a linked folder</p>
+          </Link>
+        </div>
+        <div className="col">
+          <Link
+            href="/dashboard/activity?kind=review_email"
+            className="card border rounded-3 p-3 h-100 bg-body text-body text-decoration-none shadow-sm"
+          >
+            <div className="d-flex align-items-center gap-2 mb-2 text-body-secondary small text-uppercase fw-semibold">
+              <i className="material-icons-outlined" style={{ fontSize: 18 }}>
+                rate_review
+              </i>
+              Review emails
+            </div>
+            <p className="fs-3 fw-bold mb-0">
+              {s.reviewRequestEmail.sentAuto + s.reviewRequestEmail.sentManual}
+            </p>
+            <p className="meta small mb-0 mt-1">
+              Sent in last {s.reviewRequestEmail.windowDays} days ({s.reviewRequestEmail.sentAuto} auto ·{' '}
+              {s.reviewRequestEmail.sentManual} manual)
+              {(s.reviewRequestEmail.skipped > 0 || s.reviewRequestEmail.failed > 0) && (
+                <>
+                  <br />
+                  <span className="text-body-secondary">
+                    {s.reviewRequestEmail.skipped} skipped · {s.reviewRequestEmail.failed} failed
+                  </span>
+                </>
+              )}
+            </p>
+            <p className="meta small mb-0 mt-2 text-body-secondary">
+              Last log:{' '}
+              {s.reviewRequestEmail.lastEventAt ? fmtDetailDate(s.reviewRequestEmail.lastEventAt) : '\u2014'}
+            </p>
           </Link>
         </div>
       </div>

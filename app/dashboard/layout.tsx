@@ -15,7 +15,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <aside className="sidebar-wrapper" aria-label="Workspace navigation">
         <div className="sidebar-header">
           <Link href="/dashboard" className="logo-icon text-decoration-none">
-            <img src="/maxton/logo-icon.png" className="logo-img" width={45} height={45} alt="" />
+            <img
+              src="/maxton/beseen-logo-face.png"
+              className="logo-img"
+              width={45}
+              height={45}
+              alt="Be Seen"
+            />
           </Link>
           <div className="logo-name flex-grow-1">
             <h5 className="mb-0">

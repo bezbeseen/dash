@@ -17,12 +17,22 @@ export type DashboardRecentAction = {
   ticketTitle: string;
 };
 
+export type LoadRecentActionsFilter = {
+  /** Only rows whose `eventName` starts with this string (e.g. `review_request_email`). */
+  eventNamePrefix?: string;
+};
+
 /** Activity log rows for the Activity page (and any other caller). */
-export async function loadRecentActions(limit: number): Promise<DashboardRecentAction[]> {
+export async function loadRecentActions(
+  limit: number,
+  filter?: LoadRecentActionsFilter,
+): Promise<DashboardRecentAction[]> {
   if (limit <= 0) return [];
+  const prefix = filter?.eventNamePrefix?.trim();
   const recentLogRows = await prisma.activityLog.findMany({
     take: limit,
     orderBy: { createdAt: 'desc' },
+    where: prefix ? { eventName: { startsWith: prefix } } : undefined,
     select: {
       id: true,
       createdAt: true,
@@ -73,6 +83,48 @@ export type DashboardTicketTaskStats = {
   overdue: number;
 };
 
+/** Activity log `eventName` prefix for post–mark-Done review request emails (`lib/email/review-request-after-done.ts`). */
+export const REVIEW_REQUEST_EMAIL_ACTIVITY_PREFIX = 'review_request_email';
+
+export type DashboardReviewRequestEmailStats = {
+  /** Rolling lookback for numeric tallies (server clock). */
+  windowDays: number;
+  sentAuto: number;
+  sentManual: number;
+  skipped: number;
+  failed: number;
+  /** Most recent review-email log row of any kind (all time). */
+  lastEventAt: Date | null;
+};
+
+async function loadReviewRequestEmailDashboardStats(since: Date): Promise<DashboardReviewRequestEmailStats> {
+  const [groups, last] = await Promise.all([
+    prisma.activityLog.groupBy({
+      by: ['eventName'],
+      where: {
+        createdAt: { gte: since },
+        eventName: { startsWith: REVIEW_REQUEST_EMAIL_ACTIVITY_PREFIX },
+      },
+      _count: { id: true },
+    }),
+    prisma.activityLog.findFirst({
+      where: { eventName: { startsWith: REVIEW_REQUEST_EMAIL_ACTIVITY_PREFIX } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    }),
+  ]);
+  const counts: Record<string, number> = {};
+  for (const g of groups) counts[g.eventName] = g._count.id;
+  return {
+    windowDays: 30,
+    sentAuto: counts['review_request_email.sent'] ?? 0,
+    sentManual: counts['review_request_email.sent_manual'] ?? 0,
+    skipped: counts['review_request_email.skipped'] ?? 0,
+    failed: counts['review_request_email.failed'] ?? 0,
+    lastEventAt: last?.createdAt ?? null,
+  };
+}
+
 export type DashboardSummary = {
   onBoardCount: number;
   leadCount: number;
@@ -87,6 +139,7 @@ export type DashboardSummary = {
   lastActivityAt: Date | null;
   ticketTasks: DashboardTicketTaskStats;
   topCustomers: DashboardCustomerRollup[];
+  reviewRequestEmail: DashboardReviewRequestEmailStats;
 };
 
 const ticketTaskBaseWhere = {
@@ -96,6 +149,7 @@ const ticketTaskBaseWhere = {
 
 export async function loadDashboardSummary(): Promise<DashboardSummary> {
   const now = new Date();
+  const reviewEmailSince = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const [
     boardGroups,
     leadCount,
@@ -109,6 +163,7 @@ export async function loadDashboardSummary(): Promise<DashboardSummary> {
     ticketTasksOpen,
     ticketTasksDone,
     ticketTasksOverdue,
+    reviewRequestEmail,
   ] = await Promise.all([
     prisma.job.groupBy({
       by: ['boardStatus'],
@@ -158,6 +213,7 @@ export async function loadDashboardSummary(): Promise<DashboardSummary> {
         dueAt: { lt: now },
       },
     }),
+    loadReviewRequestEmailDashboardStats(reviewEmailSince),
   ]);
 
   const topCustomers: DashboardCustomerRollup[] = customerGroups
@@ -195,5 +251,6 @@ export async function loadDashboardSummary(): Promise<DashboardSummary> {
       overdue: ticketTasksOverdue,
     },
     topCustomers,
+    reviewRequestEmail,
   };
 }

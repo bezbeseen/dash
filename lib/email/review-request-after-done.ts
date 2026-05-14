@@ -3,10 +3,11 @@ import { EventSource } from '@prisma/client';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { prisma } from '@/lib/db/prisma';
-import { fetchInvoiceById } from '@/lib/quickbooks/client';
+import { fetchInvoiceById, fetchInvoicePdf } from '@/lib/quickbooks/client';
+import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
 import { jobDisplayTitle } from '@/lib/domain/job-display';
 import { getGmailOAuth2ClientForSendMailbox } from '@/lib/gmail/tokens-db';
-import { buildHtmlRfc822Message, gmailSendRfc822 } from '@/lib/gmail/send-rfc822';
+import { buildHtmlRfc822Message, gmailSendRfc822, type Rfc822Attachment } from '@/lib/gmail/send-rfc822';
 
 /** Default mailbox that must appear in Settings → Gmail (same as typical `contact@` sender). */
 const DEFAULT_SEND_AS = 'contact@beseensignshop.com';
@@ -19,6 +20,16 @@ export function reviewRequestEmailFeatureEnabled(): boolean {
 
 export function getReviewRequestSendAsEmail(): string {
   return (process.env.REVIEW_REQUEST_SEND_AS_EMAIL ?? DEFAULT_SEND_AS).trim().toLowerCase() || DEFAULT_SEND_AS;
+}
+
+/**
+ * When `true`, the review-request email may include the QuickBooks invoice PDF as an attachment
+ * (fetched from QBO; skipped if unavailable or too large). Default **off** — set `on` / `true` / `1` to enable.
+ */
+export function reviewRequestEmailAttachInvoicePdfEnabled(): boolean {
+  const v = (process.env.REVIEW_REQUEST_EMAIL_ATTACH_INVOICE_PDF ?? '').trim().toLowerCase();
+  if (v === '0' || v === 'false' || v === 'no' || v === 'off' || v === '') return false;
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
 }
 
 /** True when the send-as address is connected in Dash (Gmail OAuth). */
@@ -59,9 +70,12 @@ function escapeHtmlAttr(s: string): string {
 }
 
 const DEFAULT_REVIEW_LOGO_URL = 'https://getbeseen.com/assets/images/logo/BeSeen_1.png';
-const DEFAULT_REVIEW_BG_URL =
-  'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=1400&q=75';
-const DEFAULT_YELP_REVIEW_URL = 'https://www.yelp.com/biz/be-seen-print-sign-and-design-santa-clara';
+/** Email hero when `REVIEW_REQUEST_EMAIL_BACKGROUND_URL` is unset (hosted marketing asset). */
+const DEFAULT_REVIEW_BG_URL = 'https://getbeseen.com/assets/images/banner/15195280.png';
+const DEFAULT_YELP_REVIEW_URL =
+  'https://www.yelp.com/writeareview/biz/a5Q-my4x3biuDN9rxPHZpw?return_url=%2Fbiz%2Fa5Q-my4x3biuDN9rxPHZpw&review_origin=biz-details-war-button';
+/** Google review CTA when env / GBP URLs do not supply one (do not use NEXT_PUBLIC_APP_URL here). */
+const DEFAULT_GOOGLE_REVIEW_URL = 'https://g.page/r/CUzKuyPwOqZYEBM/review';
 
 let cachedReviewEmailHtmlTemplate: string | null = null;
 
@@ -115,6 +129,32 @@ async function resolveRealmId(job: Pick<Job, 'quickbooksCompanyId'>): Promise<st
     select: { realmId: true },
   });
   return row?.realmId ?? null;
+}
+
+const MAX_REVIEW_EMAIL_INVOICE_PDF_BYTES = 15 * 1024 * 1024;
+
+async function tryLoadInvoicePdfAttachment(
+  job: Pick<Job, 'id' | 'quickbooksCompanyId' | 'quickbooksInvoiceId'>,
+): Promise<Rfc822Attachment | undefined> {
+  if (!reviewRequestEmailAttachInvoicePdfEnabled()) return undefined;
+  const qid = job.quickbooksInvoiceId?.trim();
+  if (!qid || isSyntheticQuickBooksId(qid)) return undefined;
+  const realmId = await resolveRealmId(job);
+  if (!realmId) return undefined;
+  try {
+    const ab = await fetchInvoicePdf(realmId, qid);
+    const buf = Buffer.from(ab);
+    if (buf.length === 0) return undefined;
+    if (buf.length > MAX_REVIEW_EMAIL_INVOICE_PDF_BYTES) {
+      console.warn('[review-request-email] invoice PDF too large to attach', { jobId: job.id, bytes: buf.length });
+      return undefined;
+    }
+    const safe = qid.replace(/[^\w.-]+/g, '_').slice(0, 160) || 'invoice';
+    return { filename: `invoice-${safe}.pdf`, contentType: 'application/pdf', content: buf };
+  } catch (e) {
+    console.warn('[review-request-email] invoice PDF not attached:', e);
+    return undefined;
+  }
 }
 
 async function resolveBillToEmail(
@@ -190,6 +230,7 @@ async function buildBodies(params: {
   reviewUrl: string | null;
   links: ReturnType<typeof resolveReviewEmailLinks>;
   sendAs: string;
+  invoicePdfAttached: boolean;
 }): Promise<{
   subject: string;
   html: string;
@@ -198,15 +239,16 @@ async function buildBodies(params: {
   const { googleReviewUrl, googlePageUrl, yelpPageUrl } = params.links;
   const customer = params.customerName.trim();
   const label = params.projectLabel.trim();
-  const subject = `Thanks, ${customer} — quick favor?`;
 
   const primaryReview =
-    params.reviewUrl?.trim() || googleReviewUrl || googlePageUrl || (process.env.NEXT_PUBLIC_APP_URL ?? '').trim();
-  const googleCtaUrl = safeHttpUrl(primaryReview) || 'https://getbeseen.com';
+    params.reviewUrl?.trim() || googleReviewUrl || googlePageUrl || DEFAULT_GOOGLE_REVIEW_URL;
+  const googleCtaUrl = safeHttpUrl(primaryReview) || safeHttpUrl(DEFAULT_GOOGLE_REVIEW_URL);
   const reviewLink = escapeHtmlAttr(googleCtaUrl);
   const yelpLink = escapeHtmlAttr(safeHttpUrl(yelpPageUrl ?? '') || safeHttpUrl(DEFAULT_YELP_REVIEW_URL));
 
   const companyName = (process.env.REVIEW_REQUEST_COMPANY_NAME ?? 'Be Seen').trim();
+  const companyTagline = (process.env.REVIEW_REQUEST_COMPANY_TAGLINE ?? 'Print Sign & Design').trim();
+  const subject = `Thank You for Choosing ${companyName}`;
   const logoUrl =
     safeHttpUrl((process.env.REVIEW_REQUEST_EMAIL_LOGO_URL ?? '').trim()) ||
     safeHttpUrl(DEFAULT_REVIEW_LOGO_URL);
@@ -217,36 +259,50 @@ async function buildBodies(params: {
   const unsubHref = `mailto:${params.sendAs}?subject=${encodeURIComponent('Unsubscribe from review request emails')}`;
   const unsubLink = escapeHtmlAttr(unsubHref);
 
+  const invoiceNoteHtml = params.invoicePdfAttached
+    ? '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;text-align:left;color:#333333;margin-top:4px;">Your invoice is attached to this email as a PDF.</div>'
+    : '';
+
   const tpl = await loadReviewRequestEmailHtmlTemplate();
   const html = applyReviewEmailTemplate(tpl, {
     customer_name: escapeHtml(customer),
     company_name: escapeHtml(companyName),
+    company_tagline: escapeHtml(companyTagline),
+    project_label: escapeHtml(label),
     company_logo: escapeHtmlAttr(logoUrl),
     background_image: escapeHtmlAttr(bgUrl),
     review_link: reviewLink,
     yelp_review_link: yelpLink,
     unsubscribe_link: unsubLink,
+    invoice_attachment_note: invoiceNoteHtml,
   });
 
   const sendAs = params.sendAs;
+  const plainGoogle =
+    params.reviewUrl?.trim() || googleReviewUrl || googlePageUrl || DEFAULT_GOOGLE_REVIEW_URL;
   const textLines: string[] = [
+    companyName,
+    companyTagline,
+    '',
     `Hi ${customer},`,
     '',
-    `We have wrapped up ${label}. Thank you for choosing ${companyName}.`,
+    `We've completed ${label}. Thank you for choosing ${companyName} — we truly appreciate your business and hope everything met or exceeded your expectations.`,
     '',
-    'If you have a moment, we would love a quick review:',
+    ...(params.invoicePdfAttached ? ['Your invoice is attached to this email as a PDF.', ''] : []),
+    'If you have a moment, we would be grateful if you could share a quick review. Your feedback makes a meaningful difference for a small business like ours.',
+    '',
+    "If you're happy with our work, we'd love for you to leave us a review on Google or Yelp. It helps other businesses discover our services and gives us the opportunity to continue growing.",
+    '',
+    'Thank you again for your support.',
+    '',
+    'With gratitude,',
+    'The Be Seen Team',
+    '',
   ];
-  const plainGoogle = params.reviewUrl?.trim() || googleReviewUrl;
-  if (plainGoogle) textLines.push(`- Google review: ${plainGoogle}`);
-  if (googlePageUrl && googlePageUrl !== plainGoogle) textLines.push(`- Google Business: ${googlePageUrl}`);
-  if (yelpPageUrl) textLines.push(`- Yelp: ${yelpPageUrl}`);
-  if (!plainGoogle && !googlePageUrl && !yelpPageUrl) {
-    textLines.push('- Thank you — we appreciate your business.');
-  }
+  const plainYelpUrl = safeHttpUrl(yelpPageUrl ?? '') || safeHttpUrl(DEFAULT_YELP_REVIEW_URL);
+  if (plainGoogle) textLines.push(`Google review: ${plainGoogle}`);
+  if (plainYelpUrl) textLines.push(`Yelp: ${plainYelpUrl}`);
   textLines.push(
-    '',
-    'Thank you again,',
-    companyName,
     '',
     `Questions? ${sendAs}`,
     '',
@@ -269,8 +325,10 @@ async function buildBodies(params: {
  * - Same **NEXT_PUBLIC_** URLs as the app sidebar add **Google Business** + **Yelp** outline buttons (`…INSIGHTS_URL` preferred when set).
  * - `REVIEW_REQUEST_EMAIL_TEMPLATE_PATH` — optional absolute path to the HTML template (otherwise `email.html` at repo root, then `lib/email/templates/review-request.html`).
  * - `REVIEW_REQUEST_EMAIL_LOGO_URL` — optional logo image URL for `{{company_logo}}` (default: hosted Be Seen logo).
- * - `REVIEW_REQUEST_EMAIL_BACKGROUND_URL` — optional hero background image URL (default: neutral interior stock image).
+ * - `REVIEW_REQUEST_EMAIL_BACKGROUND_URL` — optional hero background image URL (default: `https://getbeseen.com/assets/images/banner/15195280.png`).
  * - `REVIEW_REQUEST_COMPANY_NAME` — optional display name for `{{company_name}}` (default: `Be Seen`).
+ * - `REVIEW_REQUEST_COMPANY_TAGLINE` — optional subtitle under the name in the HTML (default: `Print Sign & Design`).
+ * - `REVIEW_REQUEST_EMAIL_ATTACH_INVOICE_PDF` — optional; `on` / `true` / `1` attaches the QBO invoice PDF when available (default: off; avoids larger mail and extra QBO calls unless you want it).
  */
 type ReviewEmailSendOnceResult =
   | { kind: 'sent'; to: string }
@@ -285,8 +343,18 @@ async function sendReviewRequestEmailOnce(job: Job, mode: 'auto' | 'manual'): Pr
       logToActivity: false,
     };
   }
-  if (mode === 'auto' && job.reviewRequestEmailSentAt != null) {
-    return { kind: 'skipped', reason: 'already_sent', logToActivity: false };
+
+  /** Auto path must read latest `reviewRequestEmailSentAt` (e.g. manual send before Mark Done). */
+  let workingJob: Job = job;
+  if (mode === 'auto') {
+    const fresh = await prisma.job.findUnique({ where: { id: job.id } });
+    if (!fresh) {
+      return { kind: 'skipped', reason: 'Ticket not found.', logToActivity: false };
+    }
+    if (fresh.reviewRequestEmailSentAt != null) {
+      return { kind: 'skipped', reason: 'already_sent', logToActivity: false };
+    }
+    workingJob = fresh;
   }
 
   const sendAs = getReviewRequestSendAsEmail();
@@ -298,21 +366,25 @@ async function sendReviewRequestEmailOnce(job: Job, mode: 'auto' | 'manual'): Pr
     return { kind: 'skipped', reason: `Review email not sent: ${msg}`, logToActivity: true };
   }
 
-  const { to, skipReason } = await resolveBillToEmail(job);
+  const { to, skipReason } = await resolveBillToEmail(workingJob);
   if (!to) {
     return { kind: 'skipped', reason: skipReason ?? 'No recipient.', logToActivity: true };
   }
 
   const reviewUrl = (process.env.REVIEW_REQUEST_REVIEW_URL ?? '').trim() || null;
-  const projectLabel = jobDisplayTitle(job);
+  const projectLabel = jobDisplayTitle(workingJob);
   const links = resolveReviewEmailLinks();
 
+  const invoiceAttachment = await tryLoadInvoicePdfAttachment(workingJob);
+  const invoicePdfAttached = Boolean(invoiceAttachment);
+
   const { subject, html, text } = await buildBodies({
-    customerName: job.customerName,
+    customerName: workingJob.customerName,
     projectLabel,
     reviewUrl,
     links,
     sendAs,
+    invoicePdfAttached,
   });
 
   const fromHeader = `Be Seen <${sendAs}>`;
@@ -322,6 +394,7 @@ async function sendReviewRequestEmailOnce(job: Job, mode: 'auto' | 'manual'): Pr
     subject,
     html,
     text,
+    attachments: invoiceAttachment ? [invoiceAttachment] : undefined,
   });
 
   try {
@@ -332,20 +405,22 @@ async function sendReviewRequestEmailOnce(job: Job, mode: 'auto' | 'manual'): Pr
   }
 
   await prisma.job.update({
-    where: { id: job.id },
+    where: { id: workingJob.id },
     data: { reviewRequestEmailSentAt: new Date() },
   });
 
   const eventName = mode === 'manual' ? 'review_request_email.sent_manual' : 'review_request_email.sent';
+  const attachNote = invoicePdfAttached ? ' (invoice PDF attached)' : '';
   const message =
     mode === 'manual'
-      ? `Manual review request sent from ${sendAs} to invoice Bill email: ${to}`
-      : `Review request sent from ${sendAs} to invoice Bill email: ${to}`;
-  await logReviewEmailActivity(job.id, eventName, message);
+      ? `Manual review request sent from ${sendAs} to invoice Bill email: ${to}${attachNote}`
+      : `Review request sent from ${sendAs} to invoice Bill email: ${to}${attachNote}`;
+  await logReviewEmailActivity(workingJob.id, eventName, message);
 
   return { kind: 'sent', to };
 }
 
+/** After Mark Done: sends review email unless one was already sent (including manual). Passes stale `Job` from archive is OK — auto path refetches. */
 export async function sendReviewRequestEmailAfterJobDone(job: Job): Promise<void> {
   const r = await sendReviewRequestEmailOnce(job, 'auto');
   if (r.kind === 'sent') return;

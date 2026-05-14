@@ -24,8 +24,8 @@ export const metadata: Metadata = {
   title: 'Dash',
   description: 'QuickBooks-backed production board — estimates, invoices, and shop flow in one view.',
   icons: {
-    icon: [{ url: '/maxton/logo-icon.png', type: 'image/png' }],
-    apple: '/maxton/logo-icon.png',
+    icon: [{ url: '/maxton/beseen-logo-face.png', type: 'image/png' }],
+    apple: '/maxton/beseen-logo-face.png',
   },
 };
 
