@@ -1,14 +1,16 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { Job } from '@prisma/client';
+import { BoardStatus, Job } from '@prisma/client';
 import { JobWorkflowActions } from '@/components/job-workflow-actions';
+import { JobCardDragHandle } from '@/components/ticket-board-dnd';
+import { PrequoteWorkflowActions } from '@/components/prequote-workflow-actions';
+import type { DashboardColumnKey } from '@/lib/domain/board-display';
 import { jobNeedsWrapUpReminder, jobWrapUpRecorded } from '@/lib/domain/production-workflow';
 import { boardStatusDisplayLabel, leadTicketQuotedColumnHint } from '@/lib/domain/board-display';
 import {
   inboundLeadKindPillClassName,
   inboundLeadKindShortLabel,
   inboundLeadKindTitleAttr,
-  jobIsInboundMarketingRequested,
   jobIsLeadFirstTicket,
 } from '@/lib/domain/lead-ticket';
 import {
@@ -30,6 +32,8 @@ type JobCardProps = {
   extraMeta?: string;
   /** When set (e.g. main Tickets board), shows a checkbox for multi-select. Must render inside `TicketBoardMultiSelectProvider`. */
   selectionSlot?: ReactNode;
+  /** When set (main Tickets board), shows a drag handle. Must render inside `TicketBoardDndProvider`. */
+  boardColumn?: DashboardColumnKey;
 };
 
 export function JobCard({
@@ -38,6 +42,7 @@ export function JobCard({
   updatedAfterLastTicketSync = false,
   extraMeta,
   selectionSlot,
+  boardColumn,
 }: JobCardProps) {
   const needsWrapUpReminder = jobNeedsWrapUpReminder(job, null);
   const wrapUpRecorded = jobWrapUpRecorded(job);
@@ -69,7 +74,7 @@ export function JobCard({
   }
 
   const isLeadFirst = jobIsLeadFirstTicket(job);
-  const suppressCardWorkflow = jobIsInboundMarketingRequested(job);
+  const isPrequoteTicket = job.boardStatus === BoardStatus.REQUESTED;
   const hasQbEstimate =
     Boolean(job.quickbooksEstimateId) && !isSyntheticQuickBooksId(job.quickbooksEstimateId);
   const hasQbInvoice =
@@ -203,8 +208,28 @@ export function JobCard({
     </>
   );
 
+  const workflow = isPrequoteTicket ? (
+      <PrequoteWorkflowActions jobId={job.id} archived={job.archivedAt != null} />
+    ) : (
+      <JobWorkflowActions
+        jobId={job.id}
+        archived={job.archivedAt != null}
+        needsWrapUpReminder={needsWrapUpReminder}
+        wrapUpRecorded={wrapUpRecorded}
+      />
+    );
+
   return (
-    <div className={selectionSlot ? 'card job-card-with-select' : 'card'}>
+    <div
+      className={[
+        'card',
+        selectionSlot ? 'job-card-with-select' : '',
+        boardColumn ? 'job-card-draggable' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      {boardColumn ? <JobCardDragHandle jobId={job.id} column={boardColumn} /> : null}
       {selectionSlot ? (
         <div className="job-card-select-row">
           <div className="job-card-select-control">{selectionSlot}</div>
@@ -213,13 +238,7 @@ export function JobCard({
       ) : (
         mainLink
       )}
-      <JobWorkflowActions
-        jobId={job.id}
-        archived={job.archivedAt != null}
-        needsWrapUpReminder={needsWrapUpReminder}
-        wrapUpRecorded={wrapUpRecorded}
-        suppressProductionShortcuts={suppressCardWorkflow}
-      />
+      {workflow}
     </div>
   );
 }

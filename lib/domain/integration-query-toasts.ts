@@ -98,5 +98,8 @@ export function jobErrorFromQuery(q: { job_error?: string }): string | null {
   if (q.job_error === 'restore') {
     return 'Could not restore that ticket - it may already be on the board.';
   }
+  if (q.job_error === 'paid') {
+    return 'Paid is set from QuickBooks — sync after payment instead of dragging there.';
+  }
   return null;
 }

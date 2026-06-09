@@ -23,6 +23,13 @@ const GOOGLE_BUSINESS_INSIGHTS_URL =
 const FACEBOOK_URL = process.env.NEXT_PUBLIC_FACEBOOK_URL || 'https://www.facebook.com/';
 const INSTAGRAM_URL = process.env.NEXT_PUBLIC_INSTAGRAM_URL || 'https://www.instagram.com/';
 
+const VENDOR_LINKS = [
+  { title: 'B2Sign', url: 'https://www.b2sign.com/', icon: 'print' },
+  { title: 'SF Sign Supply', url: 'https://www.sfsignsupply.com/', icon: 'inventory_2' },
+  { title: 'Montroy', url: 'https://www.montroy.com/', icon: 'category' },
+  { title: 'Signs365', url: 'https://www.signs365.com/#home', icon: 'store' },
+] as const;
+
 export function DashboardSidebarNav() {
   const pathname = usePathname() ?? '';
   const dashboardActive = pathname === '/dashboard';
@@ -132,6 +139,18 @@ export function DashboardSidebarNav() {
           <div className="menu-title">GBP metrics</div>
         </Link>
       </li>
+
+      <li className="menu-label">Vendors</li>
+      {VENDOR_LINKS.map((vendor) => (
+        <li key={vendor.url}>
+          <a href={vendor.url} target="_blank" rel="noopener noreferrer">
+            <div className="parent-icon">
+              <i className="material-icons-outlined">{vendor.icon}</i>
+            </div>
+            <div className="menu-title">{vendor.title}</div>
+          </a>
+        </li>
+      ))}
 
       <li className="menu-label">Integrations</li>
       <li>

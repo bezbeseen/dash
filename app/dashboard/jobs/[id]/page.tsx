@@ -20,7 +20,8 @@ import { TicketDetailToc, type TicketTocItem } from '@/components/ticket-detail/
 import { TicketTasksSection } from '@/components/ticket-detail/ticket-tasks-section';
 import { TicketDriveSection } from '@/components/ticket-detail/ticket-drive-section';
 import { boardStatusForTicketHeader } from '@/lib/domain/derive-board-status';
-import { jobIsInboundMarketingRequested, jobIsLeadFirstTicket } from '@/lib/domain/lead-ticket';
+import { BoardStatus } from '@prisma/client';
+import { jobIsLeadFirstTicket } from '@/lib/domain/lead-ticket';
 import { jobNeedsWrapUpReminder, jobWrapUpRecorded } from '@/lib/domain/production-workflow';
 import { jobErrorFromQuery, syncToastFromQuery } from '@/lib/domain/integration-query-toasts';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
@@ -130,7 +131,6 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
 
   const headerBoardStatus = boardStatusForTicketHeader(job, qboInvoice);
   const isLeadFirst = jobIsLeadFirstTicket(job);
-  const suppressInboundWorkflow = jobIsInboundMarketingRequested(job);
   const hasLeadDetailsBody = Boolean(job.projectDescription?.trim());
   const needsWrapUpReminder = jobNeedsWrapUpReminder(job, qboInvoice);
   const wrapUpRecorded = jobWrapUpRecorded(job);
@@ -222,9 +222,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
     { id: 'ticket-gmail', label: 'Gmail' },
     { id: 'ticket-seed-email', label: 'Seed email' },
   );
-  if (!suppressInboundWorkflow) {
-    tocItems.push({ id: 'ticket-actions', label: 'Actions' });
-  }
+  tocItems.push({ id: 'ticket-actions', label: 'Actions' });
   tocItems.push(
     { id: 'ticket-activity-log', label: 'Activity' },
     { id: 'ticket-meta', label: 'Job meta' },
@@ -423,7 +421,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             archived={job.archivedAt != null}
             needsWrapUpReminder={needsWrapUpReminder}
             wrapUpRecorded={wrapUpRecorded}
-            suppressProductionShortcuts={suppressInboundWorkflow}
+            suppressProductionShortcuts={job.boardStatus === BoardStatus.REQUESTED}
             reviewEmailFeatureEnabled={reviewEmailFeatureOn}
             reviewEmailMailboxReady={reviewEmailMailboxReady}
             reviewEmailSentAtIso={job.reviewRequestEmailSentAt?.toISOString() ?? null}

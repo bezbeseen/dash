@@ -1,4 +1,5 @@
 import { JobWorkflowActions } from '@/components/job-workflow-actions';
+import { PrequoteWorkflowActions } from '@/components/prequote-workflow-actions';
 import { TicketReviewRequestEmailButton } from '@/components/ticket-review-request-email-button';
 
 type Props = {
@@ -24,19 +25,19 @@ export function TicketActionsSection({
   reviewEmailMailboxReady = false,
   reviewEmailSentAtIso = null,
 }: Props) {
-  if (suppressProductionShortcuts) {
-    return null;
-  }
-
   return (
     <section id={sectionId} className="ticket-detail-panel">
       <h2 className="detail-section-title">Actions</h2>
-      <JobWorkflowActions
-        jobId={jobId}
-        archived={archived}
-        needsWrapUpReminder={needsWrapUpReminder}
-        wrapUpRecorded={wrapUpRecorded}
-      />
+      {suppressProductionShortcuts ? (
+        <PrequoteWorkflowActions jobId={jobId} archived={archived} />
+      ) : (
+        <JobWorkflowActions
+          jobId={jobId}
+          archived={archived}
+          needsWrapUpReminder={needsWrapUpReminder}
+          wrapUpRecorded={wrapUpRecorded}
+        />
+      )}
       {!archived ? (
         <TicketReviewRequestEmailButton
           jobId={jobId}

@@ -861,6 +861,66 @@ body {
   margin-bottom: 0;
 }
 
+.board-list-body.is-drop-target {
+  outline: 2px dashed var(--bs-primary);
+  outline-offset: -4px;
+  background-color: var(--bs-primary-bg-subtle);
+}
+
+.job-card-draggable {
+  position: relative;
+}
+
+.job-card-drag-handle {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--bs-body-bg);
+  color: var(--bs-secondary-color);
+  box-shadow: var(--bs-box-shadow-sm);
+  cursor: grab;
+  opacity: 0.85;
+  transition:
+    opacity 0.12s ease,
+    color 0.12s ease,
+    background-color 0.12s ease;
+}
+
+.job-card-draggable:hover .job-card-drag-handle,
+.job-card-drag-handle:focus-visible {
+  opacity: 1;
+  color: var(--bs-primary);
+}
+
+.job-card-drag-handle:active {
+  cursor: grabbing;
+}
+
+.job-card-drag-handle.is-busy {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+.job-card-drag-handle .material-icons-outlined {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.actions-prequote .job-card-action-quoted {
+  background-color: var(--bs-primary-bg-subtle);
+  border-color: var(--bs-primary-border-subtle);
+  color: var(--bs-primary);
+}
+
 .board-list-footer {
   padding: 8px 10px 10px;
   border-top: var(--bs-border-width) solid var(--bs-border-color);
