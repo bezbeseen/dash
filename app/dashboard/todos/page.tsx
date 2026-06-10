@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { WorkflowTabsBar } from '@/components/workflow-tabs-bar';
 import type { Prisma } from '@prisma/client';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -63,16 +64,13 @@ export default async function TodosPage({ searchParams }: TodosPageProps) {
 
   return (
     <div className="board-page">
+      <WorkflowTabsBar />
       <header className="board-topbar">
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">To-dos</h1>
           <p className="board-topbar-sub">
-            Shop-wide list: assign a teammate, set a due date, check off when complete. (Ticket follow-ups
-            with an optional job link live under{' '}
-            <Link className="text-decoration-none" href="/dashboard/tasks">
-              Tasks
-            </Link>
-            .)
+            Shop-wide list: assign a teammate, set a due date, check off when complete. Ticket follow-ups with
+            an optional job link are under <strong>Ticket tasks</strong> in the tab above.
           </p>
         </div>
         <div className="board-topbar-actions d-flex flex-wrap gap-2">

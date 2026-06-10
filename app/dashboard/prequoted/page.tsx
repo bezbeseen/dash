@@ -1,6 +1,7 @@
 import { BoardStatus } from '@prisma/client';
 import Link from 'next/link';
 import { JobCard } from '@/components/job-card';
+import { PrequoteBoardFilters } from '@/components/prequote-board-filters';
 import { TicketBoardBadgeLegend } from '@/components/ticket-board-badge-legend';
 import { prisma } from '@/lib/db/prisma';
 import { taskCountsByJobId } from '@/lib/domain/job-task-counts';
@@ -9,6 +10,14 @@ import {
   jobErrorFromQuery,
   syncToastFromQuery,
 } from '@/lib/domain/integration-query-toasts';
+import {
+  parsePrequoteSourceFilter,
+  PREQUOTE_COLUMNS,
+  prequoteColumnHint,
+  prequoteColumnTitle,
+  triagePrequoteJobs,
+} from '@/lib/domain/prequote-triage';
+import { WorkflowTabsBar } from '@/components/workflow-tabs-bar';
 import { fmtDetailDate } from '@/lib/ticket/format';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +30,7 @@ type PrequotedPageProps = {
     sync_error?: string;
     job_error?: string;
     cleared?: string;
+    source?: string;
   }>;
 };
 
@@ -43,28 +53,32 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
   const lastTicketSyncAt = qbToolbar.lastTicketSyncAt;
 
   const q = await searchParams;
+  const sourceFilter = parsePrequoteSourceFilter(q.source);
   const { synced, syncError } = syncToastFromQuery(q);
   const jobError = jobErrorFromQuery(q);
   const cleared = q.cleared === '1';
 
+  const { substanceByJobId, byColumn, filteredCount } = triagePrequoteJobs(jobs, sourceFilter);
+  const thinCount = [...substanceByJobId.values()].filter((s) => s.thin).length;
+
   return (
     <div className="board-page">
+      <WorkflowTabsBar />
       <header className="board-topbar">
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Pre-quote tickets</h1>
           <p className="board-topbar-sub">
-            Leads before a <strong>sent</strong> estimate lands in QuickBooks (or still syncing). Invoice-only work
-            normally skips this list and shows on the main{' '}
+            Triage leads before a <strong>sent</strong> estimate lands in QuickBooks. Columns sort by age and substance
+            — <strong>Thin</strong> flags short conversations with no contact detail. Use{' '}
+            <strong>Dismiss</strong> for junk and <strong>Lost</strong> for real dead leads. Main{' '}
             <Link href="/dashboard/tickets" className="text-decoration-underline">
               Tickets
             </Link>{' '}
-            board under <strong>Ready / invoiced</strong>.
+            board is for quoted work onward.
             {totalCount > jobs.length ? (
               <span className="board-topbar-leads">
                 {' '}
-                Showing {jobs.length} of {totalCount}
-                {' '}
-                - narrow in QuickBooks or raise the cap in code if needed.
+                Showing {jobs.length} of {totalCount} — raise the cap in code if needed.
               </span>
             ) : null}
           </p>
@@ -137,34 +151,53 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
         </div>
       )}
 
-      <section className="board-leads px-3 px-md-4 pb-4" aria-labelledby="prequoted-heading">
-        <h2 id="prequoted-heading" className="h6 fw-semibold mb-2">
-          Pre-quote ({totalCount})
-        </h2>
-        <p className="small text-body-secondary mb-3">
-          These rows use board status <strong>Lead</strong> until QuickBooks shows a sent estimate (or invoice-only
-          rules move them elsewhere). Use <strong>Mark quoted</strong>, <strong>Start work</strong>, or{' '}
-          <strong>Lost</strong> on each card to advance without waiting for sync. A ticket can already show estimate
-          totals from QuickBooks while it is still a <strong>draft</strong> there — only <strong>sent</strong>{' '}
-          estimates move to the main Tickets board under <strong>Quoted</strong> automatically.
+      <PrequoteBoardFilters source={sourceFilter} counts={{ total: filteredCount, thin: thinCount }} />
+
+      {filteredCount === 0 ? (
+        <p className="text-body-secondary small px-3 px-md-4 pb-4">
+          No pre-quote tickets match this filter.
         </p>
-        {jobs.length === 0 ? (
-          <p className="text-body-secondary small">No pre-quote tickets right now.</p>
-        ) : (
-          <div className="board-leads-grid d-flex flex-column gap-2" style={{ maxWidth: '28rem' }}>
-            {jobs.map((job) => (
-              <JobCard
-                key={job.id}
-                job={job}
-                taskCounts={taskByJob.get(job.id) ?? { open: 0, done: 0 }}
-                updatedAfterLastTicketSync={
-                  lastTicketSyncAt != null && job.updatedAt > lastTicketSyncAt
-                }
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      ) : (
+        <div className="board-canvas prequote-board-canvas">
+          {PREQUOTE_COLUMNS.map((column) => {
+            const columnJobs = byColumn[column];
+            return (
+              <section className="board-list prequote-board-list" key={column}>
+                <div className="board-list-head">
+                  <div>
+                    <h2 className="board-list-title">{prequoteColumnTitle(column)}</h2>
+                    <p className="prequote-column-hint small text-body-secondary mb-0">
+                      {prequoteColumnHint(column)}
+                    </p>
+                  </div>
+                  <span className="board-list-count">{columnJobs.length}</span>
+                </div>
+                <div className="board-list-body">
+                  {columnJobs.length === 0 ? (
+                    <p className="small text-body-secondary mb-0 px-1">None right now.</p>
+                  ) : (
+                    columnJobs.map((job) => {
+                      const full = jobs.find((j) => j.id === job.id)!;
+                      return (
+                        <JobCard
+                          key={job.id}
+                          job={full}
+                          leadSubstance={substanceByJobId.get(job.id) ?? null}
+                          taskCounts={taskByJob.get(job.id) ?? { open: 0, done: 0 }}
+                          updatedAfterLastTicketSync={
+                            lastTicketSyncAt != null && full.updatedAt > lastTicketSyncAt
+                          }
+                        />
+                      );
+                    })
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+
       <TicketBoardBadgeLegend />
     </div>
   );

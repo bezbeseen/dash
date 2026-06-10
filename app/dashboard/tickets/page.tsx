@@ -21,6 +21,7 @@ import {
   syncToastFromQuery,
 } from '@/lib/domain/integration-query-toasts';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
+import { WorkflowTabsBar } from '@/components/workflow-tabs-bar';
 import { fmtDetailDate } from '@/lib/ticket/format';
 
 /** Always read fresh jobs from the DB (avoid any edge-case caching after CSV import / sync). */
@@ -70,6 +71,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
 
   return (
     <div className="board-page">
+      <WorkflowTabsBar />
       <header className="board-topbar">
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Tickets</h1>

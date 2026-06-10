@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { isWorkflowRoute } from '@/lib/domain/workflow-tabs';
 
 /** Yelp for Business (listings, ads, inbox) — owner dashboard. */
 const YELP_BUSINESS_URL = process.env.NEXT_PUBLIC_YELP_URL || 'https://biz.yelp.com';
@@ -38,11 +39,7 @@ export function DashboardSidebarNav() {
   const cashActive = pathname === '/dashboard/cash' || pathname.startsWith('/dashboard/cash/');
   const gbpMetricsActive = pathname === '/dashboard/gbp' || pathname.startsWith('/dashboard/gbp/');
   const settingsActive = pathname === '/dashboard/settings' || pathname.startsWith('/dashboard/settings/');
-  const ticketsActive = pathname === '/dashboard/tickets' || pathname.startsWith('/dashboard/jobs/');
-  const prequotedActive = pathname === '/dashboard/prequoted';
-  const doneActive = pathname === '/dashboard/done' || pathname.startsWith('/dashboard/done/');
-  const tasksActive = pathname === '/dashboard/tasks' || pathname.startsWith('/dashboard/tasks/');
-  const todosActive = pathname === '/dashboard/todos' || pathname.startsWith('/dashboard/todos/');
+  const workflowActive = isWorkflowRoute(pathname);
   const assistantActive = pathname === '/dashboard/assistant';
 
   return (
@@ -64,44 +61,12 @@ export function DashboardSidebarNav() {
           <div className="menu-title">Activity</div>
         </Link>
       </li>
-      <li className={ticketsActive ? 'mm-active' : ''}>
+      <li className={workflowActive ? 'mm-active' : ''}>
         <Link href="/dashboard/tickets">
           <div className="parent-icon">
             <i className="material-icons-outlined">confirmation_number</i>
           </div>
           <div className="menu-title">Tickets</div>
-        </Link>
-      </li>
-      <li className={prequotedActive ? 'mm-active' : ''}>
-        <Link href="/dashboard/prequoted">
-          <div className="parent-icon">
-            <i className="material-icons-outlined">edit_note</i>
-          </div>
-          <div className="menu-title">Pre-quote tickets</div>
-        </Link>
-      </li>
-      <li className={doneActive ? 'mm-active' : ''}>
-        <Link href="/dashboard/done">
-          <div className="parent-icon">
-            <i className="material-icons-outlined">task_alt</i>
-          </div>
-          <div className="menu-title">Done</div>
-        </Link>
-      </li>
-      <li className={tasksActive ? 'mm-active' : ''}>
-        <Link href="/dashboard/tasks">
-          <div className="parent-icon">
-            <i className="material-icons-outlined">checklist</i>
-          </div>
-          <div className="menu-title">Tasks</div>
-        </Link>
-      </li>
-      <li className={todosActive ? 'mm-active' : ''}>
-        <Link href={'/dashboard/todos' as never}>
-          <div className="parent-icon">
-            <i className="material-icons-outlined">event_note</i>
-          </div>
-          <div className="menu-title">To-dos</div>
         </Link>
       </li>
       <li className={assistantActive ? 'mm-active' : ''}>

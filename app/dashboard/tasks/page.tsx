@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { WorkflowTabsBar } from '@/components/workflow-tabs-bar';
 import { prisma } from '@/lib/db/prisma';
 
 export const dynamic = 'force-dynamic';
@@ -43,6 +44,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
   return (
     <div className="board-page">
+      <WorkflowTabsBar />
       <header className="board-topbar">
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Tasks</h1>

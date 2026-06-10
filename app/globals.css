@@ -299,6 +299,108 @@ body {
   min-height: 0;
 }
 
+.workflow-tabs-shell {
+  flex-shrink: 0;
+  background-color: var(--bs-body-bg);
+  border-bottom: var(--bs-border-width) solid var(--bs-border-color);
+}
+
+.workflow-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 0 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.workflow-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  text-decoration: none;
+  color: var(--bs-secondary-color);
+  font-size: 14px;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  white-space: nowrap;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.workflow-tab:hover {
+  color: var(--bs-body-color);
+  text-decoration: none;
+}
+
+.workflow-tab.is-active {
+  color: var(--bs-body-color);
+  border-bottom-color: var(--bs-primary);
+  font-weight: 600;
+}
+
+.workflow-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 999px;
+  background-color: var(--bs-secondary);
+  color: #fff;
+}
+
+.workflow-tab.is-active .workflow-tab-count {
+  background-color: var(--bs-primary);
+}
+
+.workflow-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 10px;
+}
+
+.workflow-subtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  color: var(--bs-secondary-color);
+  border: var(--bs-border-width) solid transparent;
+  background-color: var(--bs-tertiary-bg);
+}
+
+.workflow-subtab:hover {
+  color: var(--bs-body-color);
+  text-decoration: none;
+}
+
+.workflow-subtab.is-active {
+  color: var(--bs-primary);
+  border-color: var(--bs-primary-border-subtle);
+  background-color: var(--bs-primary-bg-subtle);
+  font-weight: 600;
+}
+
+.workflow-subtab-count {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
 /* Slightly tighter top padding on board routes so the board header sits closer to the 70px top bar
    (sidebar nav starts at the same offset via Maxton). */
 .main-wrapper .main-content:has(> .board-page) {
@@ -919,6 +1021,26 @@ body {
   background-color: var(--bs-primary-bg-subtle);
   border-color: var(--bs-primary-border-subtle);
   color: var(--bs-primary);
+}
+
+.prequote-board-canvas {
+  min-height: 320px;
+}
+
+.prequote-board-list .board-list-head {
+  align-items: flex-start;
+}
+
+.prequote-column-hint {
+  font-size: 11px;
+  line-height: 1.35;
+  max-width: 12rem;
+  margin-top: 2px;
+}
+
+.prequote-board-toolbar {
+  border-bottom: var(--bs-border-width) solid var(--bs-border-color);
+  background: var(--bs-body-bg);
 }
 
 .board-list-footer {

@@ -30,6 +30,7 @@ enum BoardStatus {
 enum ArchiveReason {
   DONE
   LOST
+  DISMISSED
 }
 
 enum EstimateStatus {

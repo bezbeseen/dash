@@ -11,6 +11,7 @@ type Props = {
   needsWrapUpReminder: boolean;
   wrapUpRecorded: boolean;
   suppressProductionShortcuts?: boolean;
+  showDismiss?: boolean;
   reviewEmailFeatureEnabled?: boolean;
   reviewEmailMailboxReady?: boolean;
   reviewEmailSentAtIso?: string | null;
@@ -23,6 +24,7 @@ export function TicketActionsSection({
   needsWrapUpReminder,
   wrapUpRecorded,
   suppressProductionShortcuts = false,
+  showDismiss = false,
   reviewEmailFeatureEnabled = false,
   reviewEmailMailboxReady = false,
   reviewEmailSentAtIso = null,
@@ -31,7 +33,7 @@ export function TicketActionsSection({
     <section id={sectionId} className="ticket-detail-panel">
       <h2 className="detail-section-title">Actions</h2>
       {suppressProductionShortcuts ? (
-        <PrequoteWorkflowActions jobId={jobId} archived={archived} />
+        <PrequoteWorkflowActions jobId={jobId} archived={archived} showDismiss={showDismiss} />
       ) : (
         <JobWorkflowActions
           jobId={jobId}

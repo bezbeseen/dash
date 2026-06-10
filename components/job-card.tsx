@@ -21,6 +21,7 @@ import {
 } from '@/lib/domain/job-display';
 import { InboundLeadConversationPanel } from '@/components/inbound-lead-conversation-panel';
 import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
+import { thinLeadBadgeTitle, type LeadSubstanceResult } from '@/lib/domain/lead-substance';
 import { fmtDetailDate } from '@/lib/ticket/format';
 
 type JobCardProps = {
@@ -34,6 +35,8 @@ type JobCardProps = {
   selectionSlot?: ReactNode;
   /** When set (main Tickets board), shows a drag handle. Must render inside `TicketBoardDndProvider`. */
   boardColumn?: DashboardColumnKey;
+  /** Pre-quote triage: thin-lead scoring from the pre-quote board. */
+  leadSubstance?: LeadSubstanceResult | null;
 };
 
 export function JobCard({
@@ -43,6 +46,7 @@ export function JobCard({
   extraMeta,
   selectionSlot,
   boardColumn,
+  leadSubstance = null,
 }: JobCardProps) {
   const needsWrapUpReminder = jobNeedsWrapUpReminder(job, null);
   const wrapUpRecorded = jobWrapUpRecorded(job);
@@ -110,6 +114,22 @@ export function JobCard({
               title={inboundLeadKindTitleAttr(job.inboundLeadKind)}
             >
               {inboundLeadKindShortLabel(job.inboundLeadKind)}
+            </span>
+          ) : null}
+          {leadSubstance?.thin ? (
+            <span
+              className="badge rounded-pill bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle small fw-semibold"
+              title={thinLeadBadgeTitle(leadSubstance)}
+            >
+              Thin
+            </span>
+          ) : null}
+          {leadSubstance && !leadSubstance.thin && leadSubstance.hasContact ? (
+            <span
+              className="badge rounded-pill bg-success-subtle text-success-emphasis border border-success-subtle small fw-semibold"
+              title="Contact info found (email or phone)"
+            >
+              Contact
             </span>
           ) : null}
           {hasQbEstimate ? (
@@ -209,7 +229,11 @@ export function JobCard({
   );
 
   const workflow = isPrequoteTicket ? (
-      <PrequoteWorkflowActions jobId={job.id} archived={job.archivedAt != null} />
+      <PrequoteWorkflowActions
+        jobId={job.id}
+        archived={job.archivedAt != null}
+        showDismiss={leadSubstance?.thin ?? false}
+      />
     ) : (
       <JobWorkflowActions
         jobId={job.id}

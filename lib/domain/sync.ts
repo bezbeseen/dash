@@ -265,16 +265,24 @@ export async function archiveJob(jobId: string, reason: ArchiveReason, message: 
     },
   });
 
+  const eventName =
+    reason === ArchiveReason.DONE
+      ? 'job.archived_done'
+      : reason === ArchiveReason.DISMISSED
+        ? 'job.archived_dismissed'
+        : 'job.archived_lost';
+
   await prisma.activityLog.create({
     data: {
       jobId,
       source: EventSource.APP,
-      eventName: reason === ArchiveReason.DONE ? 'job.archived_done' : 'job.archived_lost',
+      eventName,
       message,
     },
   });
 
-  const label = reason === ArchiveReason.DONE ? 'Done' : 'Lost';
+  const label =
+    reason === ArchiveReason.DONE ? 'Done' : reason === ArchiveReason.DISMISSED ? 'Dismissed' : 'Lost';
   if (slackArchiveNotificationsEnabled()) {
     await slackNotifyArchived({ label, job: current, jobId });
   }

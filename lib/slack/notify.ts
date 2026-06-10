@@ -185,7 +185,7 @@ export function ticketUrl(jobId: string): string | null {
 }
 
 export async function slackNotifyArchived(params: {
-  label: 'Done' | 'Lost';
+  label: 'Done' | 'Lost' | 'Dismissed';
   job: Pick<Job, 'customerName' | 'projectName' | 'projectDescription' | 'qbOrderingAt' | 'boardStatus'>;
   jobId: string;
 }): Promise<void> {

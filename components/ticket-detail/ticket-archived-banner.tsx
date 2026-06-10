@@ -15,7 +15,13 @@ export function TicketArchivedBanner({ sectionId, jobId, archivedAt, archiveReas
         <div>
           <strong>Off the board</strong>
           <span className="ticket-archived-reason">
-            ({archiveReason === 'LOST' ? 'Lost' : 'Done'} · {fmtDetailDate(archivedAt)})
+            (
+            {archiveReason === 'LOST'
+              ? 'Lost'
+              : archiveReason === 'DISMISSED'
+                ? 'Dismissed'
+                : 'Done'}{' '}
+            · {fmtDetailDate(archivedAt)})
           </span>
           <span className="meta"> This ticket is hidden from the production board but kept for history.</span>
         </div>

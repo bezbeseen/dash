@@ -6,9 +6,11 @@ import { useCallback, useState } from 'react';
 type Props = {
   jobId: string;
   archived: boolean;
+  /** When true, show Dismiss (junk) alongside Lost (real dead lead). */
+  showDismiss?: boolean;
 };
 
-export function PrequoteWorkflowActions({ jobId, archived }: Props) {
+export function PrequoteWorkflowActions({ jobId, archived, showDismiss = false }: Props) {
   const router = useRouter();
   const [quotedBusy, setQuotedBusy] = useState(false);
   const [startBusy, setStartBusy] = useState(false);
@@ -87,6 +89,17 @@ export function PrequoteWorkflowActions({ jobId, archived }: Props) {
         >
           {startBusy ? 'Starting…' : 'Start work'}
         </button>
+        {showDismiss ? (
+          <form
+            className="job-card-action job-card-action-dismiss"
+            action={`/api/jobs/${jobId}/dismiss`}
+            method="post"
+          >
+            <button className="btn btn-outline-secondary" type="submit" title="Low-intent / spam — not a real lost deal">
+              Dismiss
+            </button>
+          </form>
+        ) : null}
         <form className="job-card-action job-card-action-lost" action={`/api/jobs/${jobId}/lost`} method="post">
           <button className="btn btn-lost" type="submit">
             Lost

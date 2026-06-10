@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { WorkflowTabsBar } from '@/components/workflow-tabs-bar';
 import { ArchiveReason } from '@prisma/client';
 import { DoneJobRow } from '@/components/done-job-row';
 import { groupDoneJobsByMonth, sumDoneJobMoneyCents } from '@/lib/domain/done-archive';
@@ -18,6 +19,7 @@ export default async function DashboardDonePage() {
 
   return (
     <div className="board-page">
+      <WorkflowTabsBar />
       <header className="board-topbar">
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Done</h1>
@@ -26,11 +28,7 @@ export default async function DashboardDonePage() {
             month and a grand total at the bottom. Nothing is written to QuickBooks from here.
           </p>
         </div>
-        <div className="board-topbar-actions">
-          <Link href="/dashboard/tickets" className="btn btn-toolbar">
-            Tickets
-          </Link>
-        </div>
+        <div className="board-topbar-actions" />
       </header>
 
       {jobs.length === 0 ? (

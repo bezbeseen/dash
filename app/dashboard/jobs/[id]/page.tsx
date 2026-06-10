@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/prisma';
 import { TicketDocumentsSection } from '@/components/ticket-documents-section';
 import { TicketLinkedEmailsSection } from '@/components/ticket-linked-emails-section';
 import { TicketGmailSection } from '@/components/ticket-gmail-section';
+import { WorkflowTabsBar } from '@/components/workflow-tabs-bar';
 import { TicketDetailBack } from '@/components/ticket-detail/ticket-detail-back';
 import { TicketDetailHeader } from '@/components/ticket-detail/ticket-detail-header';
 import { TicketArchivedBanner } from '@/components/ticket-detail/ticket-archived-banner';
@@ -21,6 +22,7 @@ import { TicketTasksSection } from '@/components/ticket-detail/ticket-tasks-sect
 import { TicketDriveSection } from '@/components/ticket-detail/ticket-drive-section';
 import { boardStatusForTicketHeader } from '@/lib/domain/derive-board-status';
 import { BoardStatus } from '@prisma/client';
+import { scoreLeadSubstance } from '@/lib/domain/lead-substance';
 import { jobIsLeadFirstTicket } from '@/lib/domain/lead-ticket';
 import { jobNeedsWrapUpReminder, jobWrapUpRecorded } from '@/lib/domain/production-workflow';
 import { jobErrorFromQuery, syncToastFromQuery } from '@/lib/domain/integration-query-toasts';
@@ -131,6 +133,8 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
 
   const headerBoardStatus = boardStatusForTicketHeader(job, qboInvoice);
   const isLeadFirst = jobIsLeadFirstTicket(job);
+  const leadSubstance =
+    job.boardStatus === BoardStatus.REQUESTED ? scoreLeadSubstance(job) : null;
   const hasLeadDetailsBody = Boolean(job.projectDescription?.trim());
   const needsWrapUpReminder = jobNeedsWrapUpReminder(job, qboInvoice);
   const wrapUpRecorded = jobWrapUpRecorded(job);
@@ -230,6 +234,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
 
   return (
     <div className="board-page board-page-detail">
+      <WorkflowTabsBar />
       {qbImportedOk ||
       driveSaved ||
       driveError ||
@@ -422,6 +427,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             needsWrapUpReminder={needsWrapUpReminder}
             wrapUpRecorded={wrapUpRecorded}
             suppressProductionShortcuts={job.boardStatus === BoardStatus.REQUESTED}
+            showDismiss={leadSubstance?.thin ?? false}
             reviewEmailFeatureEnabled={reviewEmailFeatureOn}
             reviewEmailMailboxReady={reviewEmailMailboxReady}
             reviewEmailSentAtIso={job.reviewRequestEmailSentAt?.toISOString() ?? null}
