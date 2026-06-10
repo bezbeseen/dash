@@ -1084,6 +1084,12 @@ body {
   min-height: 320px;
 }
 
+.prequote-board-list {
+  flex: 0 0 280px;
+  width: 280px;
+  min-width: 280px;
+}
+
 .prequote-board-list .board-list-head {
   align-items: flex-start;
 }
@@ -1171,21 +1177,24 @@ body {
   min-width: 0;
 }
 .job-card-select-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
-  align-items: flex-start;
+  align-items: start;
   width: 100%;
   min-width: 0;
 }
 .job-card-select-control {
-  flex: 0 0 auto;
   padding-top: 2px;
 }
-.job-card-with-select .job-card-main-link-fill {
-  flex: 1 1 0;
+.job-card-select-main {
   min-width: 0;
-  width: 0;
-  display: block;
+  width: 100%;
+}
+.job-card-with-select .job-card-main-link-fill {
+  min-width: 0;
+  width: 100%;
+  display: grid;
 }
 .job-card-with-select .job-card-title strong,
 .job-card-with-select .job-card-subtitle {
@@ -1278,6 +1287,9 @@ body {
 }
 .job-card-status.badge {
   margin-top: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0.2rem 0.45rem;
 }
 .job-card-open-hint {
   font-size: 11px;

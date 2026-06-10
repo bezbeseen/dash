@@ -267,7 +267,7 @@ export function JobCard({
       {selectionSlot ? (
         <div className="job-card-select-row">
           <div className="job-card-select-control">{selectionSlot}</div>
-          {mainLink}
+          <div className="job-card-select-main">{mainLink}</div>
         </div>
       ) : (
         mainLink
