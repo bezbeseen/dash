@@ -297,6 +297,15 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
+}
+
+.board-page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
 }
 
 .workflow-tabs-shell {
@@ -856,6 +865,8 @@ body {
 .board-canvas {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
   display: flex;
   align-items: stretch;
   gap: 16px;
@@ -961,6 +972,8 @@ body {
 
 .board-list-body .card {
   margin-bottom: 0;
+  width: 100%;
+  min-width: 0;
 }
 
 .board-list-body.is-drop-target {
@@ -1026,13 +1039,17 @@ body {
 .prequote-card-actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
 }
 
 .prequote-card-actions-group {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  width: 100%;
+  min-width: 0;
 }
 
 .prequote-card-actions-label {
@@ -1041,6 +1058,16 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--bs-secondary-color);
+}
+
+.actions-prequote {
+  width: 100%;
+}
+
+.actions-prequote .btn {
+  font-size: 11px;
+  padding: 0.28rem 0.45rem;
+  line-height: 1.25;
 }
 
 .prequote-column-select-all {
@@ -1140,20 +1167,30 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
 }
 .job-card-select-row {
   display: flex;
   gap: 10px;
   align-items: flex-start;
+  width: 100%;
   min-width: 0;
 }
 .job-card-select-control {
-  flex-shrink: 0;
+  flex: 0 0 auto;
   padding-top: 2px;
 }
 .job-card-with-select .job-card-main-link-fill {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
+  width: 0;
+  display: block;
+}
+.job-card-with-select .job-card-title strong,
+.job-card-with-select .job-card-subtitle {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .job-card-select-row:has(.job-board-ticket-checkbox:checked) {
   outline: 2px solid var(--bs-primary);

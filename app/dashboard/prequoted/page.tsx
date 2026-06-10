@@ -177,58 +177,60 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
       />
 
       <TicketBoardMultiSelectProvider orderedJobIds={orderedJobIds}>
-        <PrequoteSelectionBar />
-      {filteredCount === 0 ? (
-        <p className="text-body-secondary small px-3 px-md-4 pb-4">
-          No pre-quote tickets match this filter.
-        </p>
-      ) : (
-        <div className="board-canvas prequote-board-canvas">
-          {PREQUOTE_COLUMNS.map((column) => {
-            const columnJobs = byColumn[column];
-            return (
-              <section className="board-list prequote-board-list" key={column}>
-                <div className="board-list-head">
-                  <div>
-                    <h2 className="board-list-title">{prequoteColumnTitle(column)}</h2>
-                    <p className="prequote-column-hint small text-body-secondary mb-0">
-                      {prequoteColumnHint(column)}
-                    </p>
-                    <PrequoteColumnSelectAll jobIds={columnJobs.map((j) => j.id)} />
-                  </div>
-                  <span className="board-list-count">{columnJobs.length}</span>
-                </div>
-                <div className="board-list-body">
-                  {columnJobs.length === 0 ? (
-                    <p className="small text-body-secondary mb-0 px-1">None right now.</p>
-                  ) : (
-                    columnJobs.map((job) => {
-                      const full = jobs.find((j) => j.id === job.id)!;
-                      return (
-                        <JobCard
-                          key={job.id}
-                          job={full}
-                          leadSubstance={substanceByJobId.get(job.id) ?? null}
-                          taskCounts={taskByJob.get(job.id) ?? { open: 0, done: 0 }}
-                          updatedAfterLastTicketSync={
-                            lastTicketSyncAt != null && full.updatedAt > lastTicketSyncAt
-                          }
-                          selectionSlot={
-                            <TicketBoardCheckbox
-                              jobId={job.id}
-                              orderIndex={orderIndexByJobId.get(job.id)!}
+        <div className="board-page-body">
+          <PrequoteSelectionBar />
+          {filteredCount === 0 ? (
+            <p className="text-body-secondary small px-3 px-md-4 pb-4">
+              No pre-quote tickets match this filter.
+            </p>
+          ) : (
+            <div className="board-canvas prequote-board-canvas">
+              {PREQUOTE_COLUMNS.map((column) => {
+                const columnJobs = byColumn[column];
+                return (
+                  <section className="board-list prequote-board-list" key={column}>
+                    <div className="board-list-head">
+                      <div>
+                        <h2 className="board-list-title">{prequoteColumnTitle(column)}</h2>
+                        <p className="prequote-column-hint small text-body-secondary mb-0">
+                          {prequoteColumnHint(column)}
+                        </p>
+                        <PrequoteColumnSelectAll jobIds={columnJobs.map((j) => j.id)} />
+                      </div>
+                      <span className="board-list-count">{columnJobs.length}</span>
+                    </div>
+                    <div className="board-list-body">
+                      {columnJobs.length === 0 ? (
+                        <p className="small text-body-secondary mb-0 px-1">None right now.</p>
+                      ) : (
+                        columnJobs.map((job) => {
+                          const full = jobs.find((j) => j.id === job.id)!;
+                          return (
+                            <JobCard
+                              key={job.id}
+                              job={full}
+                              leadSubstance={substanceByJobId.get(job.id) ?? null}
+                              taskCounts={taskByJob.get(job.id) ?? { open: 0, done: 0 }}
+                              updatedAfterLastTicketSync={
+                                lastTicketSyncAt != null && full.updatedAt > lastTicketSyncAt
+                              }
+                              selectionSlot={
+                                <TicketBoardCheckbox
+                                  jobId={job.id}
+                                  orderIndex={orderIndexByJobId.get(job.id)!}
+                                />
+                              }
                             />
-                          }
-                        />
-                      );
-                    })
-                  )}
-                </div>
-              </section>
-            );
-          })}
+                          );
+                        })
+                      )}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
       </TicketBoardMultiSelectProvider>
 
       <TicketBoardBadgeLegend />
