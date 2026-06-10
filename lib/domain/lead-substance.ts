@@ -1,6 +1,8 @@
 import type { Job } from '@prisma/client';
 import { InboundLeadKind } from '@prisma/client';
 import { sanitizeJobProjectDescription, splitInboundStoredDescription } from '@/lib/domain/job-display';
+import { extractInboundPhoneRaw } from '@/lib/domain/inbound-lead-display';
+import { loadInboundPhoneRules, matchInboundPhoneRule } from '@/lib/domain/inbound-phone-rules';
 
 export type LeadSubstanceResult = {
   thin: boolean;
@@ -77,6 +79,17 @@ function notThin(reason: string, extras: Partial<LeadSubstanceResult> = {}): Lea
 export function scoreLeadSubstance(job: SubstanceJob): LeadSubstanceResult {
   if (job.gmailThreadId) {
     return notThin('Gmail thread linked — someone is working this lead.', { hasContact: true });
+  }
+
+  const phoneRule = matchInboundPhoneRule(extractInboundPhoneRaw(job), loadInboundPhoneRules());
+  if (phoneRule?.autoThin) {
+    return {
+      thin: true,
+      reasons: [`Known line: ${phoneRule.label} (${phoneRule.digits}…)`],
+      hasContact: true,
+      hasSignKeywords: false,
+      substanceChars: 0,
+    };
   }
 
   if (job.inboundLeadKind == null) {

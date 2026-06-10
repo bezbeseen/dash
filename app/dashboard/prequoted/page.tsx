@@ -11,12 +11,22 @@ import {
   syncToastFromQuery,
 } from '@/lib/domain/integration-query-toasts';
 import {
+  countPrequoteJobsByCallerLine,
+  parsePrequoteCallerLineFilter,
   parsePrequoteSourceFilter,
   PREQUOTE_COLUMNS,
   prequoteColumnHint,
   prequoteColumnTitle,
   triagePrequoteJobs,
 } from '@/lib/domain/prequote-triage';
+import {
+  PrequoteColumnSelectAll,
+  PrequoteSelectionBar,
+} from '@/components/prequote-board-selection';
+import {
+  TicketBoardCheckbox,
+  TicketBoardMultiSelectProvider,
+} from '@/components/ticket-board-multi-select';
 import { WorkflowTabsBar } from '@/components/workflow-tabs-bar';
 import { fmtDetailDate } from '@/lib/ticket/format';
 
@@ -31,6 +41,7 @@ type PrequotedPageProps = {
     job_error?: string;
     cleared?: string;
     source?: string;
+    line?: string;
   }>;
 };
 
@@ -54,12 +65,19 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
 
   const q = await searchParams;
   const sourceFilter = parsePrequoteSourceFilter(q.source);
+  const callerLineId = parsePrequoteCallerLineFilter(q.line);
   const { synced, syncError } = syncToastFromQuery(q);
   const jobError = jobErrorFromQuery(q);
   const cleared = q.cleared === '1';
 
-  const { substanceByJobId, byColumn, filteredCount } = triagePrequoteJobs(jobs, sourceFilter);
+  const lineCounts = Object.fromEntries(countPrequoteJobsByCallerLine(jobs));
+  const { substanceByJobId, byColumn, filteredCount } = triagePrequoteJobs(jobs, sourceFilter, {
+    callerLineId,
+  });
   const thinCount = [...substanceByJobId.values()].filter((s) => s.thin).length;
+
+  const orderedJobIds = PREQUOTE_COLUMNS.flatMap((column) => byColumn[column].map((j) => j.id));
+  const orderIndexByJobId = new Map(orderedJobIds.map((id, i) => [id, i]));
 
   return (
     <div className="board-page">
@@ -68,9 +86,9 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Pre-quote tickets</h1>
           <p className="board-topbar-sub">
-            Triage leads before a <strong>sent</strong> estimate lands in QuickBooks. Columns sort by age and substance
-            — <strong>Thin</strong> flags short conversations with no contact detail. Use{' '}
-            <strong>Dismiss</strong> for junk and <strong>Lost</strong> for real dead leads. Main{' '}
+            Triage leads before a <strong>sent</strong> estimate lands in QuickBooks. Check boxes to select many —
+            use <strong>Select all</strong> in a column, then <strong>Dismiss (junk)</strong> to clear stale leads.
+            Main{' '}
             <Link href="/dashboard/tickets" className="text-decoration-underline">
               Tickets
             </Link>{' '}
@@ -151,8 +169,15 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
         </div>
       )}
 
-      <PrequoteBoardFilters source={sourceFilter} counts={{ total: filteredCount, thin: thinCount }} />
+      <PrequoteBoardFilters
+        source={sourceFilter}
+        callerLineId={callerLineId}
+        counts={{ total: filteredCount, thin: thinCount }}
+        lineCounts={lineCounts}
+      />
 
+      <TicketBoardMultiSelectProvider orderedJobIds={orderedJobIds}>
+        <PrequoteSelectionBar />
       {filteredCount === 0 ? (
         <p className="text-body-secondary small px-3 px-md-4 pb-4">
           No pre-quote tickets match this filter.
@@ -169,6 +194,7 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
                     <p className="prequote-column-hint small text-body-secondary mb-0">
                       {prequoteColumnHint(column)}
                     </p>
+                    <PrequoteColumnSelectAll jobIds={columnJobs.map((j) => j.id)} />
                   </div>
                   <span className="board-list-count">{columnJobs.length}</span>
                 </div>
@@ -187,6 +213,12 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
                           updatedAfterLastTicketSync={
                             lastTicketSyncAt != null && full.updatedAt > lastTicketSyncAt
                           }
+                          selectionSlot={
+                            <TicketBoardCheckbox
+                              jobId={job.id}
+                              orderIndex={orderIndexByJobId.get(job.id)!}
+                            />
+                          }
                         />
                       );
                     })
@@ -197,6 +229,7 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
           })}
         </div>
       )}
+      </TicketBoardMultiSelectProvider>
 
       <TicketBoardBadgeLegend />
     </div>

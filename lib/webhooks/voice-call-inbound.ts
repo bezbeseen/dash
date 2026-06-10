@@ -1,4 +1,5 @@
 import { sanitizeJobProjectDescription } from '@/lib/domain/job-display';
+import { resolveInboundCustomerName } from '@/lib/domain/inbound-lead-display';
 import {
   normalizeInboundPayload,
   pickInboundString,
@@ -98,13 +99,6 @@ export function buildVoiceCallLeadFromPayload(raw: Record<string, unknown>): Voi
     pickInboundString(body, 'callerEmail', 'caller_email', 'email') ||
     undefined;
 
-  const customerName = (
-    pickInboundString(body, 'callerName', 'caller_name', 'name', 'Callers Name') ||
-    parsed.callerName ||
-    email ||
-    'Voice caller'
-  ).slice(0, 512);
-
   const agent =
     pickInboundString(body, 'aiAgentName', 'ai_agent_name', 'agentName', 'agent_name') || 'Voice AI';
   const projectName = (
@@ -115,6 +109,14 @@ export function buildVoiceCallLeadFromPayload(raw: Record<string, unknown>): Voi
     projectName,
     rawDescription.length > 0 ? rawDescription : null,
   );
+
+  const rawCustomerName =
+    pickInboundString(body, 'callerName', 'caller_name', 'name', 'Callers Name') ||
+    parsed.callerName ||
+    email ||
+    'Voice caller';
+
+  const customerName = resolveInboundCustomerName(body, rawCustomerName, projectDescription);
 
   return { projectDescription, customerName, projectName, email };
 }

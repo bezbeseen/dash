@@ -14,6 +14,7 @@ type Ctx = {
   orderedJobIds: readonly string[];
   selected: ReadonlySet<string>;
   toggle: (jobId: string, orderIndex: number, e: React.ChangeEvent<HTMLInputElement>) => void;
+  selectMany: (jobIds: readonly string[]) => void;
   clear: () => void;
   copySelectedLinks: () => Promise<void>;
   isSelected: (jobId: string) => boolean;
@@ -38,6 +39,14 @@ export function TicketBoardMultiSelectProvider({
   const clear = useCallback(() => {
     lastAnchorRef.current = null;
     setSelected(new Set());
+  }, []);
+
+  const selectMany = useCallback((jobIds: readonly string[]) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of jobIds) next.add(id);
+      return next;
+    });
   }, []);
 
   const toggle = useCallback(
@@ -96,11 +105,12 @@ export function TicketBoardMultiSelectProvider({
       orderedJobIds,
       selected,
       toggle,
+      selectMany,
       clear,
       copySelectedLinks,
       isSelected,
     }),
-    [orderedJobIds, selected, toggle, clear, copySelectedLinks, isSelected],
+    [orderedJobIds, selected, toggle, selectMany, clear, copySelectedLinks, isSelected],
   );
 
   return (

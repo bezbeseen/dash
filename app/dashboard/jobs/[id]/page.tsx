@@ -22,7 +22,6 @@ import { TicketTasksSection } from '@/components/ticket-detail/ticket-tasks-sect
 import { TicketDriveSection } from '@/components/ticket-detail/ticket-drive-section';
 import { boardStatusForTicketHeader } from '@/lib/domain/derive-board-status';
 import { BoardStatus } from '@prisma/client';
-import { scoreLeadSubstance } from '@/lib/domain/lead-substance';
 import { jobIsLeadFirstTicket } from '@/lib/domain/lead-ticket';
 import { jobNeedsWrapUpReminder, jobWrapUpRecorded } from '@/lib/domain/production-workflow';
 import { jobErrorFromQuery, syncToastFromQuery } from '@/lib/domain/integration-query-toasts';
@@ -133,8 +132,6 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
 
   const headerBoardStatus = boardStatusForTicketHeader(job, qboInvoice);
   const isLeadFirst = jobIsLeadFirstTicket(job);
-  const leadSubstance =
-    job.boardStatus === BoardStatus.REQUESTED ? scoreLeadSubstance(job) : null;
   const hasLeadDetailsBody = Boolean(job.projectDescription?.trim());
   const needsWrapUpReminder = jobNeedsWrapUpReminder(job, qboInvoice);
   const wrapUpRecorded = jobWrapUpRecorded(job);
@@ -427,7 +424,6 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             needsWrapUpReminder={needsWrapUpReminder}
             wrapUpRecorded={wrapUpRecorded}
             suppressProductionShortcuts={job.boardStatus === BoardStatus.REQUESTED}
-            showDismiss={leadSubstance?.thin ?? false}
             reviewEmailFeatureEnabled={reviewEmailFeatureOn}
             reviewEmailMailboxReady={reviewEmailMailboxReady}
             reviewEmailSentAtIso={job.reviewRequestEmailSentAt?.toISOString() ?? null}

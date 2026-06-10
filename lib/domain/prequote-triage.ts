@@ -1,5 +1,11 @@
 import type { Job } from '@prisma/client';
 import { InboundLeadKind } from '@prisma/client';
+import { extractInboundPhoneRaw } from '@/lib/domain/inbound-lead-display';
+import {
+  loadInboundPhoneRules,
+  matchInboundPhoneRule,
+  type InboundPhoneRule,
+} from '@/lib/domain/inbound-phone-rules';
 import { scoreLeadSubstance, type LeadSubstanceResult } from '@/lib/domain/lead-substance';
 
 export type PrequoteColumnKey = 'new' | 'active' | 'thin' | 'stale';
@@ -105,10 +111,35 @@ export type PrequoteTriageJob = Pick<
   | 'gmailThreadId'
 >;
 
+export function parsePrequoteCallerLineFilter(raw: string | undefined): string | null {
+  const id = raw?.trim();
+  if (!id) return null;
+  return loadInboundPhoneRules().some((r) => r.id === id) ? id : null;
+}
+
+export function jobMatchesPrequoteCallerLine(
+  job: Pick<Job, 'projectName' | 'projectDescription' | 'customerName'>,
+  lineId: string | null,
+): boolean {
+  if (!lineId) return true;
+  const matched = matchInboundPhoneRule(extractInboundPhoneRaw(job));
+  return matched?.id === lineId;
+}
+
+export function countPrequoteJobsByCallerLine(jobs: PrequoteTriageJob[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const job of jobs) {
+    const rule = matchInboundPhoneRule(extractInboundPhoneRaw(job));
+    if (!rule) continue;
+    counts.set(rule.id, (counts.get(rule.id) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export function triagePrequoteJobs(
   jobs: PrequoteTriageJob[],
   source: PrequoteSourceFilter,
-  now?: Date,
+  opts?: { callerLineId?: string | null; now?: Date },
 ): {
   substanceByJobId: Map<string, LeadSubstanceResult>;
   byColumn: Record<PrequoteColumnKey, PrequoteTriageJob[]>;
@@ -122,12 +153,15 @@ export function triagePrequoteJobs(
     stale: [],
   };
 
-  const filtered = jobs.filter((job) => jobMatchesPrequoteSource(job, source));
+  const lineId = opts?.callerLineId ?? null;
+  const filtered = jobs.filter(
+    (job) => jobMatchesPrequoteSource(job, source) && jobMatchesPrequoteCallerLine(job, lineId),
+  );
 
   for (const job of filtered) {
     const substance = scoreLeadSubstance(job);
     substanceByJobId.set(job.id, substance);
-    const column = prequoteColumnForJob(job, substance, now);
+    const column = prequoteColumnForJob(job, substance, opts?.now);
     byColumn[column].push(job);
   }
 
@@ -136,10 +170,15 @@ export function triagePrequoteJobs(
 
 export function prequoteFilterHref(
   basePath: string,
-  opts: { source?: PrequoteSourceFilter },
+  opts: { source?: PrequoteSourceFilter; line?: string | null },
 ): string {
   const params = new URLSearchParams();
   if (opts.source && opts.source !== 'all') params.set('source', opts.source);
+  if (opts.line) params.set('line', opts.line);
   const q = params.toString();
   return q ? `${basePath}?${q}` : basePath;
+}
+
+export function prequoteCallerLineRules(): InboundPhoneRule[] {
+  return loadInboundPhoneRules();
 }

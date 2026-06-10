@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { resolveInboundCustomerName } from '@/lib/domain/inbound-lead-display';
 import {
   buildInboundTicketDescription,
   inboundMarketingWebhookSecret,
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
 
   const job = await prisma.job.create({
     data: {
-      customerName: composed.slice(0, 512),
+      customerName: resolveInboundCustomerName(body, composed, projectDescription),
       projectName: projectName.slice(0, 512),
       projectDescription,
       inboundLeadKind: InboundLeadKind.CONVERSATION,

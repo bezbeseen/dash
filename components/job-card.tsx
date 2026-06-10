@@ -19,6 +19,7 @@ import {
   jobPrimaryHeading,
   jobSecondaryHeading,
 } from '@/lib/domain/job-display';
+import { leadPrequoteCardDisplay } from '@/lib/domain/inbound-lead-display';
 import { InboundLeadConversationPanel } from '@/components/inbound-lead-conversation-panel';
 import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
 import { thinLeadBadgeTitle, type LeadSubstanceResult } from '@/lib/domain/lead-substance';
@@ -79,6 +80,10 @@ export function JobCard({
 
   const isLeadFirst = jobIsLeadFirstTicket(job);
   const isPrequoteTicket = job.boardStatus === BoardStatus.REQUESTED;
+  const prequoteDisplay =
+    isPrequoteTicket && job.inboundLeadKind != null ? leadPrequoteCardDisplay(job) : null;
+  const cardTitle = prequoteDisplay?.title ?? jobPrimaryHeading(job);
+  const cardSub = prequoteDisplay?.subtitle ?? sub;
   const hasQbEstimate =
     Boolean(job.quickbooksEstimateId) && !isSyntheticQuickBooksId(job.quickbooksEstimateId);
   const hasQbInvoice =
@@ -104,9 +109,9 @@ export function JobCard({
         className={selectionSlot ? 'card-main-link job-card-main-link-fill' : 'card-main-link'}
       >
         <div className="job-card-title">
-          <strong>{jobPrimaryHeading(job)}</strong>
+          <strong>{cardTitle}</strong>
         </div>
-        {sub ? <div className="job-card-subtitle">{sub}</div> : null}
+        {cardSub ? <div className="job-card-subtitle">{cardSub}</div> : null}
         <div className="job-card-badges d-flex flex-wrap gap-1 align-items-center" aria-label="Ticket links">
           {job.inboundLeadKind != null ? (
             <span
@@ -114,6 +119,14 @@ export function JobCard({
               title={inboundLeadKindTitleAttr(job.inboundLeadKind)}
             >
               {inboundLeadKindShortLabel(job.inboundLeadKind)}
+            </span>
+          ) : null}
+          {prequoteDisplay?.phoneRule ? (
+            <span
+              className="badge rounded-pill bg-warning-subtle text-warning-emphasis border border-warning-subtle small fw-semibold"
+              title={`Known line — ${prequoteDisplay.phoneRule.digits}…`}
+            >
+              {prequoteDisplay.phoneRule.label}
             </span>
           ) : null}
           {leadSubstance?.thin ? (
@@ -229,11 +242,7 @@ export function JobCard({
   );
 
   const workflow = isPrequoteTicket ? (
-      <PrequoteWorkflowActions
-        jobId={job.id}
-        archived={job.archivedAt != null}
-        showDismiss={leadSubstance?.thin ?? false}
-      />
+      <PrequoteWorkflowActions jobId={job.id} archived={job.archivedAt != null} />
     ) : (
       <JobWorkflowActions
         jobId={job.id}
@@ -247,6 +256,7 @@ export function JobCard({
     <div
       className={[
         'card',
+        prequoteDisplay ? 'job-card-prequote' : '',
         selectionSlot ? 'job-card-with-select' : '',
         boardColumn ? 'job-card-draggable' : '',
       ]

@@ -6,11 +6,9 @@ import { useCallback, useState } from 'react';
 type Props = {
   jobId: string;
   archived: boolean;
-  /** When true, show Dismiss (junk) alongside Lost (real dead lead). */
-  showDismiss?: boolean;
 };
 
-export function PrequoteWorkflowActions({ jobId, archived, showDismiss = false }: Props) {
+export function PrequoteWorkflowActions({ jobId, archived }: Props) {
   const router = useRouter();
   const [quotedBusy, setQuotedBusy] = useState(false);
   const [startBusy, setStartBusy] = useState(false);
@@ -69,43 +67,61 @@ export function PrequoteWorkflowActions({ jobId, archived, showDismiss = false }
     refresh();
   }
 
+  const busy = quotedBusy || startBusy;
+
   return (
-    <>
+    <div className="prequote-card-actions">
       {error ? <p className="text-danger small mb-2">{error}</p> : null}
-      <div className="actions actions-card actions-prequote">
-        <button
-          type="button"
-          className="btn job-card-action job-card-action-quoted"
-          disabled={quotedBusy || startBusy}
-          onClick={() => void markQuoted()}
-        >
-          {quotedBusy ? 'Moving…' : 'Mark quoted'}
-        </button>
-        <button
-          type="button"
-          className="btn job-card-action job-card-action-start"
-          disabled={quotedBusy || startBusy}
-          onClick={() => void startWork()}
-        >
-          {startBusy ? 'Starting…' : 'Start work'}
-        </button>
-        {showDismiss ? (
+      <div className="prequote-card-actions-group">
+        <span className="prequote-card-actions-label">Move forward</span>
+        <div className="actions actions-card actions-prequote">
+          <button
+            type="button"
+            className="btn job-card-action job-card-action-quoted"
+            disabled={busy}
+            onClick={() => void markQuoted()}
+            title="Quote was sent — move to the main Tickets board"
+          >
+            {quotedBusy ? 'Moving…' : 'Quote sent → board'}
+          </button>
+          <button
+            type="button"
+            className="btn job-card-action job-card-action-start"
+            disabled={busy}
+            onClick={() => void startWork()}
+            title="Skip quote lane and start production"
+          >
+            {startBusy ? 'Starting…' : 'Start job'}
+          </button>
+        </div>
+      </div>
+      <div className="prequote-card-actions-group">
+        <span className="prequote-card-actions-label">Remove from pre-quote</span>
+        <div className="actions actions-card actions-prequote">
           <form
             className="job-card-action job-card-action-dismiss"
             action={`/api/jobs/${jobId}/dismiss`}
             method="post"
           >
-            <button className="btn btn-outline-secondary" type="submit" title="Low-intent / spam — not a real lost deal">
-              Dismiss
+            <button
+              className="btn btn-outline-secondary"
+              type="submit"
+              title="Spam, wrong number, or noise — not a real lost deal"
+            >
+              Dismiss (junk)
             </button>
           </form>
-        ) : null}
-        <form className="job-card-action job-card-action-lost" action={`/api/jobs/${jobId}/lost`} method="post">
-          <button className="btn btn-lost" type="submit">
-            Lost
-          </button>
-        </form>
+          <form className="job-card-action job-card-action-lost" action={`/api/jobs/${jobId}/lost`} method="post">
+            <button
+              className="btn btn-lost"
+              type="submit"
+              title="Real lead that will not convert"
+            >
+              Lost (real lead)
+            </button>
+          </form>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
