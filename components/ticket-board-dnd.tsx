@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   type DragEvent,
+  type MutableRefObject,
   type ReactNode,
 } from 'react';
 import type { DashboardColumnKey } from '@/lib/domain/board-display';
@@ -21,6 +22,8 @@ type DragPayload = {
 type BoardDndCtx = {
   startDrag: (e: DragEvent<HTMLElement>, jobId: string, fromColumn: DashboardColumnKey) => void;
   movingJobId: string | null;
+  dragRef: MutableRefObject<DragPayload | null>;
+  moveJob: (jobId: string, column: DashboardColumnKey) => Promise<void>;
 };
 
 const TicketBoardDndContext = createContext<BoardDndCtx | null>(null);
@@ -31,23 +34,10 @@ function useTicketBoardDnd(): BoardDndCtx {
   return ctx;
 }
 
-export type TicketBoardColumnHandlers = {
-  onColumnDragOver: (e: DragEvent<HTMLElement>, column: DashboardColumnKey) => void;
-  onColumnDragLeave: (e: DragEvent<HTMLElement>) => void;
-  onColumnDrop: (e: DragEvent<HTMLElement>, column: DashboardColumnKey) => void;
-  dropColumn: DashboardColumnKey | null;
-  movingJobId: string | null;
-};
-
-export function TicketBoardDndProvider({
-  children,
-}: {
-  children: (handlers: TicketBoardColumnHandlers) => ReactNode;
-}) {
+export function TicketBoardDndProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const dragRef = useRef<DragPayload | null>(null);
   const [movingJobId, setMovingJobId] = useState<string | null>(null);
-  const [dropColumn, setDropColumn] = useState<DashboardColumnKey | null>(null);
 
   const startDrag = useCallback((e: DragEvent<HTMLElement>, jobId: string, fromColumn: DashboardColumnKey) => {
     dragRef.current = { jobId, fromColumn };
@@ -76,46 +66,75 @@ export function TicketBoardDndProvider({
         router.refresh();
       } finally {
         setMovingJobId(null);
-        setDropColumn(null);
         dragRef.current = null;
       }
     },
     [router],
   );
 
-  const onColumnDragOver = useCallback((e: DragEvent<HTMLElement>, column: DashboardColumnKey) => {
-    if (!dragRef.current) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDropColumn(column);
-  }, []);
+  const ctxValue = useMemo(
+    () => ({
+      startDrag,
+      movingJobId,
+      dragRef,
+      moveJob,
+    }),
+    [startDrag, movingJobId, moveJob],
+  );
 
-  const onColumnDragLeave = useCallback((e: DragEvent<HTMLElement>) => {
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-    setDropColumn(null);
-  }, []);
+  return <TicketBoardDndContext.Provider value={ctxValue}>{children}</TicketBoardDndContext.Provider>;
+}
 
-  const onColumnDrop = useCallback(
-    (e: DragEvent<HTMLElement>, column: DashboardColumnKey) => {
+/** Drop target for one board column. Pass ticket cards as server-component children. */
+export function TicketBoardColumnBody({
+  column,
+  children,
+}: {
+  column: DashboardColumnKey;
+  children: ReactNode;
+}) {
+  const { dragRef, moveJob } = useTicketBoardDnd();
+  const [dropActive, setDropActive] = useState(false);
+
+  const onDragOver = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      if (!dragRef.current) return;
       e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setDropActive(true);
+    },
+    [dragRef],
+  );
+
+  const onDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setDropActive(false);
+  }, []);
+
+  const onDrop = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setDropActive(false);
       const payload = dragRef.current;
       if (!payload) return;
       if (payload.fromColumn === column) {
-        setDropColumn(null);
         dragRef.current = null;
         return;
       }
       void moveJob(payload.jobId, column);
     },
-    [moveJob],
+    [column, dragRef, moveJob],
   );
 
-  const ctxValue = useMemo(() => ({ startDrag, movingJobId }), [startDrag, movingJobId]);
-
   return (
-    <TicketBoardDndContext.Provider value={ctxValue}>
-      {children({ onColumnDragOver, onColumnDragLeave, onColumnDrop, dropColumn, movingJobId })}
-    </TicketBoardDndContext.Provider>
+    <div
+      className={dropActive ? 'board-list-body is-drop-target' : 'board-list-body'}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -148,8 +167,4 @@ export function JobCardDragHandle({
       </i>
     </button>
   );
-}
-
-export function boardListBodyClass(column: DashboardColumnKey, dropColumn: DashboardColumnKey | null): string {
-  return dropColumn === column ? 'board-list-body is-drop-target' : 'board-list-body';
 }

@@ -1,3 +1,5 @@
+'use client';
+
 import { JobWorkflowActions } from '@/components/job-workflow-actions';
 import { PrequoteWorkflowActions } from '@/components/prequote-workflow-actions';
 import { TicketReviewRequestEmailButton } from '@/components/ticket-review-request-email-button';

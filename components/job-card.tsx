@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { BoardStatus, Job } from '@prisma/client';
 import { JobWorkflowActions } from '@/components/job-workflow-actions';
-import { JobCardDragHandle } from '@/components/ticket-board-dnd';
+import { JobCardDragHandle } from '@/components/job-card-drag-handle';
 import { PrequoteWorkflowActions } from '@/components/prequote-workflow-actions';
 import type { DashboardColumnKey } from '@/lib/domain/board-display';
 import { jobNeedsWrapUpReminder, jobWrapUpRecorded } from '@/lib/domain/production-workflow';

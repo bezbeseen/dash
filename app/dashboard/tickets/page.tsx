@@ -6,7 +6,7 @@ import {
   TicketBoardMultiSelectProvider,
   TicketBoardSelectionBar,
 } from '@/components/ticket-board-multi-select';
-import { boardListBodyClass, TicketBoardDndProvider } from '@/components/ticket-board-dnd';
+import { TicketBoardColumnBody, TicketBoardDndProvider } from '@/components/ticket-board-dnd';
 import { TicketBoardBadgeLegend } from '@/components/ticket-board-badge-legend';
 import { prisma } from '@/lib/db/prisma';
 import { taskCountsByJobId } from '@/lib/domain/job-task-counts';
@@ -162,50 +162,43 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
       <TicketBoardMultiSelectProvider orderedJobIds={orderedJobIds}>
         <TicketBoardSelectionBar />
         <TicketBoardDndProvider>
-          {({ onColumnDragOver, onColumnDragLeave, onColumnDrop, dropColumn }) => (
-            <div className="board-canvas">
-              {DASHBOARD_COLUMNS.map((column) => {
-                const columnJobs = jobs.filter((job) => jobMatchesDashboardColumn(job, column));
-                return (
-                  <section className="board-list" key={column}>
-                    <div className="board-list-head">
-                      <h2 className="board-list-title">{boardColumnTitle(column)}</h2>
-                      <span className="board-list-count">{counts[column]}</span>
-                    </div>
-                    <div
-                      className={boardListBodyClass(column, dropColumn)}
-                      onDragOver={(e) => onColumnDragOver(e, column)}
-                      onDragLeave={onColumnDragLeave}
-                      onDrop={(e) => onColumnDrop(e, column)}
-                    >
-                      {columnJobs.map((job) => (
-                        <JobCard
-                          key={job.id}
-                          job={job}
-                          boardColumn={column}
-                          taskCounts={taskByJob.get(job.id) ?? { open: 0, done: 0 }}
-                          updatedAfterLastTicketSync={
-                            lastTicketSyncAt != null && job.updatedAt > lastTicketSyncAt
-                          }
-                          selectionSlot={
-                            <TicketBoardCheckbox
-                              jobId={job.id}
-                              orderIndex={orderIndexByJobId.get(job.id)!}
-                            />
-                          }
-                        />
-                      ))}
-                    </div>
-                    <div className="board-list-footer">
-                      <button type="button" className="board-list-add" disabled title="Coming soon">
-                        + Add ticket
-                      </button>
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
-          )}
+          <div className="board-canvas">
+            {DASHBOARD_COLUMNS.map((column) => {
+              const columnJobs = jobs.filter((job) => jobMatchesDashboardColumn(job, column));
+              return (
+                <section className="board-list" key={column}>
+                  <div className="board-list-head">
+                    <h2 className="board-list-title">{boardColumnTitle(column)}</h2>
+                    <span className="board-list-count">{counts[column]}</span>
+                  </div>
+                  <TicketBoardColumnBody column={column}>
+                    {columnJobs.map((job) => (
+                      <JobCard
+                        key={job.id}
+                        job={job}
+                        boardColumn={column}
+                        taskCounts={taskByJob.get(job.id) ?? { open: 0, done: 0 }}
+                        updatedAfterLastTicketSync={
+                          lastTicketSyncAt != null && job.updatedAt > lastTicketSyncAt
+                        }
+                        selectionSlot={
+                          <TicketBoardCheckbox
+                            jobId={job.id}
+                            orderIndex={orderIndexByJobId.get(job.id)!}
+                          />
+                        }
+                      />
+                    ))}
+                  </TicketBoardColumnBody>
+                  <div className="board-list-footer">
+                    <button type="button" className="board-list-add" disabled title="Coming soon">
+                      + Add ticket
+                    </button>
+                  </div>
+                </section>
+              );
+            })}
+          </div>
         </TicketBoardDndProvider>
       </TicketBoardMultiSelectProvider>
       <TicketBoardBadgeLegend />
