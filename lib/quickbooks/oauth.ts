@@ -8,6 +8,8 @@ export type IntuitTokenResponse = {
 
 const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
 const AUTHORIZE_URL = 'https://appcenter.intuit.com/connect/oauth2';
+/** Intuit sometimes hangs on consent without OpenID scopes (see Intuit developer forums). */
+const QUICKBOOKS_OAUTH_SCOPES = 'com.intuit.quickbooks.accounting openid profile email';
 
 function stripWrappingQuotes(raw: string): string {
   let v = raw.trim();
@@ -83,7 +85,7 @@ export function buildQuickBooksAuthorizationUrl(state: string, redirectUri: stri
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: 'code',
-    scope: 'com.intuit.quickbooks.accounting',
+    scope: QUICKBOOKS_OAUTH_SCOPES,
     redirect_uri: redirectUri,
     state,
   });
