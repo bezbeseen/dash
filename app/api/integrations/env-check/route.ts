@@ -37,7 +37,10 @@ export async function GET(req: NextRequest) {
       nextAuthHost = 'invalid_url';
     }
   }
-  const nextAuthCallback = `${origin}/api/auth/callback/google`;
+  const nextAuthCallbackFromRequest = `${origin}/api/auth/callback/google`;
+  const nextAuthCallbackEffective = nextAuthUrlRaw
+    ? `${nextAuthUrlRaw.replace(/\/+$/, '')}/api/auth/callback/google`
+    : nextAuthCallbackFromRequest;
   const gmailCallbackImplicit = `${origin}${GMAIL_OAUTH_CALLBACK_PATH}`;
   const gbpCallbackImplicit = `${origin}${GBP_OAUTH_CALLBACK_PATH}`;
   const explicitGmailRedirect = process.env.GOOGLE_REDIRECT_URI?.trim();
@@ -120,7 +123,12 @@ export async function GET(req: NextRequest) {
   );
   if (nextAuthHost && nextAuthHost !== requestHost) {
     hints.push(
-      `NEXTAUTH_URL host is "${nextAuthHost}" but this request is "${requestHost}". Set NEXTAUTH_URL to your real site URL (e.g. https://${requestHost}) or Google sign-in can fail.`,
+      `NEXTAUTH_URL host is "${nextAuthHost}" but this request is "${requestHost}". Google sign-in sends redirect_uri ${nextAuthCallbackEffective} — register that exact URL in Google Cloud, or set NEXTAUTH_URL to https://${requestHost} and redeploy.`,
+    );
+  }
+  if (nextAuthUrlRaw && nextAuthCallbackEffective !== nextAuthCallbackFromRequest) {
+    hints.push(
+      `Sign-in redirect_uri (${nextAuthCallbackEffective}) differs from this host's callback (${nextAuthCallbackFromRequest}). That is normal when NEXTAUTH_URL is set; Google must allow the NEXTAUTH_URL callback, not only the host you opened.`,
     );
   }
   if (gmailRedirectHost && gmailRedirectHost !== requestHost) {
@@ -162,6 +170,19 @@ export async function GET(req: NextRequest) {
     reviewGmailReady = false;
   }
 
+  let gmailConnectionCount = -1;
+  let quickBooksConnectionCount = -1;
+  try {
+    gmailConnectionCount = await prisma.gmailConnection.count();
+    quickBooksConnectionCount = await prisma.quickBooksToken.count();
+  } catch {
+    /* db error already hinted */
+  }
+
+  const slackUrl = process.env.SLACK_WEBHOOK_URL?.trim();
+  const slackEnabled = process.env.SLACK_NOTIFICATIONS_ENABLED?.trim();
+  const slackEnvGate = process.env.SLACK_WEBHOOK_ENV?.trim();
+
   return NextResponse.json({
     requestHost,
     database: {
@@ -190,14 +211,17 @@ export async function GET(req: NextRequest) {
     google: {
       /** Paste each URI into Google Cloud → OAuth Web client → Authorized redirect URIs */
       authorizedRedirectUrisChecklist: [
-        nextAuthCallback,
+        nextAuthCallbackEffective,
+        nextAuthCallbackFromRequest,
         gmailEffective,
         process.env.GOOGLE_REDIRECT_URI_GBP?.trim() || gbpCallbackImplicit,
-      ],
+      ].filter((uri, i, arr) => arr.indexOf(uri) === i),
       nextAuth: {
         secretSet: Boolean(process.env.NEXTAUTH_SECRET?.trim()),
         callbackPath: '/api/auth/callback/google',
-        fullCallbackUrl: nextAuthCallback,
+        /** What NextAuth actually sends to Google when NEXTAUTH_URL is set. */
+        fullCallbackUrl: nextAuthCallbackEffective,
+        callbackUrlFromThisRequest: nextAuthCallbackFromRequest,
         nextAuthUrlSet: Boolean(nextAuthUrlRaw),
         nextAuthUrlHost: nextAuthHost,
         nextAuthUrlMatchesRequestHost:
@@ -232,6 +256,45 @@ export async function GET(req: NextRequest) {
       attachInvoicePdfEnabled: reviewRequestEmailAttachInvoicePdfEnabled(),
       gmailSendScope:
         'OAuth must include https://www.googleapis.com/auth/gmail.send — reconnect the send mailbox in Settings after upgrading Dash.',
+    },
+    connections: {
+      gmailMailboxesInDb: gmailConnectionCount,
+      quickBooksCompaniesInDb: quickBooksConnectionCount,
+      note: 'OAuth tokens live in the database. After fixing Vercel env, reconnect in Settings if connect still fails.',
+    },
+    slack: {
+      webhookUrlSet: Boolean(slackUrl),
+      notificationsEnabled: slackEnabled ? !/^(0|false|off|no)$/i.test(slackEnabled) : true,
+      productionOnly: slackEnvGate === 'production',
+      note:
+        slackEnvGate === 'production'
+          ? 'Webhooks only fire on Vercel Production when SLACK_WEBHOOK_ENV=production.'
+          : null,
+    },
+    inboundWebhooks: {
+      formLeadSecretSet: Boolean(process.env.INBOUND_FORM_WEBHOOK_SECRET?.trim()),
+      conversationSecretSet: Boolean(
+        process.env.INBOUND_CONVERSATION_WEBHOOK_SECRET?.trim() || process.env.INBOUND_FORM_WEBHOOK_SECRET?.trim(),
+      ),
+      voiceCallSecretSet: Boolean(
+        process.env.INBOUND_VOICE_CALL_WEBHOOK_SECRET?.trim() || process.env.INBOUND_FORM_WEBHOOK_SECRET?.trim(),
+      ),
+      yelpLeadsTokenSet: Boolean(process.env.YELP_WEBHOOK_VERIFY_TOKEN?.trim()),
+      paths: [
+        `${origin}/api/webhooks/inbound-form-lead`,
+        `${origin}/api/webhooks/inbound-conversation`,
+        `${origin}/api/webhooks/inbound-voice-call`,
+        `${origin}/api/webhooks/yelp-leads`,
+      ],
+    },
+    googleDrive: {
+      activeFolderConfigured: Boolean(process.env.GOOGLE_DRIVE_ACTIVE_FOLDER_ID?.trim()),
+      completedFolderConfigured: Boolean(process.env.GOOGLE_DRIVE_COMPLETED_FOLDER_ID?.trim()),
+      archiveFolderConfigured: Boolean(process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID?.trim()),
+      note: 'Drive moves need GOOGLE_DRIVE_* env vars and a Gmail reconnect for Drive scope.',
+    },
+    openAi: {
+      apiKeySet: Boolean(process.env.OPENAI_API_KEY?.trim()),
     },
     hints,
   });

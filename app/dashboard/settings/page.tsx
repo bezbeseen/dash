@@ -100,6 +100,17 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         <GoogleBusinessSettingsSection />
 
         <YelpApiSettingsSection />
+
+        <section className="settings-section card border rounded-3 p-4 mb-3 bg-body">
+          <h2 className="h6 fw-semibold mb-2">Integration health check</h2>
+          <p className="small text-body-secondary mb-3">
+            Safe JSON snapshot of env + DB connection counts (no secrets). Use when sign-in works but QuickBooks, Gmail,
+            webhooks, or Slack seem off.
+          </p>
+          <a className="btn btn-toolbar" href="/api/integrations/env-check" target="_blank" rel="noreferrer">
+            Open env-check
+          </a>
+        </section>
       </div>
     </div>
   );

@@ -147,26 +147,43 @@ export async function quickBooksCompanyJson(realmId: string, path: string): Prom
   const token = await getValidQuickBooksAccessToken(realmId);
   const base = getQuickBooksApiBase();
   const url = `${base}/v3/company/${encodeURIComponent(realmId)}/${path}${path.includes('?') ? '&' : '?'}minorversion=65`;
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-    },
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`QuickBooks API ${res.status} for ${path}: ${text}`);
-  }
-  try {
-    const parsed = JSON.parse(text) as Record<string, unknown>;
-    if (parsed.Fault) {
-      throw new Error(`QuickBooks Fault: ${JSON.stringify(parsed.Fault)}`);
+
+  const retryable = new Set([429, 502, 503, 504]);
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 1500 * attempt));
     }
-    return parsed;
-  } catch (e) {
-    if (e instanceof Error && e.message.startsWith('QuickBooks Fault')) throw e;
-    throw new Error(`QuickBooks API returned non-JSON for ${path}`);
+
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      const err = new Error(`QuickBooks API ${res.status} for ${path}: ${text.slice(0, 500)}`);
+      if (retryable.has(res.status) && attempt < 2) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      if (parsed.Fault) {
+        throw new Error(`QuickBooks Fault: ${JSON.stringify(parsed.Fault)}`);
+      }
+      return parsed;
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith('QuickBooks Fault')) throw e;
+      throw new Error(`QuickBooks API returned non-JSON for ${path}`);
+    }
   }
+
+  throw lastError ?? new Error(`QuickBooks API failed for ${path}`);
 }
 
 /** Profit & Loss for a date range (month-to-date, quarter, etc.). */
@@ -363,8 +380,28 @@ export async function fetchInvoiceByDocNumber(realmId: string, docNumberRaw: str
 
 /** Pull recent estimates from QuickBooks (sandbox or prod per env). */
 export async function listRecentEstimates(realmId: string, maxResults = 100): Promise<EstimateSnapshot[]> {
-  const sql = `SELECT * FROM Estimate MAXRESULTS ${maxResults}`;
-  const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
+  // Avoid SELECT * — line items on many estimates can make QBO stream-timeout (504).
+  const sql = `SELECT Id, TxnStatus, TxnDate, TotalAmt, DocNumber, CustomerRef, CustomerMemo, MetaData FROM Estimate ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS ${maxResults}`;
+  let body: unknown;
+  try {
+    body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
+  } catch {
+    const fallback = `SELECT Id FROM Estimate ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS ${maxResults}`;
+    body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(fallback)}`);
+    const stubs = qboQueryEntities<QboEstimate>(body as { QueryResponse?: Record<string, unknown> }, 'Estimate');
+    const ids = [...new Set(stubs.map((s) => s.Id).filter((id): id is string => Boolean(id)))];
+    const results = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          return await fetchEstimateById(realmId, id);
+        } catch (e) {
+          console.warn('[quickbooks] listRecentEstimates: GET estimate failed, skipping id', id, e);
+          return null;
+        }
+      }),
+    );
+    return results.filter((x): x is EstimateSnapshot => x != null);
+  }
   const estimates = qboQueryEntities<QboEstimate>(body as { QueryResponse?: Record<string, unknown> }, 'Estimate');
   return estimates.map((e) => estimateFromQbo(e, e.Id ?? ''));
 }
