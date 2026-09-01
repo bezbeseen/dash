@@ -204,7 +204,23 @@ export async function GET(req: NextRequest) {
   let quickBooksApiProbe: { ok: boolean; apiBase: string; error?: string } | null = null;
   if (quickBooksRealmId) {
     try {
-      quickBooksApiProbe = await probeQuickBooksApiAccess(quickBooksRealmId);
+      quickBooksApiProbe = await Promise.race([
+        probeQuickBooksApiAccess(quickBooksRealmId),
+        new Promise<{ ok: false; apiBase: string; error: string }>((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                ok: false,
+                apiBase:
+                  getQuickBooksEnvironment() === 'production'
+                    ? 'quickbooks.api.intuit.com'
+                    : 'sandbox-quickbooks.api.intuit.com',
+                error: 'QuickBooks API probe timed out after 8s (Intuit may be slow or token refresh failed).',
+              }),
+            8000,
+          ),
+        ),
+      ]);
       if (!quickBooksApiProbe.ok) {
         hints.push(
           `QuickBooks API probe failed: ${quickBooksApiProbe.error ?? 'unknown'}. If you changed QUICKBOOKS_CLIENT_ID/SECRET on Vercel, reconnect QuickBooks in Settings (old refresh tokens won't work).`,
@@ -213,7 +229,10 @@ export async function GET(req: NextRequest) {
     } catch (e) {
       quickBooksApiProbe = {
         ok: false,
-        apiBase: getQuickBooksEnvironment() === 'production' ? 'quickbooks.api.intuit.com' : 'sandbox-quickbooks.api.intuit.com',
+        apiBase:
+          getQuickBooksEnvironment() === 'production'
+            ? 'quickbooks.api.intuit.com'
+            : 'sandbox-quickbooks.api.intuit.com',
         error: e instanceof Error ? e.message.slice(0, 200) : 'probe_failed',
       };
     }

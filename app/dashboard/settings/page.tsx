@@ -5,10 +5,12 @@ import {
   gbpToastFromQuery,
   gmailToastFromQuery,
   qbToastFromQuery,
+  syncToastFromQuery,
 } from '@/lib/domain/integration-query-toasts';
 import { GoogleBusinessSettingsSection } from '@/components/google-business-settings-section';
 import { YelpApiSettingsSection } from '@/components/yelp-api-settings-section';
-import { QuickBooksConnectAnchor } from '@/components/quickbooks-connect-link';
+import { QuickBooksConnectButton } from '@/components/quickbooks-connect-button';
+import { QuickBooksSyncForm } from '@/components/quickbooks-sync-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +23,11 @@ type SettingsPageProps = {
     gmail_error?: string;
     gbp_connected?: string;
     gbp_error?: string;
+    synced?: string;
+    sync_error?: string;
+    sync_warn?: string;
+    e?: string;
+    i?: string;
   }>;
 };
 
@@ -29,6 +36,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const { connected: qbConnected, error: qbError } = qbToastFromQuery(q);
   const { connected: gmailConnected, error: gmailError } = gmailToastFromQuery(q);
   const { connected: gbpConnected, error: gbpError } = gbpToastFromQuery(q);
+  const { synced, syncError } = syncToastFromQuery(q);
+  const syncWarnEmpty = q.sync_warn === 'empty';
 
   return (
     <div className="board-page">
@@ -45,10 +54,25 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       {(gmailError ||
         qbError ||
         gbpError ||
+        syncError ||
+        synced ||
+        syncWarnEmpty ||
         qbConnected ||
         gmailConnected ||
         gbpConnected) && (
         <div className="board-toasts" role="status">
+          {syncError ? <div className="board-toast board-toast-error">QuickBooks sync error: {syncError}</div> : null}
+          {synced ? (
+            <div className="board-toast board-toast-ok">
+              QuickBooks sync finished
+              {q.e || q.i ? ` (${q.e ?? 0} estimates, ${q.i ?? 0} invoices).` : '.'}
+            </div>
+          ) : null}
+          {syncWarnEmpty ? (
+            <div className="board-toast board-toast-error mb-0">
+              QuickBooks returned no recent estimates or invoices. Check you connected the right company.
+            </div>
+          ) : null}
           {gmailError ? <div className="board-toast board-toast-error">{gmailError}</div> : null}
           {qbError ? <div className="board-toast board-toast-error">{qbError}</div> : null}
           {gbpError ? <div className="board-toast board-toast-error">{gbpError}</div> : null}
@@ -63,15 +87,13 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           <h2 className="h6 fw-semibold mb-3">QuickBooks</h2>
           <p className="small text-body-secondary mb-3">
             Connect your company, then sync estimates and invoices into{' '}
-            <Link href="/dashboard/tickets">Tickets</Link>.
+            <Link href="/dashboard/tickets">Tickets</Link>. If Intuit says <strong>undefined didn&apos;t connect</strong>
+            , your <code className="detail-mono">QUICKBOOKS_CLIENT_ID</code> on Vercel must match Intuit{' '}
+            <strong>Production</strong> keys (developer.intuit.com → Keys &amp; credentials).
           </p>
           <div className="d-flex flex-wrap gap-2 align-items-center">
-            <QuickBooksConnectAnchor className="btn btn-toolbar">Connect QuickBooks</QuickBooksConnectAnchor>
-            <form action="/api/jobs/sync" method="post">
-              <button className="btn btn-toolbar" type="submit">
-                Sync from QuickBooks
-              </button>
-            </form>
+            <QuickBooksConnectButton className="btn btn-toolbar">Connect QuickBooks</QuickBooksConnectButton>
+            <QuickBooksSyncForm returnTo="/dashboard/settings">Sync from QuickBooks</QuickBooksSyncForm>
             <form action="/api/jobs/sync/demo" method="post">
               <button
                 className="btn btn-toolbar btn-toolbar-muted"

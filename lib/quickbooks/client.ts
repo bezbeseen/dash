@@ -151,7 +151,7 @@ export async function quickBooksCompanyJson(realmId: string, path: string): Prom
   const retryable = new Set([429, 502, 503, 504]);
   let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt > 0) {
       await new Promise((r) => setTimeout(r, 1500 * attempt));
     }
@@ -161,11 +161,12 @@ export async function quickBooksCompanyJson(realmId: string, path: string): Prom
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
       },
+      signal: AbortSignal.timeout(12_000),
     });
     const text = await res.text();
     if (!res.ok) {
       const err = new Error(`QuickBooks API ${res.status} for ${path}: ${text.slice(0, 500)}`);
-      if (retryable.has(res.status) && attempt < 2) {
+      if (retryable.has(res.status) && attempt < 1) {
         lastError = err;
         continue;
       }
