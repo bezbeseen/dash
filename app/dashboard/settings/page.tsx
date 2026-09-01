@@ -8,6 +8,7 @@ import {
 } from '@/lib/domain/integration-query-toasts';
 import { GoogleBusinessSettingsSection } from '@/components/google-business-settings-section';
 import { YelpApiSettingsSection } from '@/components/yelp-api-settings-section';
+import { QuickBooksConnectAnchor } from '@/components/quickbooks-connect-link';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,9 +66,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             <Link href="/dashboard/tickets">Tickets</Link>.
           </p>
           <div className="d-flex flex-wrap gap-2 align-items-center">
-            <a className="btn btn-toolbar" href="/api/integrations/quickbooks/connect">
-              Connect QuickBooks
-            </a>
+            <QuickBooksConnectAnchor className="btn btn-toolbar">Connect QuickBooks</QuickBooksConnectAnchor>
             <form action="/api/jobs/sync" method="post">
               <button className="btn btn-toolbar" type="submit">
                 Sync from QuickBooks

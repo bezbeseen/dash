@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { exchangeAuthorizationCode } from '@/lib/quickbooks/oauth';
 import { upsertQuickBooksTokens } from '@/lib/quickbooks/tokens-db';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 function dashboardOn(req: NextRequest, query: string) {
   const res = NextResponse.redirect(
     new URL(`/dashboard/settings?${query}`, req.nextUrl.origin),

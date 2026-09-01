@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { getQuickBooksEnvironment, QUICKBOOKS_OAUTH_CALLBACK_PATH } from '@/lib/quickbooks/config';
-import { quickBooksOAuthCredentialsConfigured } from '@/lib/quickbooks/oauth';
+import { getQuickBooksEnvironment, getQuickBooksSyncMaxResults, QUICKBOOKS_OAUTH_CALLBACK_PATH } from '@/lib/quickbooks/config';
+import { probeQuickBooksApiAccess } from '@/lib/quickbooks/client';
+import {
+  quickBooksClientIdFingerprint,
+  quickBooksOAuthCredentialsConfigured,
+} from '@/lib/quickbooks/oauth';
 import { GMAIL_OAUTH_CALLBACK_PATH } from '@/lib/gmail/config';
 import { GBP_OAUTH_CALLBACK_PATH } from '@/lib/google-business/config';
 import {
@@ -95,6 +99,18 @@ export async function GET(req: NextRequest) {
     hints.push(
       'QuickBooks OAuth: QUICKBOOKS_CLIENT_ID / QUICKBOOKS_CLIENT_SECRET are missing or look like placeholders (e.g. literal "undefined"). Intuit will show "undefined didn\'t connect". Set real keys from developer.intuit.com → your app → Keys & credentials.',
     );
+  } else {
+    const fp = quickBooksClientIdFingerprint();
+    if (fp.hadWrappingQuotes) {
+      hints.push(
+        'QUICKBOOKS_CLIENT_ID on Vercel has extra wrapping quotes — remove them (paste the raw Client ID only, no "quotes").',
+      );
+    }
+    if (fp.length > 0 && fp.length < 40) {
+      hints.push(
+        `QUICKBOOKS_CLIENT_ID looks too short (${fp.length} chars). Intuit "undefined didn't connect" usually means the wrong key — copy Production Client ID from developer.intuit.com (Keys & credentials → Production), not Development.`,
+      );
+    }
   }
   if (!process.env.NEXTAUTH_SECRET?.trim()) {
     hints.push(
@@ -172,11 +188,35 @@ export async function GET(req: NextRequest) {
 
   let gmailConnectionCount = -1;
   let quickBooksConnectionCount = -1;
+  let quickBooksRealmId: string | null = null;
   try {
     gmailConnectionCount = await prisma.gmailConnection.count();
     quickBooksConnectionCount = await prisma.quickBooksToken.count();
+    const qbRow = await prisma.quickBooksToken.findFirst({
+      orderBy: { updatedAt: 'desc' },
+      select: { realmId: true },
+    });
+    quickBooksRealmId = qbRow?.realmId ?? null;
   } catch {
     /* db error already hinted */
+  }
+
+  let quickBooksApiProbe: { ok: boolean; apiBase: string; error?: string } | null = null;
+  if (quickBooksRealmId) {
+    try {
+      quickBooksApiProbe = await probeQuickBooksApiAccess(quickBooksRealmId);
+      if (!quickBooksApiProbe.ok) {
+        hints.push(
+          `QuickBooks API probe failed: ${quickBooksApiProbe.error ?? 'unknown'}. If you changed QUICKBOOKS_CLIENT_ID/SECRET on Vercel, reconnect QuickBooks in Settings (old refresh tokens won't work).`,
+        );
+      }
+    } catch (e) {
+      quickBooksApiProbe = {
+        ok: false,
+        apiBase: getQuickBooksEnvironment() === 'production' ? 'quickbooks.api.intuit.com' : 'sandbox-quickbooks.api.intuit.com',
+        error: e instanceof Error ? e.message.slice(0, 200) : 'probe_failed',
+      };
+    }
   }
 
   const slackUrl = process.env.SLACK_WEBHOOK_URL?.trim();
@@ -199,6 +239,7 @@ export async function GET(req: NextRequest) {
       hasClientId: Boolean(process.env.QUICKBOOKS_CLIENT_ID?.trim()),
       hasClientSecret: Boolean(process.env.QUICKBOOKS_CLIENT_SECRET?.trim()),
       oauthCredentialsConfigured: quickBooksOAuthCredentialsConfigured(),
+      clientIdFingerprint: quickBooksClientIdFingerprint(),
       hasExplicitRedirectUri: Boolean(qbRedirect),
       /** False when QUICKBOOKS_REDIRECT_URI path is not the QuickBooks OAuth callback (e.g. Gmail URL by mistake). */
       explicitRedirectPathIsQuickBooks: quickBooksExplicitRedirectPathOk,
@@ -207,6 +248,9 @@ export async function GET(req: NextRequest) {
       redirectHost: qbRedirectHost,
       redirectMatchesRequestHost: qbRedirect ? redirectMatchesRequest : true,
       environment: getQuickBooksEnvironment(),
+      syncMaxResults: getQuickBooksSyncMaxResults(),
+      storedRealmId: quickBooksRealmId,
+      apiProbe: quickBooksApiProbe,
     },
     google: {
       /** Paste each URI into Google Cloud → OAuth Web client → Authorized redirect URIs */
@@ -295,6 +339,14 @@ export async function GET(req: NextRequest) {
     },
     openAi: {
       apiKeySet: Boolean(process.env.OPENAI_API_KEY?.trim()),
+    },
+    analytics: {
+      vercelWebAnalytics: 'Enable in Vercel → Project → Analytics (component is in app layout; no env var).',
+      vercelSpeedInsights: 'Enable in Vercel → Project → Speed Insights.',
+      ga4MeasurementIdSet: Boolean(
+        process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() &&
+          process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID.trim() !== 'replace-me',
+      ),
     },
     hints,
   });

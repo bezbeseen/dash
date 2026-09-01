@@ -14,3 +14,12 @@ export function getQuickBooksApiBase(): string {
     ? 'https://quickbooks.api.intuit.com'
     : 'https://sandbox-quickbooks.api.intuit.com';
 }
+
+/** Max estimates + invoices pulled per manual sync (default 40 — keeps Vercel under timeout). */
+export function getQuickBooksSyncMaxResults(): number {
+  const raw = process.env.QUICKBOOKS_SYNC_MAX_RESULTS?.trim();
+  if (!raw) return 40;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return 40;
+  return Math.min(n, 100);
+}

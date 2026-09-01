@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { upsertJobFromEstimate, upsertJobFromInvoice } from '@/lib/domain/sync';
 import { listRecentEstimates, listRecentInvoices } from '@/lib/quickbooks/client';
+import { getQuickBooksSyncMaxResults } from '@/lib/quickbooks/config';
+
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 const baseUrl = () => process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -44,8 +48,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const estimates = await listRecentEstimates(token.realmId, 100);
-    const invoices = await listRecentInvoices(token.realmId, 100);
+    const max = getQuickBooksSyncMaxResults();
+    const estimates = await listRecentEstimates(token.realmId, max);
+    const invoices = await listRecentInvoices(token.realmId, max);
 
     const { realmId } = token;
     for (const est of estimates) {

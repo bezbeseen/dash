@@ -5,6 +5,9 @@ import { getToken } from 'next-auth/jwt';
 const PUBLIC_API_PREFIXES = [
   '/api/auth/', // NextAuth routes
   '/api/integrations/env-check', // OAuth redirect checklist (safe, no secrets — needed when sign-in is broken)
+  '/api/integrations/quickbooks/connect',
+  '/api/integrations/gmail/connect',
+  '/api/integrations/google-business/connect',
   '/api/integrations/gmail/callback',
   '/api/integrations/quickbooks/callback',
   '/api/integrations/google-business/callback',

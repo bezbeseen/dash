@@ -9,9 +9,39 @@ export type IntuitTokenResponse = {
 const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
 const AUTHORIZE_URL = 'https://appcenter.intuit.com/connect/oauth2';
 
+function stripWrappingQuotes(raw: string): string {
+  let v = raw.trim();
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+    v = v.slice(1, -1).trim();
+  }
+  return v;
+}
+
 function trimEnv(key: 'QUICKBOOKS_CLIENT_ID' | 'QUICKBOOKS_CLIENT_SECRET'): string | undefined {
-  const t = process.env[key]?.trim();
+  const raw = process.env[key];
+  if (raw == null) return undefined;
+  const t = stripWrappingQuotes(raw);
   return t ? t : undefined;
+}
+
+/** Safe fingerprint for env-check (not secret — Intuit Client IDs are public in OAuth URLs). */
+export function quickBooksClientIdFingerprint(): {
+  length: number;
+  preview: string | null;
+  hadWrappingQuotes: boolean;
+} {
+  const raw = process.env.QUICKBOOKS_CLIENT_ID;
+  if (raw == null || !raw.trim()) {
+    return { length: 0, preview: null, hadWrappingQuotes: false };
+  }
+  const trimmed = raw.trim();
+  const hadWrappingQuotes =
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"));
+  const id = stripWrappingQuotes(raw);
+  if (!id) return { length: 0, preview: null, hadWrappingQuotes };
+  const preview = id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : `${id.slice(0, 2)}…`;
+  return { length: id.length, preview, hadWrappingQuotes };
 }
 
 /** True if missing or a common mistaken placeholder (e.g. literal "undefined" from bad env injection). */
@@ -73,6 +103,7 @@ async function postToken(body: URLSearchParams): Promise<IntuitTokenResponse> {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: body.toString(),
+    signal: AbortSignal.timeout(25_000),
   });
 
   const text = await res.text();

@@ -406,6 +406,20 @@ export async function listRecentEstimates(realmId: string, maxResults = 100): Pr
   return estimates.map((e) => estimateFromQbo(e, e.Id ?? ''));
 }
 
+async function mapInBatches<T, R>(
+  items: T[],
+  batchSize: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const chunk = items.slice(i, i + batchSize);
+    const chunkResults = await Promise.all(chunk.map(fn));
+    out.push(...chunkResults);
+  }
+  return out;
+}
+
 /**
  * List recent invoices, then hydrate each with GET invoice/{id}.
  * Query responses often omit Balance and LinkedTxn; without Balance every row looks “open / unpaid”
@@ -423,18 +437,33 @@ export async function listRecentInvoices(realmId: string, maxResults = 100): Pro
   const stubs = qboQueryEntities<QboInvoice>(body as { QueryResponse?: Record<string, unknown> }, 'Invoice');
   const ids = [...new Set(stubs.map((s) => s.Id).filter((id): id is string => Boolean(id)))];
 
-  const results = await Promise.all(
-    ids.map(async (id) => {
-      try {
-        return await fetchInvoiceById(realmId, id);
-      } catch (e) {
-        console.warn('[quickbooks] listRecentInvoices: GET invoice failed, skipping id', id, e);
-        return null;
-      }
-    }),
-  );
+  const results = await mapInBatches(ids, 5, async (id) => {
+    try {
+      return await fetchInvoiceById(realmId, id);
+    } catch (e) {
+      console.warn('[quickbooks] listRecentInvoices: GET invoice failed, skipping id', id, e);
+      return null;
+    }
+  });
 
   return results.filter((x): x is InvoiceSnapshot => x != null);
+}
+
+/** Lightweight API check for env-check / diagnostics (token refresh + one-row query). */
+export async function probeQuickBooksApiAccess(realmId: string): Promise<{
+  ok: boolean;
+  apiBase: string;
+  error?: string;
+}> {
+  const apiBase = getQuickBooksApiBase();
+  try {
+    const sql = 'SELECT Id FROM Estimate MAXRESULTS 1';
+    await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
+    return { ok: true, apiBase };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, apiBase, error: msg.slice(0, 400) };
+  }
 }
 
 type QboAccount = {

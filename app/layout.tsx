@@ -14,6 +14,7 @@ import type { Metadata, Viewport } from 'next';
 import React from 'react';
 import { BootstrapClient } from '@/components/bootstrap-client';
 import { AuthSessionProvider } from '@/components/auth/session-provider';
+import { WebAnalytics } from '@/components/web-analytics';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <BootstrapClient />
         <AuthSessionProvider>{children}</AuthSessionProvider>
+        <WebAnalytics />
       </body>
     </html>
   );

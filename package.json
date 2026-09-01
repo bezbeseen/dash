@@ -24,6 +24,8 @@
     "@ai-sdk/openai": "^3.0.55",
     "@ai-sdk/react": "^3.0.174",
     "@prisma/client": "^6.5.0",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "ai": "^6.0.172",
     "bootstrap": "^5.3.8",
     "googleapis": "^144.0.0",
