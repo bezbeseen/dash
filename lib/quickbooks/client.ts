@@ -153,7 +153,7 @@ export async function quickBooksCompanyJson(realmId: string, path: string): Prom
 
   for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt > 0) {
-      await new Promise((r) => setTimeout(r, 1500 * attempt));
+      await new Promise((r) => setTimeout(r, 800));
     }
 
     const res = await fetch(url, {
@@ -161,7 +161,7 @@ export async function quickBooksCompanyJson(realmId: string, path: string): Prom
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
       },
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(8_000),
     });
     const text = await res.text();
     if (!res.ok) {
@@ -422,11 +422,18 @@ async function mapInBatches<T, R>(
 }
 
 /**
- * List recent invoices, then hydrate each with GET invoice/{id}.
- * Query responses often omit Balance and LinkedTxn; without Balance every row looks “open / unpaid”
- * and paid jobs never reach the PAID column.
+ * List recent invoices — prefer one Query (Balance + LinkedTxn); fall back to per-id GET only for small lists.
  */
 export async function listRecentInvoices(realmId: string, maxResults = 100): Promise<InvoiceSnapshot[]> {
+  const richSql = `SELECT Id, DocNumber, TotalAmt, Balance, TxnDate, DueDate, CustomerRef, BillEmail, BillEmailCc, CustomerMemo, PrivateNote, LinkedTxn, MetaData FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS ${maxResults}`;
+  try {
+    const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(richSql)}`);
+    const invoices = qboQueryEntities<QboInvoice>(body as { QueryResponse?: Record<string, unknown> }, 'Invoice');
+    return invoices.map((inv) => invoiceFromQbo(inv, inv.Id ?? ''));
+  } catch (richErr) {
+    console.warn('[quickbooks] listRecentInvoices rich query failed; falling back to GET-by-id', richErr);
+  }
+
   const ordered = `SELECT Id FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS ${maxResults}`;
   let body: unknown;
   try {
@@ -438,7 +445,8 @@ export async function listRecentInvoices(realmId: string, maxResults = 100): Pro
   const stubs = qboQueryEntities<QboInvoice>(body as { QueryResponse?: Record<string, unknown> }, 'Invoice');
   const ids = [...new Set(stubs.map((s) => s.Id).filter((id): id is string => Boolean(id)))];
 
-  const results = await mapInBatches(ids, 5, async (id) => {
+  const hydrateCap = Math.min(ids.length, 8);
+  const results = await mapInBatches(ids.slice(0, hydrateCap), 3, async (id) => {
     try {
       return await fetchInvoiceById(realmId, id);
     } catch (e) {

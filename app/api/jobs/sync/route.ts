@@ -5,7 +5,8 @@ import { listRecentEstimates, listRecentInvoices } from '@/lib/quickbooks/client
 import { getQuickBooksSyncMaxResults } from '@/lib/quickbooks/config';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+/** Hobby Vercel caps at 10s; Pro can raise via vercel.json / plan. */
+export const maxDuration = 10;
 
 const baseUrl = () => process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -53,12 +54,14 @@ export async function POST(req: Request) {
     const invoices = await listRecentInvoices(token.realmId, max);
 
     const { realmId } = token;
-    for (const est of estimates) {
-      await upsertJobFromEstimate(est, { realmId });
-    }
-    for (const inv of invoices) {
-      await upsertJobFromInvoice(inv, { realmId });
-    }
+    const upsertBatch = async <T>(items: T[], fn: (item: T) => Promise<unknown>) => {
+      for (let i = 0; i < items.length; i += 5) {
+        await Promise.all(items.slice(i, i + 5).map(fn));
+      }
+    };
+
+    await upsertBatch(estimates, (est) => upsertJobFromEstimate(est, { realmId }));
+    await upsertBatch(invoices, (inv) => upsertJobFromInvoice(inv, { realmId }));
 
     try {
       await prisma.quickBooksToken.update({

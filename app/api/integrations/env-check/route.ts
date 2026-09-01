@@ -215,9 +215,9 @@ export async function GET(req: NextRequest) {
                   getQuickBooksEnvironment() === 'production'
                     ? 'quickbooks.api.intuit.com'
                     : 'sandbox-quickbooks.api.intuit.com',
-                error: 'QuickBooks API probe timed out after 8s (Intuit may be slow or token refresh failed).',
+                error: 'QuickBooks API probe timed out after 4s (Intuit may be slow or token refresh failed).',
               }),
-            8000,
+            4000,
           ),
         ),
       ]);
