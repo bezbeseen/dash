@@ -2,7 +2,6 @@ import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { QUICKBOOKS_OAUTH_CALLBACK_PATH } from '@/lib/quickbooks/config';
 import { buildQuickBooksAuthorizationUrl } from '@/lib/quickbooks/oauth';
-import { oauthRedirectHtmlPage } from '@/lib/http/oauth-redirect-html';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -28,14 +27,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard/settings?qb_error=config', origin));
   }
 
-  // HTML + Set-Cookie beats a bare 302 when the browser soft-navigates to this route.
-  const res = new NextResponse(oauthRedirectHtmlPage(authUrl, 'QuickBooks'), {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-store',
-    },
-  });
+  // Full-page navigation (Connect button uses location.assign) — 302 is reliable here.
+  const res = NextResponse.redirect(authUrl);
   res.cookies.set('qb_oauth_state', state, qbOauthCookieOpts);
   res.cookies.set('qb_oauth_redirect_uri', redirectUri, qbOauthCookieOpts);
   return res;

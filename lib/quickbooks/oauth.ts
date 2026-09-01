@@ -103,7 +103,7 @@ async function postToken(body: URLSearchParams): Promise<IntuitTokenResponse> {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: body.toString(),
-    signal: AbortSignal.timeout(25_000),
+    signal: AbortSignal.timeout(8_000),
   });
 
   const text = await res.text();

@@ -33,6 +33,10 @@ type SettingsPageProps = {
 
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const q = await searchParams;
+  const appOrigin = (process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/+$/, '');
+  const qbRedirectExample = appOrigin
+    ? `${appOrigin}/api/integrations/quickbooks/callback`
+    : '/api/integrations/quickbooks/callback';
   const { connected: qbConnected, error: qbError } = qbToastFromQuery(q);
   const { connected: gmailConnected, error: gmailError } = gmailToastFromQuery(q);
   const { connected: gbpConnected, error: gbpError } = gbpToastFromQuery(q);
@@ -89,7 +93,17 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             Connect your company, then sync estimates and invoices into{' '}
             <Link href="/dashboard/tickets">Tickets</Link>. If Intuit says <strong>undefined didn&apos;t connect</strong>
             , your <code className="detail-mono">QUICKBOOKS_CLIENT_ID</code> on Vercel must match Intuit{' '}
-            <strong>Production</strong> keys (developer.intuit.com → Keys &amp; credentials).
+            <strong>Production</strong> keys (developer.intuit.com → Keys &amp; credentials). In the same app,
+            add redirect URI{' '}
+            <code className="detail-mono" style={{ wordBreak: 'break-all' }}>
+              {qbRedirectExample}
+            </code>{' '}
+            (Intuit Developer → your app → Settings → Redirect URIs — not Google Cloud). If the tab spins on a
+            blue-dot Intuit page, try a private window or{' '}
+            <a href="/api/integrations/quickbooks/connect" target="_blank" rel="noreferrer">
+              open connect in a new tab
+            </a>
+            .
           </p>
           <div className="d-flex flex-wrap gap-2 align-items-center">
             <QuickBooksConnectButton className="btn btn-toolbar">Connect QuickBooks</QuickBooksConnectButton>
