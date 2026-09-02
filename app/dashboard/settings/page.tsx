@@ -118,6 +118,48 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               </button>
             </form>
           </div>
+
+          <details className="mt-3">
+            <summary className="small text-body-secondary" style={{ cursor: 'pointer' }}>
+              Intuit consent page stuck on spinning dots? Connect manually
+            </summary>
+            <div className="small text-body-secondary mt-2">
+              <p className="mb-2">
+                When Intuit&apos;s App Center hangs, get tokens from the{' '}
+                <a
+                  href="https://developer.intuit.com/app/developer/playground"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  OAuth 2.0 Playground
+                </a>{' '}
+                instead: pick this app, choose <strong>Production</strong>, scope{' '}
+                <code className="detail-mono">com.intuit.quickbooks.accounting</code>, authorize your company, then copy
+                the <strong>Realm ID</strong> and <strong>Refresh Token</strong> here. Refresh tokens expire, so paste a
+                fresh one.
+              </p>
+              <form action="/api/integrations/quickbooks/manual-token" method="post" className="d-flex flex-column gap-2">
+                <input
+                  className="form-control form-control-sm"
+                  name="realm_id"
+                  placeholder="Realm ID (Company ID), e.g. 9130353116719726"
+                  inputMode="numeric"
+                  required
+                />
+                <input
+                  className="form-control form-control-sm"
+                  name="refresh_token"
+                  placeholder="Refresh token from the OAuth Playground"
+                  required
+                />
+                <div>
+                  <button className="btn btn-toolbar" type="submit">
+                    Save QuickBooks tokens
+                  </button>
+                </div>
+              </form>
+            </div>
+          </details>
         </section>
 
         <section className="settings-section card border rounded-3 p-4 mb-3 bg-body">

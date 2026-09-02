@@ -18,7 +18,11 @@ export function qbToastFromQuery(q: {
             ? 'QuickBooks: set real QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET in Vercel (not the literal word "undefined" or "replace-me"). If Intuit said "undefined didn\'t connect", your Client ID env var is wrong or missing.'
             : q.qb_error === 'token'
               ? `QuickBooks token exchange failed.${detail ? ` ${detail}` : ''} Check Vercel env matches Intuit (sandbox vs production keys, redirect URI exact match).`
-              : null;
+              : q.qb_error === 'manual_input'
+                ? 'Paste both a numeric Realm ID (Company ID) and the full refresh token from the Intuit OAuth Playground.'
+                : q.qb_error === 'manual_token'
+                  ? `Intuit rejected that refresh token.${detail ? ` ${detail}` : ''} Generate a fresh one in the OAuth Playground (they expire), and make sure the Playground used the same Production app as QUICKBOOKS_CLIENT_ID.`
+                  : null;
   return { connected, error };
 }
 
