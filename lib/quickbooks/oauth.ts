@@ -8,8 +8,8 @@ export type IntuitTokenResponse = {
 
 const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
 const AUTHORIZE_URL = 'https://appcenter.intuit.com/connect/oauth2';
-/** Intuit sometimes hangs on consent without OpenID scopes (see Intuit developer forums). */
-const QUICKBOOKS_OAUTH_SCOPES = 'com.intuit.quickbooks.accounting openid profile email';
+/** Last known-working production scope. Extra OpenID scopes did not fix App Center spinner. */
+const QUICKBOOKS_OAUTH_SCOPES = 'com.intuit.quickbooks.accounting';
 
 function stripWrappingQuotes(raw: string): string {
   let v = raw.trim();
