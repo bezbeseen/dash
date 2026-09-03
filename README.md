@@ -175,7 +175,7 @@ Dash sits behind a login, so these measure **staff usage of the tool**, not cust
 
 This uses a **service account**, so there is no OAuth consent screen and nothing to reconnect when tokens rotate:
 
-1. Google Cloud (same project as `GOOGLE_CLIENT_ID`) → enable **Google Analytics Data API**.
+1. Google Cloud → enable **Google Analytics Data API**. Any project works (quota is billed to whichever project owns the service account); it does **not** need to match the project behind `GOOGLE_CLIENT_ID`.
 2. Create a **service account**, add a **JSON key**, and put the whole file in **`GOOGLE_ANALYTICS_SERVICE_ACCOUNT_JSON`** (raw JSON or base64 of the file — base64 is easier to paste into Vercel).
 3. GA4 → **Admin → Property access management** → add the service account email as **Viewer**.
 4. Set **`GA4_PROPERTY_ID`** to the **numeric** property ID (GA4 → Admin → **Property settings**) — *not* the `G-XXXXXXXX` measurement ID.

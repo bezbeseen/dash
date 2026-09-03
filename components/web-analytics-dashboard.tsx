@@ -38,15 +38,15 @@ function SetupSteps({ serviceAccountEmail }: { serviceAccountEmail: string | nul
   return (
     <ol className="small text-body-secondary mb-0 ps-3">
       <li className="mb-2">
-        In Google Cloud (same project as your OAuth client), enable the{' '}
+        In Google Cloud, enable the{' '}
         <a
           href="https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com"
           target="_blank"
           rel="noopener noreferrer"
         >
           Google Analytics Data API
-        </a>
-        .
+        </a>{' '}
+        on the project that will own the service account (any project works).
       </li>
       <li className="mb-2">
         Create a <strong>service account</strong>, add a <strong>JSON key</strong>, and paste the whole file into{' '}
