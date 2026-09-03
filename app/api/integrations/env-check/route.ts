@@ -366,6 +366,10 @@ export async function GET(req: NextRequest) {
         process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() &&
           process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID.trim() !== 'replace-me',
       ),
+      clarityProjectIdSet: Boolean(
+        process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID?.trim() &&
+          process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID.trim() !== 'replace-me',
+      ),
     },
     hints,
   });
