@@ -38,6 +38,7 @@ export function DashboardSidebarNav() {
   const accountingActive = pathname === '/dashboard/accounting' || pathname.startsWith('/dashboard/accounting/');
   const cashActive = pathname === '/dashboard/cash' || pathname.startsWith('/dashboard/cash/');
   const gbpMetricsActive = pathname === '/dashboard/gbp' || pathname.startsWith('/dashboard/gbp/');
+  const webAnalyticsActive = pathname === '/dashboard/analytics' || pathname.startsWith('/dashboard/analytics/');
   const settingsActive = pathname === '/dashboard/settings' || pathname.startsWith('/dashboard/settings/');
   const workflowActive = isWorkflowRoute(pathname);
   const assistantActive = pathname === '/dashboard/assistant';
@@ -102,6 +103,14 @@ export function DashboardSidebarNav() {
             <i className="material-icons-outlined">insights</i>
           </div>
           <div className="menu-title">GBP metrics</div>
+        </Link>
+      </li>
+      <li className={webAnalyticsActive ? 'mm-active' : ''}>
+        <Link href="/dashboard/analytics">
+          <div className="parent-icon">
+            <i className="material-icons-outlined">trending_up</i>
+          </div>
+          <div className="menu-title">Web analytics</div>
         </Link>
       </li>
 

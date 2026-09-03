@@ -159,6 +159,43 @@ If Google returns **no refresh token**, revoke Dash’s access under the Google 
 
 **Which mailbox:** sync only sees threads the **selected** account can open in Gmail. If the wrong mailbox is chosen, sync may fail or show an empty thread.
 
+## Web analytics
+
+Two separate things, both optional:
+
+**1. Tracking Dash itself** (who on your team uses which screens). Nothing to build — set env vars and redeploy:
+
+- **Vercel Web Analytics / Speed Insights** — enable in **Vercel → Project → Analytics** (and **Speed Insights**). No env var; the component already ships in `app/layout.tsx`.
+- **Google Analytics 4** — set **`NEXT_PUBLIC_GA_MEASUREMENT_ID`** to your `G-XXXXXXXX` (GA4 → Admin → Data streams → Web).
+- **Microsoft Clarity** (heatmaps + session replay) — set **`NEXT_PUBLIC_CLARITY_PROJECT_ID`** (clarity.microsoft.com → Settings → Project ID).
+
+Dash sits behind a login, so these measure **staff usage of the tool**, not customer traffic.
+
+**2. Marketing-site traffic inside Dash** — sidebar **Web analytics** (`/dashboard/analytics`) reads GA4 server-side and shows users, sessions, page views, average session, bounce rate (each vs the previous period), plus top pages, channels, and devices over 7 / 28 / 90 days.
+
+This uses a **service account**, so there is no OAuth consent screen and nothing to reconnect when tokens rotate:
+
+1. Google Cloud (same project as `GOOGLE_CLIENT_ID`) → enable **Google Analytics Data API**.
+2. Create a **service account**, add a **JSON key**, and put the whole file in **`GOOGLE_ANALYTICS_SERVICE_ACCOUNT_JSON`** (raw JSON or base64 of the file — base64 is easier to paste into Vercel).
+3. GA4 → **Admin → Property access management** → add the service account email as **Viewer**.
+4. Set **`GA4_PROPERTY_ID`** to the **numeric** property ID (GA4 → Admin → **Property settings**) — *not* the `G-XXXXXXXX` measurement ID.
+
+`/api/integrations/env-check` reports `analytics.ga4Reporting` including the service account email to grant access to. The page shows setup steps until it is configured, and a targeted hint if Google returns `PERMISSION_DENIED` (means step 3 is missing).
+
+## Yelp Leads → pre-quote tickets
+
+**"Request a Quote"** messages can create pre-quote tickets automatically (same lane as GHL leads). The webhook is implemented at **`POST /api/webhooks/yelp-leads`**; it fetches the lead plus its message events from the Leads API and upserts a job keyed on `yelpLeadId`, so follow-up messages update the existing ticket instead of duplicating it.
+
+Setup:
+
+1. **`YELP_WEBHOOK_VERIFY_TOKEN`** — your own shared secret (`openssl rand -hex 32`).
+2. **`YELP_LEADS_ACCESS_TOKEN`** — OAuth bearer token with the **Leads** scope (this is *not* the Fusion API key; see [Yelp Leads API](https://docs.developer.yelp.com/docs/leads-api)).
+3. Register the webhook URL with Yelp: **`https://<your-dash-domain>/api/webhooks/yelp-leads?token=<YELP_WEBHOOK_VERIFY_TOKEN>`** (the same value is also accepted as `Authorization: Bearer` or `X-Dash-Yelp-Secret`).
+
+Opening that URL in a browser sends **GET** and returns a JSON hint — leads only arrive via Yelp's **POST**. Requests without the secret get `401`; a missing `YELP_LEADS_ACCESS_TOKEN` returns `503` so misconfiguration is obvious in Yelp's delivery log.
+
+**Yelp Fusion** (`YELP_API_KEY`) is separate and unrelated to leads: public search and business details via `GET /api/integrations/yelp/search` and `GET /api/integrations/yelp/business/[id]`. It exposes no owner "insights" and currently has no screen in Dash.
+
 ## Dev-only: CSV preview (optional, isolated)
 
 If you want **familiar-looking** tickets from a QuickBooks **Transaction List by Date** export without touching the main dashboard or sync routes:

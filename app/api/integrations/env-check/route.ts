@@ -9,6 +9,11 @@ import {
 import { GMAIL_OAUTH_CALLBACK_PATH } from '@/lib/gmail/config';
 import { GBP_OAUTH_CALLBACK_PATH } from '@/lib/google-business/config';
 import {
+  ga4ReportingConfigured,
+  getGa4PropertyId,
+  getGa4ServiceAccountEmail,
+} from '@/lib/analytics/ga4-config';
+import {
   getReviewRequestSendAsEmail,
   reviewRequestEmailAttachInvoicePdfEnabled,
   reviewRequestEmailFeatureEnabled,
@@ -370,6 +375,13 @@ export async function GET(req: NextRequest) {
         process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID?.trim() &&
           process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID.trim() !== 'replace-me',
       ),
+      /** GA4 Data API read-only reporting behind /dashboard/analytics. */
+      ga4Reporting: {
+        configured: ga4ReportingConfigured(),
+        propertyId: getGa4PropertyId(),
+        serviceAccountEmail: getGa4ServiceAccountEmail(),
+        grantAccessAt: 'GA4 → Admin → Property access management → add the service account email as Viewer.',
+      },
     },
     hints,
   });
