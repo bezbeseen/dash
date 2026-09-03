@@ -347,7 +347,10 @@ export async function GET(req: NextRequest) {
       voiceCallSecretSet: Boolean(
         process.env.INBOUND_VOICE_CALL_WEBHOOK_SECRET?.trim() || process.env.INBOUND_FORM_WEBHOOK_SECRET?.trim(),
       ),
-      yelpLeadsTokenSet: Boolean(process.env.YELP_WEBHOOK_VERIFY_TOKEN?.trim()),
+      /** Shared secret Yelp sends back to us (?token=, Bearer, or X-Dash-Yelp-Secret). */
+      yelpLeadsVerifyTokenSet: Boolean(process.env.YELP_WEBHOOK_VERIFY_TOKEN?.trim()),
+      /** Separate OAuth bearer Dash uses to call the Leads API; without it the webhook returns 503. */
+      yelpLeadsAccessTokenSet: Boolean(process.env.YELP_LEADS_ACCESS_TOKEN?.trim()),
       paths: [
         `${origin}/api/webhooks/inbound-form-lead`,
         `${origin}/api/webhooks/inbound-conversation`,
