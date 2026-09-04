@@ -21,6 +21,11 @@ function activityMetadataPayloadExpanded(meta: Prisma.JsonValue | null): string 
   }
 }
 
+function activitySourceLabel(log: ActivityLog): string {
+  if (log.eventName.startsWith('inbound.yelp') || log.eventName.includes('yelp_email')) return 'Yelp';
+  return labelEnum(log.source);
+}
+
 type Props = {
   sectionId?: string;
   logs: ActivityLog[];
@@ -52,7 +57,7 @@ export function TicketActivityLogSection({ sectionId, logs }: Props) {
                       fmtDetailDate(log.createdAt)
                     )}
                   </span>
-                  <span className="badge">{labelEnum(log.source)}</span>
+                  <span className="badge">{activitySourceLabel(log)}</span>
                   <span className="activity-event">{log.eventName}</span>
                 </div>
                 <p className="activity-message">{log.message}</p>

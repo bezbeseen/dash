@@ -301,7 +301,20 @@ export async function findGmailThreadCandidates(
   };
 }
 
-/** A human-set or human-confirmed link is authoritative and is never replaced automatically. */
+function describeLinkSourceActivity(source: GmailLinkSource): { eventName: string; how: string } {
+  switch (source) {
+    case GmailLinkSource.CONFIRMED:
+      return { eventName: 'gmail.thread_confirmed', how: 'from a suggestion' };
+    case GmailLinkSource.YELP_EMAIL:
+      return { eventName: 'gmail.thread_linked_from_yelp_email', how: 'from the Yelp lead email' };
+    case GmailLinkSource.MANUAL:
+      return { eventName: 'gmail.thread_set', how: 'by hand' };
+    case GmailLinkSource.AUTO:
+      return { eventName: 'gmail.thread_auto_linked', how: 'automatically' };
+  }
+}
+
+/** A human-set, human-confirmed, or Yelp-import link is authoritative and is never replaced automatically. */
 export function linkIsProtected(job: Pick<JobForMatching, 'gmailThreadId' | 'gmailLinkSource'>): boolean {
   if (!job.gmailThreadId) return false;
   return job.gmailLinkSource !== GmailLinkSource.AUTO;
@@ -333,13 +346,15 @@ export async function applyThreadLink(opts: {
     },
   });
 
+  const linkActivity = describeLinkSourceActivity(source);
+
   await prisma.activityLog.create({
     data: {
       jobId,
       source: opts.eventSource,
-      eventName: source === GmailLinkSource.CONFIRMED ? 'gmail.thread_confirmed' : 'gmail.thread_auto_linked',
+      eventName: linkActivity.eventName,
       message:
-        `Gmail thread attached ${source === GmailLinkSource.CONFIRMED ? 'from a suggestion' : 'automatically'} ` +
+        `Gmail thread attached ${linkActivity.how} ` +
         `(${candidate.mailboxEmail}, confidence ${candidate.score}) — ${describeThreadMatchSignal(candidate.signals[0] ?? 'customer_name')}.`,
       metadata: {
         threadId: candidate.threadId,
@@ -425,7 +440,7 @@ export async function matchGmailThreadForJob(opts: {
         buildCounterpartyFilter([]),
       ),
       action: 'none',
-      reason: 'A person already chose the thread for this ticket.',
+      reason: 'This ticket already has a Gmail thread that automatic matching must not replace.',
       best: null,
       suggestions: [],
       inspected: [],

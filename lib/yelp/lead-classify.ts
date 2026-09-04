@@ -65,6 +65,11 @@ export function resolveYelpOwnIdentity(
 /** Yelp's Request a Quote sentence, present in every genuine first-contact lead. */
 const RAQ_SENTENCE = /([A-Z][^.\n]{0,60}?)\s+requested\s+a\s+quote\s+from\s+([^.\n]{2,80}?)\s+for\s+(?:an?\s+|some\s+)?([^.\n]{3,60})\s*\./;
 
+/** True when the body is a first-contact Request a Quote, not a later message in the thread. */
+export function hasYelpRaqSentence(body: string): boolean {
+  return RAQ_SENTENCE.test(body);
+}
+
 /** Weaker wording that still marks customer contact, e.g. a follow-up on an open lead. */
 const LEAD_SIGNALS = [
   /request(?:ed)?\s+a\s+quote/i,

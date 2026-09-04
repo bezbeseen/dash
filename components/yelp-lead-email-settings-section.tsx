@@ -86,7 +86,9 @@ export async function YelpLeadEmailSettingsSection() {
       <p className="small text-body-secondary mt-2 mb-0">
         Routine import covers {YELP_SCAN_DEFAULT_LOOKBACK_DAYS} days (up to {YELP_SCAN_DEFAULT_MAX_MESSAGES}{' '}
         messages). The 180-day button is the backfill: it reads up to {YELP_SCAN_MAX_MESSAGES} Yelp messages and
-        skips leads that already have a ticket (deduped on Yelp&apos;s conversation id). Add{' '}
+        skips leads that already have a ticket (deduped on Yelp&apos;s conversation id). Re-running either import
+        links the Gmail thread on tickets that do not have one yet and attaches follow-up Yelp emails to the
+        existing ticket — you do not need to re-create Rose or the Stale pile. Add{' '}
         <code className="detail-mono">?max=</code> or <code className="detail-mono">?mailbox=</code> on the
         preview URL to override. Hard caps are <strong>{YELP_SCAN_MAX_LOOKBACK_DAYS} days</strong> and{' '}
         <strong>{YELP_SCAN_MAX_MESSAGES} messages</strong> so the scan finishes inside the serverless time budget —

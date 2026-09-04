@@ -71,6 +71,8 @@ enum GmailLinkSource {
   MANUAL
   CONFIRMED
   AUTO
+  /// Thread id came from the Yelp lead-notification email that opened the ticket.
+  YELP_EMAIL
 }
 
 /// How a marketing-sourced pre-quote ticket was created (webhooks only; null for QuickBooks / manual jobs).
@@ -134,7 +136,7 @@ model Job {
   gmailThreadId        String?
   /// Which connected mailbox to use when calling Gmail API for this ticket (you / partner / contact@, etc.).
   gmailConnectionId    String?
-  /// Pasted by hand, accepted from a suggestion, or attached by the automatic matcher.
+  /// Pasted by hand, accepted from a suggestion, attached by the automatic matcher, or taken from a Yelp lead email.
   gmailLinkSource      GmailLinkSource?
   gmailLinkedAt        DateTime?
   /// Matcher score (0-100) behind an AUTO or CONFIRMED link; see the ActivityLog entry for the signals.

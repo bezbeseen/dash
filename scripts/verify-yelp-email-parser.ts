@@ -12,14 +12,24 @@ import {
 } from '../lib/yelp/lead-email';
 import {
   classifyYelpLeadEmail,
+  hasYelpRaqSentence,
   looksLikeYelpLeadEmail,
   resolveYelpOwnIdentity,
   type YelpOwnIdentity,
 } from '../lib/yelp/lead-classify';
-import { BoardStatus, InboundLeadKind } from '@prisma/client';
+import { BoardStatus, GmailLinkSource, InboundLeadKind } from '@prisma/client';
 import { prequoteColumnForJob } from '../lib/domain/prequote-triage';
 import { buildYelpLeadProjectDescription } from '../lib/yelp/leads-webhook';
 import { yelpLeadDedupeLookupKeys, yelpLeadEmailJobWriteData } from '../lib/yelp/lead-ticket-write';
+import {
+  formatYelpCorrespondenceActivityMessage,
+  formatYelpCorrespondenceSnippet,
+  isYelpFirstContactLead,
+  isYelpReplySubject,
+  yelpMessageDedupeLookupKeys,
+  yelpRejectionMayAttachToExistingTicket,
+  yelpScanShouldWriteGmailLink,
+} from '../lib/yelp/lead-correspondence';
 import {
   defaultMaxMessagesForLookback,
   resolveYelpScanLimits,
@@ -969,6 +979,98 @@ check(
     new Date('2026-09-04T08:00:00Z'),
   ),
   'stale',
+);
+
+// ---------------------------------------------------------------------------
+// Correspondence: follow-up Yelp mail attaches to the existing ticket.
+// ---------------------------------------------------------------------------
+const larryHex = 'aa11bb22cc33dd44ee55ff6677889900';
+const larryFollowUpSubject = "RE: Be Seen Print Sign and Design's response to larry a.";
+const larryFollowUpBody = `Larry sent a follow-up on Yelp.
+
+Can you do vinyl lettering on the window?
+
+[Reply to Larry on Yelp Biz](https://biz.yelp.com/messaging/mark_as_replied_autosubmit/${larryHex}?utm_source=x)
+`;
+const larryFrom = yelpFrom(larryHex);
+
+check('correspondence: RE: subject is a reply', isYelpReplySubject(larryFollowUpSubject), true);
+check('correspondence: first-contact subject is not a reply', isYelpReplySubject(roseSubjectLine), false);
+check(
+  'correspondence: live follow-up is not classified as a new lead',
+  classify(larryFollowUpSubject, larryFollowUpBody, larryFrom),
+  'not_lead_wording',
+);
+check(
+  'correspondence: not_lead_wording may still attach to an existing ticket',
+  yelpRejectionMayAttachToExistingTicket('not_lead_wording'),
+  true,
+);
+check(
+  'correspondence: own shop reply on an existing ticket may attach',
+  yelpRejectionMayAttachToExistingTicket('own_business_reply'),
+  true,
+);
+check(
+  'correspondence: consumer marketing must not attach',
+  yelpRejectionMayAttachToExistingTicket('consumer_marketing'),
+  false,
+);
+check(
+  'correspondence: follow-up keeps the same yelp hex as the original',
+  yelpMessageDedupeLookupKeys({ from: larryFrom, body: larryFollowUpBody, gmailThreadId: 'other-thread' }),
+  [`yelp:${larryHex}`, larryHex],
+);
+check(
+  'correspondence: RAQ is first-contact',
+  isYelpFirstContactLead(roseBody, { isLead: true }),
+  true,
+);
+check(
+  'correspondence: lead-classified follow-up is not first-contact',
+  isYelpFirstContactLead('Rose L. sent you a new message. Can you do Friday?', { isLead: true }),
+  false,
+);
+check(
+  'correspondence: RAQ helper agrees with the classifier',
+  hasYelpRaqSentence(roseBody),
+  true,
+);
+check(
+  'correspondence: activity line names the follow-up',
+  formatYelpCorrespondenceActivityMessage(larryFollowUpSubject),
+  `Yelp follow-up attached: ${larryFollowUpSubject}`,
+);
+const followUpSnippet = formatYelpCorrespondenceSnippet(larryFollowUpBody);
+check('correspondence: snippet keeps the customer words', followUpSnippet.includes('vinyl lettering'), true);
+assertNoUnsafeUrls('correspondence snippet', [followUpSnippet, formatYelpCorrespondenceActivityMessage(larryFollowUpSubject)]);
+
+const unlinkedJob = { gmailThreadId: null, gmailLinkSource: null };
+check(
+  'correspondence: missing thread is linked from the Yelp email',
+  yelpScanShouldWriteGmailLink(unlinkedJob, '19f7255d19aefc74'),
+  true,
+);
+check(
+  'correspondence: AUTO match is replaced by the Yelp thread',
+  yelpScanShouldWriteGmailLink({ gmailThreadId: 'wrong', gmailLinkSource: GmailLinkSource.AUTO }, '19f7255d19aefc74'),
+  true,
+);
+check(
+  'correspondence: already-linked Yelp thread is not rewritten',
+  yelpScanShouldWriteGmailLink(
+    { gmailThreadId: '19f7255d19aefc74', gmailLinkSource: GmailLinkSource.YELP_EMAIL },
+    '19f7255d19aefc74',
+  ),
+  false,
+);
+check(
+  'correspondence: a hand-pasted thread is left alone',
+  yelpScanShouldWriteGmailLink(
+    { gmailThreadId: 'manual-thread', gmailLinkSource: GmailLinkSource.MANUAL },
+    '19f7255d19aefc74',
+  ),
+  false,
 );
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);

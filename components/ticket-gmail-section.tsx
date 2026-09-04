@@ -9,6 +9,7 @@ const LINK_SOURCE_LABEL: Record<GmailLinkSource, string> = {
   MANUAL: 'pasted by hand',
   CONFIRMED: 'accepted from a suggestion',
   AUTO: 'matched automatically',
+  YELP_EMAIL: 'attached from the Yelp lead email',
 };
 
 function fmtDate(d: Date | null) {
@@ -185,8 +186,15 @@ export function TicketGmailSection({
         {gmailThreadId && linkSource ? (
           <p className="meta" style={{ marginTop: 10, marginBottom: 0 }}>
             Current link was {LINK_SOURCE_LABEL[linkSource]}
-            {linkConfidence != null ? ` (confidence ${linkConfidence}/100)` : ''}. Automatic matching never replaces a link
-            you set or confirmed yourself.
+            {linkConfidence != null ? ` (confidence ${linkConfidence}/100)` : ''}. Automatic matching never replaces a
+            Yelp-import link or one you set or confirmed yourself.
+          </p>
+        ) : null}
+        {gmailThreadId && linkSource === 'YELP_EMAIL' ? (
+          <p className="meta" style={{ marginTop: 8, marginBottom: 0 }}>
+            Yelp notification emails for this conversation (the original quote request and later messages Gmail
+            received) show under <strong>Synced messages</strong> below. Replies that only exist inside Yelp Biz and
+            were never emailed will not appear here.
           </p>
         ) : null}
       </div>
