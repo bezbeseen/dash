@@ -20,15 +20,24 @@ function formatPercent(fraction: number): string {
   return `${(fraction * 100).toFixed(1)}%`;
 }
 
-function DeltaBadge({ current, previous }: { current: number; previous: number }) {
+function DeltaBadge({
+  current,
+  previous,
+  lowerIsBetter = false,
+}: {
+  current: number;
+  previous: number;
+  lowerIsBetter?: boolean;
+}) {
   if (previous <= 0) {
     return <span className="small text-body-secondary">no prior data</span>;
   }
   const change = (current - previous) / previous;
   const up = change >= 0;
   const flat = Math.abs(change) < 0.005;
+  const good = lowerIsBetter ? !up : up;
   return (
-    <span className={`small fw-semibold ${flat ? 'text-body-secondary' : up ? 'text-success' : 'text-danger'}`}>
+    <span className={`small fw-semibold ${flat ? 'text-body-secondary' : good ? 'text-success' : 'text-danger'}`}>
       {flat ? '±0%' : `${up ? '+' : ''}${(change * 100).toFixed(1)}%`}
     </span>
   );
@@ -132,6 +141,7 @@ function summaryCards(totals: Ga4Totals, previous: Ga4Totals) {
       value: formatPercent(totals.bounceRate),
       current: totals.bounceRate,
       previous: previous.bounceRate,
+      lowerIsBetter: true,
     },
   ];
 }
@@ -209,7 +219,11 @@ export function WebAnalyticsDashboard({ data }: { data: WebAnalyticsPageData }) 
               <div className="card-body">
                 <p className="menu-label mb-1">{card.label}</p>
                 <p className="h4 fw-semibold mb-1 tabular-nums">{card.value}</p>
-                <DeltaBadge current={card.current} previous={card.previous} />
+                <DeltaBadge
+                  current={card.current}
+                  previous={card.previous}
+                  lowerIsBetter={card.lowerIsBetter}
+                />
               </div>
             </div>
           </div>
