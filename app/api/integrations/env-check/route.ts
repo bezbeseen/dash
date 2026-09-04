@@ -473,6 +473,9 @@ export async function GET(req: NextRequest) {
         projectId: getClarityProjectId(),
         generateTokenAt: 'Clarity → your project → Settings → Data Export → Generate new API token (project admins only).',
         quota: `${CLARITY_DAILY_REQUEST_LIMIT} requests per project per day, last ${CLARITY_MAX_LOOKBACK_DAYS} days only. Dash caches one snapshot for 6 hours.`,
+        /** Signed-in only. The cached read is free; ?fresh=1 is the only variant that costs quota. */
+        rawPayloadDiagnostic: `${origin}/api/integrations/clarity?raw=1`,
+        rawPayloadDiagnosticLive: `${origin}/api/integrations/clarity?fresh=1&raw=1`,
         deepLinks: getClarityLinks(),
       },
     },

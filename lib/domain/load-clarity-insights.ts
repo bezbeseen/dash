@@ -19,7 +19,8 @@ export type ClarityInsightsSnapshot =
   | { ok: false; kind: 'quota_exceeded'; fetchedAt: number }
   | { ok: false; kind: 'auth_failed'; message: string; fetchedAt: number }
   | { ok: false; kind: 'error'; message: string; fetchedAt: number }
-  | { ok: true; insights: ClarityInsights; fetchedAt: number };
+  /** `raw` is the unmapped Clarity payload, cached alongside so diagnostics cost no quota. */
+  | { ok: true; insights: ClarityInsights; raw: unknown; fetchedAt: number };
 
 export type ClarityInsightsData = { ok: false; kind: 'not_configured' } | ClarityInsightsSnapshot;
 
@@ -30,8 +31,8 @@ export type ClarityInsightsData = { ok: false; kind: 'not_configured' } | Clarit
 async function fetchClaritySnapshot(token: string): Promise<ClarityInsightsSnapshot> {
   const fetchedAt = Date.now();
   try {
-    const insights = await fetchClarityInsights(token, CLARITY_MAX_LOOKBACK_DAYS);
-    return { ok: true, insights, fetchedAt };
+    const { insights, raw } = await fetchClarityInsights(token, CLARITY_MAX_LOOKBACK_DAYS);
+    return { ok: true, insights, raw, fetchedAt };
   } catch (e) {
     if (e instanceof ClarityApiError) {
       if (e.status === 429) return { ok: false, kind: 'quota_exceeded', fetchedAt };
@@ -68,4 +69,17 @@ export async function loadClarityInsightsData(): Promise<ClarityInsightsData> {
   );
 
   return cached();
+}
+
+/**
+ * Bypasses the cache and spends one of Clarity's 10 daily requests. Only the diagnostic route
+ * calls this, and only when explicitly asked; the result is deliberately not written back to the
+ * cache so the panel's own refresh budget stays predictable.
+ */
+export async function fetchClarityInsightsUncached(): Promise<ClarityInsightsData> {
+  const token = getClarityApiToken();
+  if (!token || !clarityInsightsConfigured()) {
+    return { ok: false, kind: 'not_configured' };
+  }
+  return fetchClaritySnapshot(token);
 }

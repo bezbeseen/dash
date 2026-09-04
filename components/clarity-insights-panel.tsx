@@ -1,5 +1,11 @@
 import type { ReactNode } from 'react';
-import type { ClarityInsights } from '@/lib/analytics/clarity-api';
+import {
+  botSharePercentage,
+  recordedSessions,
+  signalAffectedSessions,
+  type ClarityInsights,
+  type ClarityTraffic,
+} from '@/lib/analytics/clarity-api';
 import {
   CLARITY_DAILY_REQUEST_LIMIT,
   CLARITY_MAX_LOOKBACK_DAYS,
@@ -108,8 +114,8 @@ function SignalTable({ signals }: { signals: ClarityInsights['signals'] }) {
         <thead className="table-light">
           <tr>
             <th className="ps-4">Frustration signal</th>
-            <th className="text-end" style={{ width: '10rem' }}>
-              Sessions affected
+            <th className="text-end" style={{ width: '12rem' }}>
+              Human sessions affected
             </th>
             <th className="text-end pe-4" style={{ width: '8rem' }}>
               Occurrences
@@ -117,26 +123,62 @@ function SignalTable({ signals }: { signals: ClarityInsights['signals'] }) {
           </tr>
         </thead>
         <tbody>
-          {signals.map((signal) => (
-            <tr key={signal.key}>
-              <td className="ps-4">{signal.label}</td>
-              <td className="text-end tabular-nums">{formatPercent(signal.sessionPercentage)}</td>
-              <td className="text-end pe-4 fw-semibold tabular-nums">{formatInt(signal.occurrences)}</td>
-            </tr>
-          ))}
+          {signals.map((signal) => {
+            const affected = signalAffectedSessions(signal);
+            return (
+              <tr key={signal.key}>
+                <td className="ps-4">{signal.label}</td>
+                <td className="text-end tabular-nums">
+                  {signal.sessionPercentage === null ? (
+                    <span className="text-body-secondary">not reported</span>
+                  ) : (
+                    <>
+                      {affected !== null && signal.sessionScope !== null
+                        ? `${formatInt(affected)} of ${formatInt(signal.sessionScope)} · `
+                        : null}
+                      {formatPercent(signal.sessionPercentage)}
+                    </>
+                  )}
+                </td>
+                <td className="text-end pe-4 fw-semibold tabular-nums">
+                  {signal.occurrences === null ? (
+                    <span className="fw-normal text-body-secondary">not reported</span>
+                  ) : (
+                    formatInt(signal.occurrences)
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
+/** A card is omitted rather than shown as zero when Clarity did not send the field at all. */
 function summaryCards(insights: ClarityInsights) {
-  const cards: Array<{ key: string; label: string; value: string }> = [
-    { key: 'sessions', label: 'Sessions', value: formatInt(insights.traffic.sessions) },
-    { key: 'users', label: 'Distinct users', value: formatInt(insights.traffic.distinctUsers) },
-    { key: 'pages', label: 'Pages / session', value: formatDecimal(insights.traffic.pagesPerSession) },
-    { key: 'bots', label: 'Bot sessions', value: formatInt(insights.traffic.botSessions) },
-  ];
+  const { traffic } = insights;
+  const cards: Array<{ key: string; label: string; value: string; hint?: string }> = [];
+  if (traffic.humanSessions !== null) {
+    cards.push({
+      key: 'human',
+      label: 'Human sessions',
+      value: formatInt(traffic.humanSessions),
+      hint: 'Bots excluded',
+    });
+  }
+  if (traffic.botSessions !== null) {
+    cards.push({
+      key: 'bots',
+      label: 'Bot sessions',
+      value: formatInt(traffic.botSessions),
+      hint: 'Not counted anywhere else',
+    });
+  }
+  if (traffic.pagesPerSession !== null) {
+    cards.push({ key: 'pages', label: 'Pages / session', value: formatDecimal(traffic.pagesPerSession) });
+  }
   if (insights.averageScrollDepth !== null) {
     cards.push({ key: 'scroll', label: 'Avg. scroll depth', value: formatPercent(insights.averageScrollDepth) });
   }
@@ -146,6 +188,46 @@ function summaryCards(insights: ClarityInsights) {
     cards.push({ key: 'total', label: 'Engagement time', value: formatDuration(insights.totalEngagementSeconds) });
   }
   return cards;
+}
+
+/**
+ * Clarity strips detected bots out of its session count, so bots can outnumber humans. That ratio
+ * is the story on a small site, not a footnote.
+ */
+function BotTrafficNote({ traffic }: { traffic: ClarityTraffic }) {
+  const total = recordedSessions(traffic);
+  const share = botSharePercentage(traffic);
+  if (total === null || share === null || traffic.botSessions === null) return null;
+  const botsDominate = share >= 50;
+
+  return (
+    <div
+      className={`card border rounded-3 p-3 bg-body${
+        botsDominate ? ' border-warning border-opacity-50' : ''
+      }`}
+    >
+      <p className="small mb-0">
+        Clarity recorded <strong>{formatInt(total)}</strong> sessions in this window and classified{' '}
+        <strong>{formatInt(traffic.botSessions)}</strong> of them ({formatPercent(share)}) as bots.
+        {botsDominate ? ' Most traffic reaching the site is automated.' : ''} Every other figure on this
+        panel counts only the {formatInt(traffic.humanSessions ?? 0)} human sessions that remain.
+      </p>
+    </div>
+  );
+}
+
+function DataWarnings({ warnings }: { warnings: readonly string[] }) {
+  if (warnings.length === 0) return null;
+  return (
+    <div className="card border border-warning border-opacity-50 rounded-3 p-3 bg-body">
+      <h3 className="h6 fw-semibold mb-2">Clarity returned numbers that do not reconcile</h3>
+      <ul className="small text-body-secondary mb-0 ps-3">
+        {warnings.map((warning) => (
+          <li key={warning}>{warning}</li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function PanelShell({
@@ -239,17 +321,24 @@ export function ClarityInsightsPanel({ data }: { data: ClarityInsightsData }) {
   }
 
   const { insights } = data;
+  const { traffic } = insights;
   const subtitle = `Last ${insights.numOfDays} days (UTC) · as of ${formatAge(data.fetchedAt)}`;
 
-  if (insights.traffic.sessions <= 0) {
+  if (traffic.humanSessions === null || traffic.humanSessions <= 0) {
     return (
       <PanelShell links={links} subtitle={subtitle}>
         <div className="card border rounded-3 p-4 bg-body">
-          <h3 className="h6 fw-semibold mb-2">No Clarity sessions yet</h3>
-          <p className="small text-body-secondary mb-0">
-            Clarity recorded no sessions in the last {insights.numOfDays} days. The API only reaches back{' '}
+          <h3 className="h6 fw-semibold mb-2">No human Clarity sessions yet</h3>
+          <p className="small text-body-secondary mb-2">
+            Clarity recorded no human sessions in the last {insights.numOfDays} days. The API only reaches back{' '}
             {CLARITY_MAX_LOOKBACK_DAYS} days, so a quiet stretch shows as empty even when the project has history.
           </p>
+          {traffic.botSessions !== null && traffic.botSessions > 0 ? (
+            <p className="small text-body-secondary mb-0">
+              It did classify {formatInt(traffic.botSessions)} session
+              {traffic.botSessions === 1 ? '' : 's'} as bot traffic, which Clarity filters out of every figure here.
+            </p>
+          ) : null}
         </div>
       </PanelShell>
     );
@@ -264,11 +353,15 @@ export function ClarityInsightsPanel({ data }: { data: ClarityInsightsData }) {
               <div className="card-body">
                 <p className="menu-label mb-1">{card.label}</p>
                 <p className="h4 fw-semibold mb-0 tabular-nums">{card.value}</p>
+                {card.hint ? <p className="small text-body-secondary mb-0 mt-1">{card.hint}</p> : null}
               </div>
             </div>
           </div>
         ))}
       </div>
+
+      <BotTrafficNote traffic={traffic} />
+      <DataWarnings warnings={insights.warnings} />
 
       <div className="card border rounded-3 overflow-hidden bg-body shadow-sm">
         <div className="card-body border-bottom py-3">
@@ -276,6 +369,15 @@ export function ClarityInsightsPanel({ data }: { data: ClarityInsightsData }) {
         </div>
         <SignalTable signals={insights.signals} />
       </div>
+
+      {traffic.distinctUsers !== null ? (
+        <p className="small text-body-secondary mb-0">
+          Clarity also reports <strong>{formatInt(traffic.distinctUsers)}</strong> distinct users for this window.
+          It is deliberately not shown as a headline number: Clarity does not filter its user count the same way it
+          filters the session count, so the two are not comparable. Microsoft&apos;s own sample response pairs
+          189,733 users with 9,554 sessions.
+        </p>
+      ) : null}
 
       <p className="small text-body-secondary mb-0">
         From the{' '}
@@ -288,8 +390,10 @@ export function ClarityInsightsPanel({ data }: { data: ClarityInsightsData }) {
           Clarity Data Export API
         </a>
         , which only serves the last {CLARITY_MAX_LOOKBACK_DAYS} days and allows{' '}
-        {CLARITY_DAILY_REQUEST_LIMIT} requests per day, so Dash caches one snapshot for 6 hours. Open a heatmap or a
-        recording in Clarity to see what these numbers mean on the page.
+        {CLARITY_DAILY_REQUEST_LIMIT} requests per day, so Dash caches one snapshot for 6 hours. Clarity does not
+        document whether active time is a per-session average or a total for the window, so treat it as a trend
+        rather than an exact figure. Open a heatmap or a recording in Clarity to see what these numbers mean on the
+        page.
       </p>
     </PanelShell>
   );
