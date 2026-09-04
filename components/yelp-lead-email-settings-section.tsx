@@ -51,26 +51,46 @@ export async function YelpLeadEmailSettingsSection() {
           href={`/api/integrations/yelp/scan-emails?days=${YELP_SCAN_DEFAULT_LOOKBACK_DAYS}`}
           target="_blank"
           rel="noreferrer"
-          title="Dry run: shows what Dash would import, writes nothing"
+          title="Dry run: last 14 days, writes nothing"
         >
           Preview matches
         </a>
-        <form action="/api/integrations/yelp/scan-emails" method="post">
+        <form
+          action={`/api/integrations/yelp/scan-emails?days=${YELP_SCAN_DEFAULT_LOOKBACK_DAYS}`}
+          method="post"
+        >
           <button className="btn btn-toolbar" type="submit" disabled={!mailbox.ready}>
             Import Yelp leads
           </button>
         </form>
       </div>
+      <div className="d-flex flex-wrap gap-2 align-items-center mt-2">
+        <a
+          className="btn btn-toolbar btn-toolbar-muted"
+          href={`/api/integrations/yelp/scan-emails?days=${YELP_SCAN_MAX_LOOKBACK_DAYS}`}
+          target="_blank"
+          rel="noreferrer"
+          title={`Dry run: last ${YELP_SCAN_MAX_LOOKBACK_DAYS} days, up to ${YELP_SCAN_MAX_MESSAGES} messages, writes nothing`}
+        >
+          Preview last {YELP_SCAN_MAX_LOOKBACK_DAYS} days
+        </a>
+        <form
+          action={`/api/integrations/yelp/scan-emails?days=${YELP_SCAN_MAX_LOOKBACK_DAYS}`}
+          method="post"
+        >
+          <button className="btn btn-toolbar" type="submit" disabled={!mailbox.ready}>
+            Import last {YELP_SCAN_MAX_LOOKBACK_DAYS} days
+          </button>
+        </form>
+      </div>
       <p className="small text-body-secondary mt-2 mb-0">
-        Each run scans the last {YELP_SCAN_DEFAULT_LOOKBACK_DAYS} days and reads up to{' '}
-        {YELP_SCAN_DEFAULT_MAX_MESSAGES} Yelp messages; ask for a longer window with{' '}
-        <code className="detail-mono">?days=180</code> and it reads up to {YELP_SCAN_MAX_MESSAGES}, since a backfill
-        that stops early hides leads. Add <code className="detail-mono">?max=</code> to set it yourself, or{' '}
-        <code className="detail-mono">?mailbox=</code> to try another connected address. Hard caps are{' '}
-        <strong>{YELP_SCAN_MAX_LOOKBACK_DAYS} days</strong> and{' '}
-        <strong>{YELP_SCAN_MAX_MESSAGES} messages</strong> per run so the scan finishes inside the serverless time
-        budget — anything beyond that needs a second run, and the response sets{' '}
-        <code className="detail-mono">truncated: true</code> whenever older Yelp mail was left unread.
+        Routine import covers {YELP_SCAN_DEFAULT_LOOKBACK_DAYS} days (up to {YELP_SCAN_DEFAULT_MAX_MESSAGES}{' '}
+        messages). The 180-day button is the backfill: it reads up to {YELP_SCAN_MAX_MESSAGES} Yelp messages and
+        skips leads that already have a ticket (deduped on Yelp&apos;s conversation id). Add{' '}
+        <code className="detail-mono">?max=</code> or <code className="detail-mono">?mailbox=</code> on the
+        preview URL to override. Hard caps are <strong>{YELP_SCAN_MAX_LOOKBACK_DAYS} days</strong> and{' '}
+        <strong>{YELP_SCAN_MAX_MESSAGES} messages</strong> so the scan finishes inside the serverless time budget —
+        a truncated response means older Yelp mail was left unread.
       </p>
       <p className="small text-body-secondary mt-2 mb-0">
         Tickets link to the Yelp inbox, never to the one-click links in Yelp&apos;s email — those mark a lead as

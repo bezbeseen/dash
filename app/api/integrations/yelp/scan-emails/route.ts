@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { scanYelpLeadEmails, YelpMailboxNotReadyError } from '@/lib/gmail/scan-yelp-lead-emails';
 import { resolveYelpLeadMailboxState } from '@/lib/yelp/lead-mailbox';
+import { parseDryRunQueryParam } from '@/lib/yelp/scan-query';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,13 +25,14 @@ function readOptions(req: NextRequest) {
 }
 
 /**
- * Dry-run preview. Shows which Yelp emails Dash would import and what it parsed
- * out of them, without writing any tickets. Requires a Dash session (middleware).
+ * Preview by default. Pass dryRun=0 (or false/no) to write tickets the same way
+ * POST does — `"0"` must not be treated as truthy. Requires a Dash session.
  */
 export async function GET(req: NextRequest) {
   const opts = readOptions(req);
+  const dryRun = parseDryRunQueryParam(req.nextUrl.searchParams.get('dryRun'), true);
   try {
-    const result = await scanYelpLeadEmails({ ...opts, dryRun: true });
+    const result = await scanYelpLeadEmails({ ...opts, dryRun });
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
     if (e instanceof YelpMailboxNotReadyError) {

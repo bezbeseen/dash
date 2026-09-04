@@ -16,8 +16,17 @@ import {
   resolveYelpOwnIdentity,
   type YelpOwnIdentity,
 } from '../lib/yelp/lead-classify';
+import { BoardStatus, InboundLeadKind } from '@prisma/client';
+import { prequoteColumnForJob } from '../lib/domain/prequote-triage';
 import { buildYelpLeadProjectDescription } from '../lib/yelp/leads-webhook';
-import { defaultMaxMessagesForLookback, resolveYelpScanLimits } from '../lib/yelp/scan-limits';
+import { yelpLeadDedupeLookupKeys, yelpLeadEmailJobWriteData } from '../lib/yelp/lead-ticket-write';
+import {
+  defaultMaxMessagesForLookback,
+  resolveYelpScanLimits,
+  YELP_SCAN_MAX_LOOKBACK_DAYS,
+  YELP_SCAN_MAX_MESSAGES,
+} from '../lib/yelp/scan-limits';
+import { parseDryRunQueryParam } from '../lib/yelp/scan-query';
 import { summarizeYelpScan, type YelpEmailOutcome } from '../lib/yelp/scan-summary';
 import { safeYelpUrl, YELP_BIZ_INBOX_URL } from '../lib/yelp/url';
 
@@ -922,6 +931,45 @@ check('limits: floor of one message', resolveYelpScanLimits({ maxMessages: 0 }).
 check('limits: floor of one day', resolveYelpScanLimits({ lookbackDays: 0 }).lookbackDays, 1);
 check('limits: 14 days stays on the routine default', defaultMaxMessagesForLookback(14), 50);
 check('limits: 15 days switches to the cap', defaultMaxMessagesForLookback(15), 100);
+
+const settingsBackfill = resolveYelpScanLimits({ lookbackDays: YELP_SCAN_MAX_LOOKBACK_DAYS });
+check('limits: Settings backfill button window', settingsBackfill.lookbackDays, 180);
+check('limits: Settings backfill button max', settingsBackfill.maxMessages, YELP_SCAN_MAX_MESSAGES);
+
+// GET ?dryRun=0 is the string "0"; it must write, not dry-run.
+check('dryRun: GET with no param stays a preview', parseDryRunQueryParam(null, true), true);
+check('dryRun: blank stays on the default', parseDryRunQueryParam('  ', true), true);
+check('dryRun: 0 is write mode', parseDryRunQueryParam('0', true), false);
+check('dryRun: false is write mode', parseDryRunQueryParam('false', true), false);
+check('dryRun: no is write mode', parseDryRunQueryParam('no', true), false);
+check('dryRun: 1 stays a preview', parseDryRunQueryParam('1', true), true);
+check('dryRun: true stays a preview', parseDryRunQueryParam('true', true), true);
+
+const raqReceived = new Date('2026-04-15T16:00:00Z');
+const raqWrite = yelpLeadEmailJobWriteData(raq, raqReceived);
+check('write: inbound kind is YELP_LEAD', raqWrite.inboundLeadKind, InboundLeadKind.YELP_LEAD);
+check('write: board lane is Requested (pre-quote)', raqWrite.boardStatus, BoardStatus.REQUESTED);
+check('write: yelpLeadId is the parsed dedupe key', raqWrite.yelpLeadId, raq.dedupeKey);
+check('write: createdAt follows the email Date', raqWrite.createdAt, raqReceived);
+check(
+  'write: re-import lookup includes yelp:<hex> and the bare hex',
+  yelpLeadDedupeLookupKeys(raq),
+  [raq.dedupeKey, raq.dedupeKey.replace(/^yelp:/, '')],
+);
+check(
+  'write: missing Date header does not invent createdAt',
+  Object.prototype.hasOwnProperty.call(yelpLeadEmailJobWriteData(raq, null), 'createdAt'),
+  false,
+);
+check(
+  'triage: April email date is Stale in September',
+  prequoteColumnForJob(
+    { createdAt: raqReceived },
+    { thin: false, reasons: [], hasContact: true, hasSignKeywords: true, substanceChars: 200 },
+    new Date('2026-09-04T08:00:00Z'),
+  ),
+  'stale',
+);
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

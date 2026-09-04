@@ -1,11 +1,4 @@
-import {
-  BoardStatus,
-  EstimateStatus,
-  EventSource,
-  InboundLeadKind,
-  InvoiceStatus,
-  ProductionStatus,
-} from '@prisma/client';
+import { EventSource } from '@prisma/client';
 import { google } from 'googleapis';
 import { prisma } from '@/lib/db/prisma';
 import { extractGmailMessageText, gmailHeader } from '@/lib/gmail/message-text';
@@ -17,6 +10,7 @@ import {
   resolveYelpOwnIdentity,
   type YelpRejectionCategory,
 } from '@/lib/yelp/lead-classify';
+import { yelpLeadDedupeLookupKeys, yelpLeadEmailJobWriteData } from '@/lib/yelp/lead-ticket-write';
 import { summarizeYelpScan, type YelpEmailOutcome, type YelpScanCounts } from '@/lib/yelp/scan-summary';
 import {
   resolveYelpScanLimits,
@@ -70,10 +64,8 @@ export class YelpMailboxNotReadyError extends Error {
 
 /** Both the email path and the (gated) Leads API path could see the same lead. */
 async function findExistingJobId(parsed: ParsedYelpLeadEmail): Promise<string | null> {
-  const keys = [parsed.dedupeKey];
-  if (parsed.dedupeFromYelp) keys.push(parsed.dedupeKey.replace(/^yelp:/, ''));
   const hit = await prisma.job.findFirst({
-    where: { yelpLeadId: { in: keys } },
+    where: { yelpLeadId: { in: yelpLeadDedupeLookupKeys(parsed) } },
     select: { id: true },
   });
   return hit?.id ?? null;
@@ -243,17 +235,7 @@ export async function scanYelpLeadEmails(opts: {
 
       try {
         const job = await prisma.job.create({
-          data: {
-            customerName: parsed.customerName,
-            projectName: parsed.projectName,
-            projectDescription: parsed.projectDescription,
-            inboundLeadKind: InboundLeadKind.YELP_LEAD,
-            yelpLeadId: parsed.dedupeKey,
-            boardStatus: BoardStatus.REQUESTED,
-            productionStatus: ProductionStatus.NOT_STARTED,
-            estimateStatus: EstimateStatus.UNKNOWN,
-            invoiceStatus: InvoiceStatus.NONE,
-          },
+          data: yelpLeadEmailJobWriteData(parsed, receivedAt),
         });
 
         await prisma.activityLog.create({
