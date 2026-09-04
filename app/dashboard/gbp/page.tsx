@@ -1,6 +1,10 @@
 import Link from 'next/link';
 import { GbpMetricsDashboard } from '@/components/gbp-metrics-dashboard';
-import { loadGbpMetricsPageData } from '@/lib/domain/load-gbp-metrics-page';
+import {
+  loadGbpMetricsPageData,
+  normalizeGbpLocationIndex,
+  normalizeGbpMetricsRange,
+} from '@/lib/domain/load-gbp-metrics-page';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,12 +14,12 @@ type Props = {
 
 export default async function GbpMetricsPage({ searchParams }: Props) {
   const q = await searchParams;
-  const locRaw = q.loc;
-  const locStr = Array.isArray(locRaw) ? locRaw[0] : locRaw;
-  const parsed = parseInt(locStr ?? '0', 10);
-  const locationIndex = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  const daysRaw = Array.isArray(q.days) ? q.days[0] : q.days;
+  const locRaw = Array.isArray(q.loc) ? q.loc[0] : q.loc;
+  const rangeDays = normalizeGbpMetricsRange(daysRaw);
+  const locationIndex = normalizeGbpLocationIndex(locRaw);
 
-  const data = await loadGbpMetricsPageData(locationIndex);
+  const data = await loadGbpMetricsPageData(rangeDays, locationIndex);
 
   return (
     <div className="board-page">
@@ -23,7 +27,8 @@ export default async function GbpMetricsPage({ searchParams }: Props) {
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Google Business metrics</h1>
           <p className="board-topbar-sub">
-            Performance data from your connected profile: impressions, website taps, calls, and direction requests.
+            Impressions, calls, website clicks, direction requests, and messages from your connected profile, each
+            against the previous period.
           </p>
         </div>
         <div className="board-topbar-actions">

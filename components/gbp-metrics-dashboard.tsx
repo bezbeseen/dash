@@ -1,90 +1,263 @@
 import Link from 'next/link';
-import type { GbpMetricsPageData } from '@/lib/domain/load-gbp-metrics-page';
+import type { ReactNode } from 'react';
+import { BreakdownCard, formatMetricInt, MetricCard, type NamedCount } from '@/components/metrics-ui';
+import {
+  GBP_METRICS_RANGE_OPTIONS,
+  type GbpFailureKind,
+  type GbpMetricsPageData,
+} from '@/lib/domain/load-gbp-metrics-page';
+import {
+  GBP_IMPRESSION_METRICS,
+  GBP_METRIC_LABELS,
+  GBP_REPORTING_LAG_DAYS,
+  type GbpMetricTotals,
+} from '@/lib/google-business/performance-api';
+
+const PERFORMANCE_API_LIBRARY =
+  'https://console.cloud.google.com/apis/library/businessprofileperformance.googleapis.com';
+const PERFORMANCE_API_QUOTAS =
+  'https://console.cloud.google.com/apis/api/businessprofileperformance.googleapis.com/quotas';
+const GBP_ACCESS_FORM = 'https://support.google.com/business/contact/api_default';
+
+function gbpHref(days: number, loc: number): `/dashboard/gbp?${string}` {
+  const params = new URLSearchParams({ days: String(days) });
+  if (loc > 0) params.set('loc', String(loc));
+  return `/dashboard/gbp?${params.toString()}`;
+}
+
+function impressionsTotal(totals: GbpMetricTotals): number {
+  return GBP_IMPRESSION_METRICS.reduce((sum, metric) => sum + totals[metric], 0);
+}
+
+function SetupSteps() {
+  return (
+    <ol className="small text-body-secondary mb-0 ps-3">
+      <li className="mb-2">
+        In Google Cloud, on the <strong>same project as your OAuth client</strong>, enable the{' '}
+        <a href={PERFORMANCE_API_LIBRARY} target="_blank" rel="noopener noreferrer">
+          Business Profile Performance API
+        </a>
+        . Keep <strong>My Business Account Management</strong> and <strong>Business Information</strong> enabled too —
+        they resolve the location id.
+      </li>
+      <li className="mb-2">
+        Enabling is not enough. Open{' '}
+        <a href={PERFORMANCE_API_QUOTAS} target="_blank" rel="noopener noreferrer">
+          APIs &amp; Services &rarr; Quotas
+        </a>{' '}
+        and check <strong>requests per minute</strong>. <strong>0</strong> means Google has not approved the project
+        yet; <strong>300</strong> means it has.
+      </li>
+      <li className="mb-2">
+        If the quota is <strong>0</strong>, submit the{' '}
+        <a href={GBP_ACCESS_FORM} target="_blank" rel="noopener noreferrer">
+          Business Profile API access form
+        </a>{' '}
+        and pick <strong>Application for Basic API Access</strong>. Use your Cloud <strong>project number</strong> and
+        an email that is an owner or manager on the profile. Approval is reviewed by hand.
+      </li>
+      <li>
+        Then use <strong>Connect Google Business Profile</strong> in Settings. Dash needs no extra env vars — it
+        resolves the account and location from the connection.
+      </li>
+    </ol>
+  );
+}
+
+function StateCard({
+  title,
+  children,
+  danger = false,
+}: {
+  title: string;
+  children: ReactNode;
+  danger?: boolean;
+}) {
+  return (
+    <div className={`card border rounded-3 p-4 bg-body${danger ? ' border-danger border-opacity-50' : ''}`}>
+      <h2 className={`h6 fw-semibold mb-2${danger ? ' text-danger' : ''}`}>{title}</h2>
+      {children}
+    </div>
+  );
+}
+
+function ErrorGuidance({ failure }: { failure: GbpFailureKind }) {
+  if (failure === 'quota') {
+    return (
+      <p className="small text-body-secondary mb-3">
+        Google is rate-limiting or has not granted quota for this Cloud project. Check{' '}
+        <a href={PERFORMANCE_API_QUOTAS} target="_blank" rel="noopener noreferrer">
+          APIs &amp; Services &rarr; Quotas
+        </a>
+        : <strong>0</strong> requests per minute means the project still needs approval through the{' '}
+        <a href={GBP_ACCESS_FORM} target="_blank" rel="noopener noreferrer">
+          Business Profile API access form
+        </a>
+        . If quota is already 300, wait a few minutes and reload rather than retrying in a loop.
+      </p>
+    );
+  }
+  if (failure === 'api_disabled') {
+    return (
+      <p className="small text-body-secondary mb-3">
+        The <strong>Business Profile Performance API</strong> is not enabled on the project behind your OAuth client.{' '}
+        <a href={PERFORMANCE_API_LIBRARY} target="_blank" rel="noopener noreferrer">
+          Enable it in the API Library
+        </a>
+        , then reload. Newly enabled APIs can take a couple of minutes to start serving.
+      </p>
+    );
+  }
+  if (failure === 'permission') {
+    return (
+      <p className="small text-body-secondary mb-3">
+        The connected Google account can authenticate but is not allowed to read this profile&apos;s performance data.
+        Confirm it is an <strong>owner or manager</strong> on the Business Profile, then reconnect from Settings.
+      </p>
+    );
+  }
+  return <SetupSteps />;
+}
+
+function actionCards(totals: GbpMetricTotals, previous: GbpMetricTotals) {
+  return [
+    {
+      key: 'impressions',
+      label: 'Impressions',
+      current: impressionsTotal(totals),
+      previous: impressionsTotal(previous),
+    },
+    { key: 'CALL_CLICKS', label: 'Calls', current: totals.CALL_CLICKS, previous: previous.CALL_CLICKS },
+    {
+      key: 'WEBSITE_CLICKS',
+      label: 'Website clicks',
+      current: totals.WEBSITE_CLICKS,
+      previous: previous.WEBSITE_CLICKS,
+    },
+    {
+      key: 'BUSINESS_DIRECTION_REQUESTS',
+      label: 'Directions',
+      current: totals.BUSINESS_DIRECTION_REQUESTS,
+      previous: previous.BUSINESS_DIRECTION_REQUESTS,
+    },
+    {
+      key: 'BUSINESS_CONVERSATIONS',
+      label: 'Messages',
+      current: totals.BUSINESS_CONVERSATIONS,
+      previous: previous.BUSINESS_CONVERSATIONS,
+    },
+    {
+      key: 'BUSINESS_BOOKINGS',
+      label: 'Bookings',
+      current: totals.BUSINESS_BOOKINGS,
+      previous: previous.BUSINESS_BOOKINGS,
+    },
+  ];
+}
 
 export function GbpMetricsDashboard({ data }: { data: GbpMetricsPageData }) {
-  if (!data.ok && data.kind === 'no_connection') {
+  if (!data.ok && data.kind === 'not_connected') {
     return (
-      <div className="card border rounded-3 p-4 bg-body">
-        <h2 className="h6 fw-semibold mb-2">Connect Google Business Profile</h2>
+      <StateCard title="Connect Google Business Profile">
         <p className="small text-body-secondary mb-3">
-          OAuth is required to read performance metrics (calls, website clicks, impressions, directions).
+          Dash reads impressions, calls, website clicks, and direction requests with the OAuth connection you make in
+          Settings. Nothing is stored client-side.
+        </p>
+        <SetupSteps />
+        <div className="mt-3">
+          <Link href="/dashboard/settings" className="btn btn-toolbar">
+            Open Settings
+          </Link>
+        </div>
+      </StateCard>
+    );
+  }
+
+  if (!data.ok && data.kind === 'insufficient_scope') {
+    return (
+      <StateCard title="Reconnect Google Business Profile" danger>
+        <p className="small text-body-secondary mb-3">
+          The stored token for <code className="detail-mono text-break">{data.googleEmail}</code> was granted before
+          Dash asked for the performance scope, so Google refuses the metrics call. Reconnect Google Business Profile in
+          Settings to grant{' '}
+          <code className="detail-mono text-break">https://www.googleapis.com/auth/business.manage</code>, then reload
+          this page.
         </p>
         <Link href="/dashboard/settings" className="btn btn-toolbar">
-          Open Settings
+          Reconnect in Settings
         </Link>
-      </div>
+      </StateCard>
+    );
+  }
+
+  if (!data.ok && data.kind === 'no_locations') {
+    return (
+      <StateCard title="No locations found">
+        <p className="small text-body-secondary mb-3">
+          Google returned {data.accountCount} account{data.accountCount === 1 ? '' : 's'} but no locations for{' '}
+          <code className="detail-mono text-break">{data.googleEmail}</code>. Confirm that account manages the Be Seen
+          listing, or reconnect with the Google login that owns it.
+        </p>
+        <Link href="/dashboard/settings" className="btn btn-toolbar btn-toolbar-muted">
+          Settings
+        </Link>
+      </StateCard>
     );
   }
 
   if (!data.ok && data.kind === 'error') {
-    const rateLimited = /429|RATE_LIMIT|Quota exceeded|RESOURCE_EXHAUSTED/i.test(data.message);
     return (
-      <div className="card border rounded-3 p-4 bg-body border-danger border-opacity-50">
-        <h2 className="h6 fw-semibold mb-2 text-danger">Could not load metrics</h2>
+      <StateCard title="Could not load metrics" danger>
         <p className="small mb-3 font-monospace text-break" style={{ whiteSpace: 'pre-wrap' }}>
           {data.message}
         </p>
-        {rateLimited ? (
-          <p className="small text-body-secondary mb-3">
-            Google is rate-limiting <strong>My Business Account Management</strong> for your Cloud project. Wait a few
-            minutes, avoid hammering refresh, then try again. In{' '}
-            <a
-              href="https://console.cloud.google.com/apis/api/mybusinessaccountmanagement.googleapis.com/quotas"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-decoration-none"
-            >
-              APIs &amp; Services &rarr; Quotas
-            </a>
-            , check <strong>Requests per minute</strong>; if quota shows <strong>0</strong>, link{' '}
-            <strong>Billing</strong> to the project or request a quota increase. Dash stores a location snapshot in your
-            database (refreshed at most every 30 minutes) and reuses it on failures to reduce repeat calls.
-          </p>
-        ) : (
-          <p className="small text-body-secondary mb-3">
-            Enable <strong>Business Profile Performance API</strong> in the same Google Cloud project as your OAuth
-            client:{' '}
-            <a
-              href="https://console.cloud.google.com/apis/library/businessprofileperformance.googleapis.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-decoration-none"
-            >
-              enable in API Library
-            </a>
-            . Account Management and Business Information must stay enabled for location listing.
-          </p>
-        )}
+        <ErrorGuidance failure={data.failure} />
         <Link href="/dashboard/settings" className="btn btn-toolbar btn-toolbar-muted">
           Settings
         </Link>
-      </div>
+      </StateCard>
     );
   }
 
   if (!data.ok) return null;
 
+  const totalImpressions = impressionsTotal(data.totals);
+  const keywordRows: NamedCount[] = data.searchKeywords.map((k) => ({ name: k.keyword, count: k.count }));
+  const anyThreshold = data.searchKeywords.some((k) => k.belowThreshold);
+
   return (
     <div className="d-flex flex-column gap-4">
       {data.locationsFromStaleSnapshot ? (
         <div className="alert alert-warning small mb-0" role="status">
-          Location list is from a saved snapshot because Google Account Management is rate limited or unavailable. Metrics
-          below may still load if the Performance API quota is separate. Fix Cloud project quotas when you can.
+          Location list is from a saved snapshot because Google Account Management is rate limited or unavailable.
+          Metrics below can still be current, since the Performance API has its own quota.
         </div>
       ) : null}
+
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
         <p className="small text-body-secondary mb-0">
-          Signed in as <span className="detail-mono">{data.googleEmail}</span> &middot; last{' '}
-          <strong>{data.rangeDays}</strong> days (UTC)
+          <strong>{data.location.title}</strong> &middot; {data.rangeLabel} vs previous {data.rangeDays} days &middot;
+          signed in as <span className="detail-mono">{data.googleEmail}</span>
         </p>
-        <a
-          href="https://business.google.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn btn-sm btn-outline-secondary"
-        >
-          Open Google Business
-        </a>
+        <div className="d-flex flex-wrap gap-2">
+          {GBP_METRICS_RANGE_OPTIONS.map((days) => (
+            <Link
+              key={days}
+              href={gbpHref(days, data.selectedIndex)}
+              className={`btn btn-sm ${days === data.rangeDays ? 'btn-primary' : 'btn-outline-secondary'}`}
+            >
+              {days}d
+            </Link>
+          ))}
+          <a
+            href="https://business.google.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-sm btn-outline-secondary"
+          >
+            Open GBP
+          </a>
+        </div>
       </div>
 
       {data.allLocations.length > 1 ? (
@@ -94,7 +267,7 @@ export function GbpMetricsDashboard({ data }: { data: GbpMetricsPageData }) {
             {data.allLocations.map((loc, i) => (
               <Link
                 key={loc.name}
-                href={`/dashboard/gbp?loc=${i}`}
+                href={gbpHref(data.rangeDays, i)}
                 className={`btn btn-sm ${i === data.selectedIndex ? 'btn-primary' : 'btn-outline-secondary'}`}
               >
                 {loc.title}
@@ -104,31 +277,69 @@ export function GbpMetricsDashboard({ data }: { data: GbpMetricsPageData }) {
         </div>
       ) : null}
 
-      <div className="card border rounded-3 overflow-hidden bg-body shadow-sm">
-        <div className="card-body border-bottom py-3">
-          <h2 className="h6 fw-semibold mb-0">{data.location.title}</h2>
-          <p className="small text-body-secondary mb-0 mt-1 font-monospace text-break">{data.location.name}</p>
+      {data.hasAnyData ? null : (
+        <div className="alert alert-secondary small mb-0" role="status">
+          Google returned no activity for {data.rangeLabel}. A brand-new listing, a suspended profile, or a very quiet
+          week all look like this. Performance data also lags {GBP_REPORTING_LAG_DAYS} days, so try a longer range
+          before assuming something is broken.
         </div>
-        <div className="table-responsive">
-          <table className="table table-hover mb-0 align-middle">
-            <thead className="table-light">
-              <tr>
-                <th className="ps-4">Metric</th>
-                <th className="text-end pe-4" style={{ width: '8rem' }}>
-                  Total
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.rows.map((row) => (
-                <tr key={row.metric}>
-                  <td className="ps-4">{row.label}</td>
-                  <td className="text-end pe-4 fw-semibold tabular-nums">{formatInt(row.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      )}
+
+      <div className="row g-3">
+        {actionCards(data.totals, data.previousTotals).map((card) => (
+          <div className="col-6 col-lg-4 col-xl-2" key={card.key}>
+            <MetricCard
+              label={card.label}
+              value={formatMetricInt(card.current)}
+              current={card.current}
+              previous={card.previous}
+            />
+          </div>
+        ))}
+      </div>
+
+      <div>
+        <h2 className="h6 fw-semibold mb-3">Impressions by surface</h2>
+        <div className="row g-3">
+          {GBP_IMPRESSION_METRICS.map((metric) => (
+            <div className="col-6 col-xl-3" key={metric}>
+              <MetricCard
+                label={GBP_METRIC_LABELS[metric]}
+                value={formatMetricInt(data.totals[metric])}
+                current={data.totals[metric]}
+                previous={data.previousTotals[metric]}
+                hint={
+                  totalImpressions > 0
+                    ? `${((data.totals[metric] / totalImpressions) * 100).toFixed(0)}% of impressions`
+                    : undefined
+                }
+              />
+            </div>
+          ))}
         </div>
+      </div>
+
+      <div>
+        <BreakdownCard
+          title="Top search terms"
+          rows={keywordRows}
+          nameLabel="Search term"
+          valueLabel="Searchers"
+          emptyText={
+            data.searchKeywordsUnavailable
+              ? 'Google did not return search terms for this listing. The endpoint needs the same project approval as the rest of the Performance API.'
+              : 'No search terms reported for these months.'
+          }
+        />
+        {keywordRows.length > 0 ? (
+          <p className="small text-body-secondary mb-0 mt-2">
+            Search terms are published per calendar month, so this covers the months {data.rangeLabel} touches rather
+            than the exact window.
+            {anyThreshold
+              ? ' Rare terms are reported only as an upper bound, so some counts are a ceiling, not an exact number.'
+              : ''}
+          </p>
+        ) : null}
       </div>
 
       <p className="small text-body-secondary mb-0">
@@ -141,12 +352,10 @@ export function GbpMetricsDashboard({ data }: { data: GbpMetricsPageData }) {
         >
           Business Profile Performance API
         </a>
-        . Totals are sums of daily values in the range; zeros may be omitted by Google on some days.
+        . Impressions count each unique person once per day, so surface totals do not add up to visits. Ranges end{' '}
+        {GBP_REPORTING_LAG_DAYS} days back because Google finalises daily numbers late; comparing to the previous period
+        stays honest that way.
       </p>
     </div>
   );
-}
-
-function formatInt(n: number): string {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n);
 }

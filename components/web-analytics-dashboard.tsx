@@ -1,13 +1,10 @@
 import Link from 'next/link';
-import type { Ga4NamedCount, Ga4Totals } from '@/lib/analytics/ga4-api';
+import { BreakdownCard, formatMetricInt as formatInt, MetricCard } from '@/components/metrics-ui';
+import type { Ga4Totals } from '@/lib/analytics/ga4-api';
 import {
   WEB_ANALYTICS_RANGE_OPTIONS,
   type WebAnalyticsPageData,
 } from '@/lib/domain/load-web-analytics-page';
-
-function formatInt(n: number): string {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n);
-}
 
 function formatDuration(seconds: number): string {
   const total = Math.max(0, Math.round(seconds));
@@ -18,29 +15,6 @@ function formatDuration(seconds: number): string {
 
 function formatPercent(fraction: number): string {
   return `${(fraction * 100).toFixed(1)}%`;
-}
-
-function DeltaBadge({
-  current,
-  previous,
-  lowerIsBetter = false,
-}: {
-  current: number;
-  previous: number;
-  lowerIsBetter?: boolean;
-}) {
-  if (previous <= 0) {
-    return <span className="small text-body-secondary">no prior data</span>;
-  }
-  const change = (current - previous) / previous;
-  const up = change >= 0;
-  const flat = Math.abs(change) < 0.005;
-  const good = lowerIsBetter ? !up : up;
-  return (
-    <span className={`small fw-semibold ${flat ? 'text-body-secondary' : good ? 'text-success' : 'text-danger'}`}>
-      {flat ? '±0%' : `${up ? '+' : ''}${(change * 100).toFixed(1)}%`}
-    </span>
-  );
 }
 
 function SetupSteps({ serviceAccountEmail }: { serviceAccountEmail: string | null }) {
@@ -75,50 +49,6 @@ function SetupSteps({ serviceAccountEmail }: { serviceAccountEmail: string | nul
         <strong>Property settings</strong> (not the <code className="detail-mono">G-XXXXXXXX</code> measurement ID).
       </li>
     </ol>
-  );
-}
-
-function BreakdownCard({
-  title,
-  rows,
-  valueLabel,
-}: {
-  title: string;
-  rows: Ga4NamedCount[];
-  valueLabel: string;
-}) {
-  return (
-    <div className="card border rounded-3 overflow-hidden bg-body shadow-sm">
-      <div className="card-body border-bottom py-3">
-        <h2 className="h6 fw-semibold mb-0">{title}</h2>
-      </div>
-      {rows.length === 0 ? (
-        <div className="card-body">
-          <p className="small text-body-secondary mb-0">No data in this range.</p>
-        </div>
-      ) : (
-        <div className="table-responsive">
-          <table className="table table-hover mb-0 align-middle">
-            <thead className="table-light">
-              <tr>
-                <th className="ps-4">{title === 'Top pages' ? 'Page' : 'Source'}</th>
-                <th className="text-end pe-4" style={{ width: '8rem' }}>
-                  {valueLabel}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.name}>
-                  <td className="ps-4 text-break">{row.name}</td>
-                  <td className="text-end pe-4 fw-semibold tabular-nums">{formatInt(row.count)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -215,29 +145,25 @@ export function WebAnalyticsDashboard({ data }: { data: WebAnalyticsPageData }) 
       <div className="row g-3">
         {summaryCards(data.totals, data.previousTotals).map((card) => (
           <div className="col-6 col-lg-4 col-xl-2" key={card.key}>
-            <div className="card border rounded-3 h-100 bg-body shadow-sm">
-              <div className="card-body">
-                <p className="menu-label mb-1">{card.label}</p>
-                <p className="h4 fw-semibold mb-1 tabular-nums">{card.value}</p>
-                <DeltaBadge
-                  current={card.current}
-                  previous={card.previous}
-                  lowerIsBetter={card.lowerIsBetter}
-                />
-              </div>
-            </div>
+            <MetricCard
+              label={card.label}
+              value={card.value}
+              current={card.current}
+              previous={card.previous}
+              lowerIsBetter={card.lowerIsBetter}
+            />
           </div>
         ))}
       </div>
 
       <div className="row g-3">
         <div className="col-12 col-xl-6">
-          <BreakdownCard title="Top pages" rows={data.topPages} valueLabel="Views" />
+          <BreakdownCard title="Top pages" rows={data.topPages} nameLabel="Page" valueLabel="Views" />
         </div>
         <div className="col-12 col-xl-6">
           <div className="d-flex flex-column gap-3">
-            <BreakdownCard title="Channels" rows={data.channels} valueLabel="Sessions" />
-            <BreakdownCard title="Devices" rows={data.devices} valueLabel="Sessions" />
+            <BreakdownCard title="Channels" rows={data.channels} nameLabel="Source" valueLabel="Sessions" />
+            <BreakdownCard title="Devices" rows={data.devices} nameLabel="Source" valueLabel="Sessions" />
           </div>
         </div>
       </div>
