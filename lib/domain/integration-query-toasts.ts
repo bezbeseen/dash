@@ -87,6 +87,7 @@ export function yelpScanToastFromQuery(q: {
   yelp_created?: string;
   yelp_matched?: string;
   yelp_scanned?: string;
+  yelp_truncated?: string;
   yelp_scan_error?: string;
 }): { message: string | null; error: string | null } {
   const error = q.yelp_scan_error?.trim()
@@ -98,12 +99,16 @@ export function yelpScanToastFromQuery(q: {
   const created = Number.parseInt(q.yelp_created ?? '0', 10) || 0;
   const matched = Number.parseInt(q.yelp_matched ?? '0', 10) || 0;
   const scanned = Number.parseInt(q.yelp_scanned ?? '0', 10) || 0;
-  const message =
+  const base =
     created > 0
       ? `Yelp: created ${created} pre-quote ticket${created === 1 ? '' : 's'} from ${matched} lead email${matched === 1 ? '' : 's'}.`
       : matched > 0
         ? `Yelp: found ${matched} lead email${matched === 1 ? '' : 's'}, all already imported.`
         : `Yelp: no lead emails found in the ${scanned} Yelp message${scanned === 1 ? '' : 's'} scanned.`;
+  const message =
+    q.yelp_truncated === '1'
+      ? `${base} The scan hit its message limit, so older Yelp mail was not read — run it again with a larger max.`
+      : base;
   return { message, error };
 }
 

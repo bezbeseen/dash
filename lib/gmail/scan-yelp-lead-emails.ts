@@ -21,6 +21,10 @@ import {
 export const YELP_SCAN_DEFAULT_LOOKBACK_DAYS = 14;
 export const YELP_SCAN_DEFAULT_MAX_MESSAGES = 20;
 
+/** Hard caps: a full scan has to finish inside the ~10s serverless budget. */
+export const YELP_SCAN_MAX_LOOKBACK_DAYS = 180;
+export const YELP_SCAN_MAX_MESSAGES = 100;
+
 /** Small batches keep the whole scan inside the serverless function budget. */
 const FETCH_BATCH_SIZE = 5;
 
@@ -36,6 +40,16 @@ export type YelpEmailCandidate = {
   existingJobId: string | null;
 };
 
+/** Echoed back so a capped scan is never mistaken for "that is all of them". */
+export type YelpScanLimits = {
+  lookbackDaysRequested: number;
+  lookbackDays: number;
+  lookbackDaysCap: number;
+  maxMessagesRequested: number;
+  maxMessages: number;
+  maxMessagesCap: number;
+};
+
 export type YelpEmailScanResult = {
   mailboxEmail: string;
   /** Which setting chose this mailbox, so results are self-describing. */
@@ -46,6 +60,10 @@ export type YelpEmailScanResult = {
   createdJobIds: string[];
   skipped: number;
   dryRun: boolean;
+  limits: YelpScanLimits;
+  /** True when Gmail had more matching mail than this scan looked at. */
+  truncated: boolean;
+  truncationReason: string | null;
   candidates: YelpEmailCandidate[];
 };
 
@@ -81,8 +99,18 @@ export async function scanYelpLeadEmails(opts: {
   maxMessages?: number;
   dryRun?: boolean;
 }): Promise<YelpEmailScanResult> {
-  const lookbackDays = Math.min(Math.max(opts.lookbackDays ?? YELP_SCAN_DEFAULT_LOOKBACK_DAYS, 1), 180);
-  const maxMessages = Math.min(Math.max(opts.maxMessages ?? YELP_SCAN_DEFAULT_MAX_MESSAGES, 1), 100);
+  const lookbackDaysRequested = opts.lookbackDays ?? YELP_SCAN_DEFAULT_LOOKBACK_DAYS;
+  const maxMessagesRequested = opts.maxMessages ?? YELP_SCAN_DEFAULT_MAX_MESSAGES;
+  const lookbackDays = Math.min(Math.max(lookbackDaysRequested, 1), YELP_SCAN_MAX_LOOKBACK_DAYS);
+  const maxMessages = Math.min(Math.max(maxMessagesRequested, 1), YELP_SCAN_MAX_MESSAGES);
+  const limits: YelpScanLimits = {
+    lookbackDaysRequested,
+    lookbackDays,
+    lookbackDaysCap: YELP_SCAN_MAX_LOOKBACK_DAYS,
+    maxMessagesRequested,
+    maxMessages,
+    maxMessagesCap: YELP_SCAN_MAX_MESSAGES,
+  };
   const dryRun = opts.dryRun ?? false;
 
   const mailboxState = await resolveYelpLeadMailboxState(opts.mailboxEmail ?? null);
@@ -100,6 +128,7 @@ export async function scanYelpLeadEmails(opts: {
   let ids: { id: string; threadId: string }[] = [];
   let effectiveUserId = userIds[0];
   let listErr: unknown = null;
+  let morePagesAvailable = false;
 
   for (const userId of userIds) {
     try {
@@ -107,6 +136,7 @@ export async function scanYelpLeadEmails(opts: {
       ids = (list.data.messages ?? [])
         .filter((m): m is { id: string; threadId: string } => Boolean(m.id && m.threadId))
         .map((m) => ({ id: m.id, threadId: m.threadId }));
+      morePagesAvailable = Boolean(list.data.nextPageToken);
       effectiveUserId = userId;
       listErr = null;
       break;
@@ -190,6 +220,7 @@ export async function scanYelpLeadEmails(opts: {
       const parsed = parseYelpLeadEmail({
         subject,
         body: bodyText,
+        from,
         gmailThreadId: base.gmailThreadId,
         receivedAt,
       });
@@ -265,6 +296,14 @@ export async function scanYelpLeadEmails(opts: {
   }
 
   const matched = candidates.filter((c) => c.matched).length;
+  const hitMessageCap = candidates.length >= maxMessages;
+  const truncated = morePagesAvailable || hitMessageCap;
+  const truncationReason = !truncated
+    ? null
+    : morePagesAvailable
+      ? `Gmail has more than ${maxMessages} messages matching "${query}". Raise max (cap ${YELP_SCAN_MAX_MESSAGES}) or narrow the window to see the rest.`
+      : `Stopped at the ${maxMessages}-message limit for this scan (cap ${YELP_SCAN_MAX_MESSAGES}).`;
+
   return {
     mailboxEmail,
     mailbox: mailboxState,
@@ -274,6 +313,9 @@ export async function scanYelpLeadEmails(opts: {
     createdJobIds,
     skipped: matched - createdJobIds.length,
     dryRun,
+    limits,
+    truncated,
+    truncationReason,
     candidates,
   };
 }

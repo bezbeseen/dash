@@ -1,4 +1,5 @@
 import { sanitizeJobProjectDescription } from '@/lib/domain/job-display';
+import { formatYelpSurveyLines, type YelpSurveyPair } from '@/lib/yelp/survey';
 
 export type YelpLeadWebhookUpdate = {
   event_type?: string;
@@ -71,20 +72,15 @@ export function buildYelpLeadProjectDescription(
 
   const survey = project?.survey_answers;
   if (Array.isArray(survey) && survey.length > 0) {
-    lines.push('');
-    lines.push('Project questionnaire:');
-    for (const row of survey.slice(0, 50)) {
+    const pairs: YelpSurveyPair[] = [];
+    for (const row of survey) {
       const r = asRecord(row);
       const q = typeof r?.question_text === 'string' ? r.question_text : '';
-      const answers = r?.answer_text;
       if (!q) continue;
-      lines.push(`\n${q}`);
-      if (Array.isArray(answers)) {
-        for (const a of answers) {
-          lines.push(`  • ${String(a).slice(0, 500)}`);
-        }
-      }
+      const answers = r?.answer_text;
+      pairs.push({ question: q, answers: Array.isArray(answers) ? answers.map((a) => String(a)) : [] });
     }
+    lines.push(...formatYelpSurveyLines(pairs));
   }
 
   const textEvents = events.filter((e) => {

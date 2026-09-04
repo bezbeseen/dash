@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
       yelp_created: String(result.createdJobIds.length),
       yelp_matched: String(result.matched),
       yelp_scanned: String(result.scanned),
+      yelp_truncated: result.truncated ? '1' : '0',
     });
     return settings(q.toString());
   } catch (e) {

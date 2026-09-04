@@ -1,5 +1,10 @@
 import { prisma } from '@/lib/db/prisma';
-import { YELP_SCAN_DEFAULT_LOOKBACK_DAYS } from '@/lib/gmail/scan-yelp-lead-emails';
+import {
+  YELP_SCAN_DEFAULT_LOOKBACK_DAYS,
+  YELP_SCAN_DEFAULT_MAX_MESSAGES,
+  YELP_SCAN_MAX_LOOKBACK_DAYS,
+  YELP_SCAN_MAX_MESSAGES,
+} from '@/lib/gmail/scan-yelp-lead-emails';
 import { resolveYelpLeadMailboxState } from '@/lib/yelp/lead-mailbox';
 
 /**
@@ -56,9 +61,14 @@ export async function YelpLeadEmailSettingsSection() {
         </form>
       </div>
       <p className="small text-body-secondary mt-2 mb-0">
-        Scans the last {YELP_SCAN_DEFAULT_LOOKBACK_DAYS} days. Add{' '}
-        <code className="detail-mono">?days=60&amp;max=50</code> to the preview URL to look further back, or{' '}
-        <code className="detail-mono">?mailbox=</code> to try another connected address.
+        Each run scans the last {YELP_SCAN_DEFAULT_LOOKBACK_DAYS} days and reads at most{' '}
+        {YELP_SCAN_DEFAULT_MAX_MESSAGES} Yelp messages. Add{' '}
+        <code className="detail-mono">?days=180&amp;max=100</code> to look further back, or{' '}
+        <code className="detail-mono">?mailbox=</code> to try another connected address. Hard caps are{' '}
+        <strong>{YELP_SCAN_MAX_LOOKBACK_DAYS} days</strong> and{' '}
+        <strong>{YELP_SCAN_MAX_MESSAGES} messages</strong> per run so the scan finishes inside the serverless time
+        budget — anything beyond that needs a second run, and the response sets{' '}
+        <code className="detail-mono">truncated: true</code> whenever older Yelp mail was left unread.
       </p>
     </section>
   );

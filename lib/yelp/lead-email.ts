@@ -1,4 +1,12 @@
 import { sanitizeJobProjectDescription } from '@/lib/domain/job-display';
+import {
+  findFreeTextAnswer,
+  findServiceLocation,
+  findServiceZip,
+  formatYelpSurveyLines,
+  parseYelpSurveyPairsFromText,
+  type YelpSurveyPair,
+} from '@/lib/yelp/survey';
 
 /**
  * Parses Yelp "new lead / new message" notification emails into pre-quote ticket fields.
@@ -6,13 +14,13 @@ import { sanitizeJobProjectDescription } from '@/lib/domain/job-display';
  * Dash cannot use the Yelp Leads API (it is gated to advertising resellers with a minimum
  * spend), so the mailbox that receives Yelp notifications is the ingest path instead. Yelp
  * changes these templates periodically, so every field is optional and the cleaned email
- * body is always kept verbatim in the description.
+ * body is always kept in the description.
  */
 
 export type ParsedYelpLeadEmail = {
-  /** Stable key for Job.yelpLeadId. Real Yelp id when present, else the Gmail thread. */
+  /** Stable key for Job.yelpLeadId. Yelp conversation id when present, else the Gmail thread. */
   dedupeKey: string;
-  /** True when dedupeKey came from a Yelp URL rather than the Gmail thread id. */
+  /** True when dedupeKey came from Yelp's own conversation id rather than the Gmail thread. */
   dedupeFromYelp: boolean;
   customerName: string;
   projectName: string;
@@ -21,6 +29,9 @@ export type ParsedYelpLeadEmail = {
   phone: string | null;
   jobType: string | null;
   threadUrl: string | null;
+  serviceZip: string | null;
+  survey: YelpSurveyPair[];
+  customerNotes: string | null;
 };
 
 const YELP_SENDER = /(^|[@.])yelp\.com$/i;
@@ -78,21 +89,146 @@ export function looksLikeYelpLeadEmail(subject: string, body: string): boolean {
   return LEAD_SIGNALS.some((re) => re.test(haystack));
 }
 
-/** biz.yelp.com messaging/lead links carry the ids we can dedupe on. */
-function extractYelpIds(body: string): { leadId: string | null; threadUrl: string | null } {
+/**
+ * Yelp's email preheader is padded with soft hyphens and zero-width joiners to control
+ * the inbox preview line; hundreds of them arrive in the text part.
+ */
+const INVISIBLE_CHARS = /[\u00ad\u034f\u200b-\u200f\u2060\u2061\u2062\u2063\u2064\ufeff]/g;
+
+/** Yelp ships this untranslated in the text part, e.g. `{num_attachments, plural, one {...} other {...}}`. */
+const ICU_PLACEHOLDER = /\{\s*\w+\s*,\s*(?:plural|select|selectordinal)\s*,[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/gi;
+
+/** Yelp's response-rate nagging and CTA chrome, none of which belongs on a ticket. */
+const BOILERPLATE_LINES = [
+  /^reply\s+to\s+stay\s+eligible/i,
+  /^don['’]?t\s+miss\s+out\s+on\s+future\s+leads/i,
+  /^having\s+a\s+low\s+response\s+rate/i,
+  /^your\s+messaging\s+may\s+also\s+be\s+turned\s+off/i,
+  /^your\s+response\s+(?:time|rate)\b/i,
+  /^keep\s+track\s+of\s+incoming\s+leads/i,
+  /^get\s+text\s+notifications?$/i,
+  /^i['’]?m\s+not\s+interested$/i,
+  /^i\s+already\s+replied$/i,
+  /^report\s+this\s+conversation$/i,
+  /^or\s+reply\s+directly\s+to\s+this\s+email/i,
+  /^reply\s+to\s+.{1,60}\s+on\s+yelp(?:\s+biz)?$/i,
+  /^view\s+(?:and\s+)?repl(?:y|ies)/i,
+  /^sent\s+to\s+/i,
+  /^unsubscribe/i,
+  /^manage\s+(?:your\s+)?(?:email\s+)?(?:notification\s+)?(?:preferences|settings)/i,
+  /^download\s+the\s+yelp/i,
+  /^(?:©|\(c\)|copyright)\s*\d{4}\s*yelp/i,
+  /^yelp\s+inc\.?\s*,?\s*\d+/i,
+  /^this\s+(?:email|message)\s+was\s+sent/i,
+  /^you\s+(?:are\s+)?receiv(?:ed|ing)\s+this/i,
+  /^\d+\s+\w[\w\s.]*\s+(?:rd|road|st|street|ave|avenue|blvd|way|dr|drive)\b.*\b[a-z]{2}\s+\d{5}\b/i,
+];
+
+/** "Your response time" is followed by its value on the next line. */
+const RESPONSE_STAT_LABEL = /^your\s+response\s+(?:time|rate)\b/i;
+const RESPONSE_STAT_VALUE = /^(?:\d+\s*%|\d+\s*(?:min|mins|minute|minutes|hour|hours|day|days)\b.*)$/i;
+
+function isBoilerplateLine(line: string): boolean {
+  const t = line.trim();
+  if (!t) return false;
+  if (BOILERPLATE_LINES.some((re) => re.test(t))) return true;
+  // Yelp's link markup collapses to empty brackets and bare "[link]" crumbs.
+  if (/^[[\]()\s]*(?:\[link\])?[[\]()\s]*$/.test(t)) return true;
+  // A line that is nothing but a Yelp URL; the inbox link is its own field.
+  if (/^https?:\/\/\S+$/.test(t)) return true;
+  return false;
+}
+
+function dropBoilerplate(lines: string[]): string[] {
+  const kept: string[] = [];
+  let dropStatValue = false;
+  let insideQuestionnaire = false;
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (dropStatValue && RESPONSE_STAT_VALUE.test(t)) {
+      dropStatValue = false;
+      continue;
+    }
+    dropStatValue = RESPONSE_STAT_LABEL.test(t);
+    if (t.endsWith('?')) insideQuestionnaire = true;
+    // Bare counters sit beside the attachment placeholder with no documented meaning,
+    // but an identical-looking line inside the questionnaire is a real answer.
+    if (!insideQuestionnaire && /^\d{1,4}$/.test(t)) continue;
+    if (isBoilerplateLine(line)) continue;
+    kept.push(line);
+  }
+  return kept;
+}
+
+/** Trailing `)` leaks in from `[label](url)` markup; other punctuation from prose. */
+export function trimUrlPunctuation(url: string): string {
+  return url.replace(/[)\]}>,.;:!'"]+$/, '');
+}
+
+/**
+ * Strips Yelp's template chrome so the questionnaire and the customer's own words remain.
+ * Runs before any extraction so every field sees the same cleaned text.
+ */
+export function cleanYelpEmailBody(body: string): string {
+  const withoutMarkup = body
+    .replace(/\r\n?/g, '\n')
+    .replace(INVISIBLE_CHARS, '')
+    .replace(ICU_PLACEHOLDER, '')
+    // Keep the label, drop the href: the inbox URL is surfaced as its own field.
+    // The closing paren is optional because Yelp's long hrefs are often truncated.
+    .replace(/\[([^\]]*)\]\(\s*(?:\[link\]|[^)\n]*)\)?/g, '$1')
+    .replace(/\[link\]/g, '')
+    .replace(/^\s*\[([^\][\n]{1,80})\]\s*$/gm, '$1')
+    .replace(/(https?:\/\/[^\s"'<>]*?)[)\]}.,;:!]+(?=\s|$)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '');
+
+  const kept = dropBoilerplate(withoutMarkup.split('\n')).map((line) =>
+    line.replace(/[ \t\u00a0]+/g, ' ').trimEnd(),
+  );
+
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * Yelp's conversation id appears as the `reply+<hex>@messaging.yelp.com` sender and again
+ * in the inbox URL path. Preferring it over the Gmail thread keeps follow-up messages on
+ * one ticket even when Gmail files them under a different thread.
+ */
+export function extractYelpConversationId(fromHeader: string, body: string): string | null {
+  const fromReplyPlus = /reply\+([0-9a-f]{16,64})@/i.exec(fromHeader);
+  if (fromReplyPlus) return normalizeConversationId(fromReplyPlus[1]);
+
   const patterns = [
-    /https?:\/\/[^\s"'<>]*biz\.yelp\.com\/messaging\/[A-Za-z0-9_-]+\/thread\/([A-Za-z0-9_-]{8,})/i,
-    /https?:\/\/[^\s"'<>]*biz\.yelp\.com\/leads[_-]?center\/[^\s"'<>]*?\/([A-Za-z0-9_-]{8,})/i,
-    /https?:\/\/[^\s"'<>]*yelp\.com\/[^\s"'<>]*(?:lead_id|thread_id|conversation_id)=([A-Za-z0-9_-]{8,})/i,
+    /biz\.yelp\.com\/messaging\/[a-z_]+\/([0-9a-f]{16,64})\b/i,
+    /biz\.yelp\.com\/messaging\/[A-Za-z0-9_-]+\/thread\/([A-Za-z0-9_-]{8,})/i,
+    /yelp\.com\/[^\s"'<>]*(?:lead_id|thread_id|conversation_id)=([A-Za-z0-9_-]{8,})/i,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(body);
+    if (m) return normalizeConversationId(m[1]);
+  }
+  return null;
+}
+
+/** Hex ids are case-insensitive; Yelp's base64-ish thread ids are not. */
+function normalizeConversationId(id: string): string {
+  return /^[0-9a-f]+$/i.test(id) ? id.toLowerCase() : id;
+}
+
+export function extractYelpThreadUrl(body: string): string | null {
+  const patterns = [
+    /https?:\/\/[^\s"'<>]*biz\.yelp\.com\/messaging\/[^\s"'<>]*/i,
+    /https?:\/\/[^\s"'<>]*biz\.yelp\.com\/leads[^\s"'<>]*/i,
   ];
   for (const re of patterns) {
     const m = re.exec(body);
     if (m) {
-      return { leadId: m[1], threadUrl: m[0] };
+      const url = trimUrlPunctuation(m[0]);
+      if (url) return url;
     }
   }
-  const anyThread = /https?:\/\/[^\s"'<>]*biz\.yelp\.com\/(?:messaging|leads)[^\s"'<>]*/i.exec(body);
-  return { leadId: null, threadUrl: anyThread ? anyThread[0] : null };
+  return null;
 }
 
 function firstMatch(body: string, patterns: RegExp[]): string | null {
@@ -104,22 +240,29 @@ function firstMatch(body: string, patterns: RegExp[]): string | null {
   return null;
 }
 
+function tidyCustomerName(raw: string): string {
+  const collapsed = raw.replace(/\s+/g, ' ').trim();
+  // Yelp shows consumers as "Rose L."; keep a genuine last initial, drop stray dots.
+  const withInitial = /^(.*\S)\s+([A-Za-z])\.$/.exec(collapsed);
+  if (withInitial) return `${withInitial[1]} ${withInitial[2].toUpperCase()}.`;
+  return collapsed.replace(/[\s.,!]+$/, '').trim();
+}
+
 function extractCustomerName(subject: string, body: string): string | null {
   const fromSubject = firstMatch(subject, [
+    // First-contact leads arrive as "<Business>'s response to <Customer>".
+    /['’]s\s+response\s+to\s+(.+?)\s*$/i,
     /^(?:new\s+)?(?:quote\s+request|lead|message)\s+from\s+(.+?)\s*$/i,
-    /^(.+?)\s+(?:sent\s+you|requested|wants|is\s+interested|replied)/i,
     /^you\s+have\s+a\s+new\s+(?:lead|quote\s+request|message)\s+from\s+(.+?)\s*$/i,
+    /^(.+?)\s+(?:sent\s+you|requested|wants|is\s+interested|replied)/i,
   ]);
-  // Yelp shows consumers as "Jane D." — keep a trailing last-initial period, drop other punctuation.
-  if (fromSubject) {
-    const trimmed = fromSubject.replace(/!+$/, '').trim();
-    return (/\s[A-Z]\.$/.test(trimmed) ? trimmed : trimmed.replace(/\.+$/, '')).trim();
-  }
+  if (fromSubject) return tidyCustomerName(fromSubject.replace(/!+$/, ''));
 
-  return firstMatch(body, [
+  const fromBody = firstMatch(body, [
     /^\s*(?:customer|consumer|name|from|lead)\s*[:\-]\s*(.+?)\s*$/im,
     /^\s*(.{2,60}?)\s+(?:sent\s+you\s+a|requested\s+a\s+quote|is\s+requesting)/im,
   ]);
+  return fromBody ? tidyCustomerName(fromBody) : null;
 }
 
 function extractPhone(body: string): string | null {
@@ -152,35 +295,52 @@ function extractEmail(body: string): string | null {
   return null;
 }
 
-function extractJobType(subject: string, body: string): string | null {
-  return (
-    firstMatch(body, [
-      /^\s*(?:job|job\s*type|project|service|category|requested\s+service)\s*[:\-]\s*(.+?)\s*$/im,
-      /(?:looking\s+for|interested\s+in|needs?)\s+(?:a\s+|an\s+|some\s+)?([a-z0-9][^.\n!?]{3,60})/i,
-    ]) ??
-    firstMatch(subject, [/(?:quote\s+request|lead)\s+(?:for|about)\s+(.+?)\s*$/i])
-  );
+/**
+ * Rejects survey wording. The questionnaire is full of phrases like "do you need the
+ * service?" and "do you need to print?", which an unanchored pattern will happily capture.
+ */
+function isPlausibleJobType(candidate: string): boolean {
+  const t = candidate.trim();
+  if (t.length < 3 || t.length > 60) return false;
+  if (t.includes('?')) return false;
+  if (/^(?:the|a|an|to|your|my|this|that|it|they|do|does|is|are)\b/i.test(t)) return false;
+  if (/\byou\b|\byour\b|\bneed\b|\brequire\b|\bhow\s+many\b/i.test(t)) return false;
+  return /[a-z]/i.test(t);
 }
 
-/** Drops Yelp's legal/marketing footer so the ticket body stays readable. */
-export function stripYelpEmailBoilerplate(body: string): string {
-  const cutMarkers = [
-    /^\s*(?:--+\s*)?(?:this\s+(?:email|message)\s+was\s+sent\s+(?:to|by))/im,
-    /^\s*(?:you\s+(?:are\s+)?receiv(?:ed|ing)\s+this\s+email)/im,
-    /^\s*unsubscribe\b/im,
-    /^\s*(?:©|\(c\)|copyright)\s*\d{4}\s*yelp/im,
-    /^\s*yelp\s+inc\.?\s*,?\s*\d+/im,
-    /^\s*manage\s+(?:your\s+)?(?:email\s+)?(?:notification\s+)?(?:preferences|settings)/im,
-    /^\s*download\s+the\s+yelp\s+(?:for\s+business\s+)?app/im,
-  ];
-  let cut = body.length;
-  for (const re of cutMarkers) {
-    const m = re.exec(body);
-    if (m && m.index < cut) cut = m.index;
+/**
+ * The job type is stated twice in Yelp's lead emails, both times unambiguously.
+ * Both anchors are required to end at a period so survey questions cannot match.
+ */
+export function extractYelpJobType(subject: string, body: string): string | null {
+  const anchored = firstMatch(body, [
+    /^#*\s*you\s+have\s+a\s+new\s+(.+?)\s+request\s*[.!]/im,
+    /\byou\s+have\s+a\s+new\s+(.+?)\s+request\s*[.!]/i,
+    /requested\s+a\s+quote(?:\s+from\s+[^.\n]{1,80}?)?\s+for\s+(?:an?\s+|some\s+)?([^.\n]{3,60})\s*\./i,
+  ]);
+  if (anchored && isPlausibleJobType(anchored)) return anchored;
+
+  const labelled = firstMatch(body, [
+    /^\s*(?:job|job\s*type|project|service|category|requested\s+service)\s*[:\-]\s*(.+?)\s*$/im,
+  ]);
+  if (labelled && isPlausibleJobType(labelled)) return labelled;
+
+  const fromSubject = firstMatch(subject, [/(?:quote\s+request|lead)\s+(?:for|about)\s+(.+?)\s*$/i]);
+  return fromSubject && isPlausibleJobType(fromSubject) ? fromSubject : null;
+}
+
+/** Drops the questionnaire from the remaining prose so the description does not repeat it. */
+function removeSurveyLines(text: string, pairs: YelpSurveyPair[]): string {
+  if (pairs.length === 0) return text;
+  const consumed = new Set<string>();
+  for (const pair of pairs) {
+    consumed.add(pair.question);
+    for (const a of pair.answers) consumed.add(a);
   }
-  return body
-    .slice(0, cut)
-    .replace(/https?:\/\/\S{120,}/g, '[link]')
+  return text
+    .split('\n')
+    .filter((line) => !consumed.has(line.trim()))
+    .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -190,14 +350,22 @@ export function parseYelpLeadEmail(input: {
   body: string;
   gmailThreadId: string;
   receivedAt: Date | null;
+  from?: string;
 }): ParsedYelpLeadEmail {
   const { subject, body, gmailThreadId } = input;
+  const from = input.from ?? '';
 
-  const { leadId, threadUrl } = extractYelpIds(body);
-  const cleanBody = stripYelpEmailBoilerplate(body);
+  const conversationId = extractYelpConversationId(from, body);
+  const threadUrl = extractYelpThreadUrl(body);
+  const cleanBody = cleanYelpEmailBody(body);
+
+  const survey = parseYelpSurveyPairsFromText(cleanBody);
+  const customerNotes = findFreeTextAnswer(survey);
+  const serviceZip = findServiceZip(survey);
+  const serviceLocation = findServiceLocation(survey);
 
   const customerName = extractCustomerName(subject, cleanBody) ?? 'Yelp lead';
-  const jobType = extractJobType(subject, cleanBody);
+  const jobType = extractYelpJobType(subject, cleanBody);
   const phone = extractPhone(cleanBody);
   const leadEmail = extractEmail(cleanBody);
 
@@ -206,18 +374,30 @@ export function parseYelpLeadEmail(input: {
   const lines: string[] = ['Source: Yelp (lead notification email)'];
   if (subject.trim()) lines.push(`Subject: ${subject.trim().slice(0, 300)}`);
   if (input.receivedAt) lines.push(`Received: ${input.receivedAt.toISOString()}`);
+  if (jobType) lines.push(`Job type: ${jobType}`);
+  if (serviceLocation) lines.push(`Service location: ${serviceLocation}`);
   if (phone) lines.push(`Phone: ${phone}`);
   if (leadEmail) lines.push(`Reply to: ${leadEmail}`);
   if (threadUrl) lines.push(`Yelp inbox: ${threadUrl.slice(0, 500)}`);
-  if (cleanBody) {
+
+  if (customerNotes) {
+    lines.push('');
+    lines.push('Customer notes:');
+    lines.push(customerNotes);
+  }
+
+  lines.push(...formatYelpSurveyLines(survey));
+
+  const remainder = removeSurveyLines(cleanBody, survey);
+  if (remainder) {
     lines.push('');
     lines.push('Email body:');
-    lines.push(cleanBody.slice(0, 8000));
+    lines.push(remainder.slice(0, 8000));
   }
 
   return {
-    dedupeKey: leadId ? `yelp:${leadId}` : `gmail-thread:${gmailThreadId}`,
-    dedupeFromYelp: Boolean(leadId),
+    dedupeKey: conversationId ? `yelp:${conversationId}` : `gmail-thread:${gmailThreadId}`,
+    dedupeFromYelp: Boolean(conversationId),
     customerName: customerName.slice(0, 512),
     projectName,
     projectDescription: sanitizeJobProjectDescription(projectName, lines.join('\n').trim()),
@@ -225,5 +405,8 @@ export function parseYelpLeadEmail(input: {
     phone,
     jobType,
     threadUrl,
+    serviceZip,
+    survey,
+    customerNotes,
   };
 }
