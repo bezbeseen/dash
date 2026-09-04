@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
 import {
+  activeTimeSharePercentage,
   botSharePercentage,
   recordedSessions,
   signalAffectedSessions,
+  type ClarityBreakdownRow,
   type ClarityInsights,
   type ClarityTraffic,
 } from '@/lib/analytics/clarity-api';
@@ -182,10 +184,25 @@ function summaryCards(insights: ClarityInsights) {
   if (insights.averageScrollDepth !== null) {
     cards.push({ key: 'scroll', label: 'Avg. scroll depth', value: formatPercent(insights.averageScrollDepth) });
   }
-  if (insights.activeEngagementSeconds !== null) {
-    cards.push({ key: 'active', label: 'Active time', value: formatDuration(insights.activeEngagementSeconds) });
-  } else if (insights.totalEngagementSeconds !== null) {
-    cards.push({ key: 'total', label: 'Engagement time', value: formatDuration(insights.totalEngagementSeconds) });
+  if (insights.averageActiveTimeSeconds !== null) {
+    const share = activeTimeSharePercentage(insights);
+    const total = insights.averageTotalTimeSeconds;
+    cards.push({
+      key: 'active',
+      label: 'Active time / session',
+      value: formatDuration(insights.averageActiveTimeSeconds),
+      hint:
+        share !== null && total !== null
+          ? `${formatPercent(share)} of ${formatDuration(total)} on page`
+          : 'Average per session',
+    });
+  } else if (insights.averageTotalTimeSeconds !== null) {
+    cards.push({
+      key: 'total',
+      label: 'Time on page / session',
+      value: formatDuration(insights.averageTotalTimeSeconds),
+      hint: 'Average, idle time included',
+    });
   }
   return cards;
 }
@@ -213,6 +230,110 @@ function BotTrafficNote({ traffic }: { traffic: ClarityTraffic }) {
         panel counts only the {formatInt(traffic.humanSessions ?? 0)} human sessions that remain.
       </p>
     </div>
+  );
+}
+
+/** Below this many sessions a single internal visit visibly moves every percentage on the panel. */
+const SMALL_SAMPLE_SESSION_THRESHOLD = 30;
+
+function BreakdownTable({
+  title,
+  subtitle,
+  labelHeader,
+  valueHeader,
+  rows,
+  limit = 8,
+}: {
+  title: string;
+  subtitle: string;
+  labelHeader: string;
+  valueHeader: string;
+  rows: readonly ClarityBreakdownRow[];
+  limit?: number;
+}) {
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="card border rounded-3 overflow-hidden h-100 bg-body shadow-sm">
+      <div className="card-body border-bottom py-3">
+        <h3 className="h6 fw-semibold mb-1">{title}</h3>
+        <p className="small text-body-secondary mb-0">{subtitle}</p>
+      </div>
+      <div className="table-responsive">
+        <table className="table table-hover mb-0 align-middle">
+          <thead className="table-light">
+            <tr>
+              <th className="ps-4">{labelHeader}</th>
+              <th className="text-end pe-4" style={{ width: '7rem' }}>
+                {valueHeader}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.slice(0, limit).map((row) => (
+              <tr key={row.key}>
+                <td className="ps-4 text-break">
+                  {row.href ? (
+                    <a
+                      href={row.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-decoration-none"
+                    >
+                      {row.label}
+                    </a>
+                  ) : (
+                    row.label
+                  )}
+                </td>
+                <td className="text-end pe-4 fw-semibold tabular-nums">{formatInt(row.count)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function MiniBreakdown({ title, rows }: { title: string; rows: readonly ClarityBreakdownRow[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="col-12 col-sm-6">
+      <p className="menu-label mb-2">{title}</p>
+      <ul className="list-unstyled mb-0 small">
+        {rows.slice(0, 5).map((row) => (
+          <li key={row.key} className="d-flex justify-content-between gap-3 border-bottom py-1">
+            <span className="text-break">{row.label}</span>
+            <span className="fw-semibold tabular-nums">{formatInt(row.count)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Browser and OS are the only technology splits GA4 does not already cover on this page. */
+function TechnologyCard({ breakdowns }: { breakdowns: ClarityInsights['breakdowns'] }) {
+  if (breakdowns.browsers.length === 0 && breakdowns.operatingSystems.length === 0) return null;
+  return (
+    <div className="card border rounded-3 p-3 bg-body shadow-sm">
+      <div className="row g-3">
+        <MiniBreakdown title="Browsers" rows={breakdowns.browsers} />
+        <MiniBreakdown title="Operating systems" rows={breakdowns.operatingSystems} />
+      </div>
+    </div>
+  );
+}
+
+function SmallSampleNote({ humanSessions }: { humanSessions: number }) {
+  if (humanSessions > SMALL_SAMPLE_SESSION_THRESHOLD) return null;
+  return (
+    <p className="small text-body-secondary mb-0">
+      With {formatInt(humanSessions)} human sessions in this window, one or two visits move every percentage on this
+      panel. Your own admin tools, vendor consoles and partner portals land in the referrer list next to real
+      customers, so read the shape of these lists rather than the exact numbers.
+    </p>
   );
 }
 
@@ -363,12 +484,37 @@ export function ClarityInsightsPanel({ data }: { data: ClarityInsightsData }) {
       <BotTrafficNote traffic={traffic} />
       <DataWarnings warnings={insights.warnings} />
 
+      <div className="row g-3">
+        <div className="col-12 col-xl-6">
+          <BreakdownTable
+            title="Where visitors came from"
+            subtitle="Actual referring sites, grouped by host. GA4 above groups the same traffic into channels."
+            labelHeader="Referrer"
+            valueHeader="Sessions"
+            rows={insights.breakdowns.referrers}
+          />
+        </div>
+        <div className="col-12 col-xl-6">
+          <BreakdownTable
+            title="Most visited pages"
+            subtitle={`Last ${insights.numOfDays} days, bots removed. The GA4 table above covers a longer window and counts bots.`}
+            labelHeader="Page"
+            valueHeader="Visits"
+            rows={insights.breakdowns.popularPages}
+          />
+        </div>
+      </div>
+
+      <SmallSampleNote humanSessions={traffic.humanSessions} />
+
       <div className="card border rounded-3 overflow-hidden bg-body shadow-sm">
         <div className="card-body border-bottom py-3">
           <h3 className="h6 fw-semibold mb-0">Where visitors struggle</h3>
         </div>
         <SignalTable signals={insights.signals} />
       </div>
+
+      <TechnologyCard breakdowns={insights.breakdowns} />
 
       {traffic.distinctUsers !== null ? (
         <p className="small text-body-secondary mb-0">
@@ -390,10 +536,10 @@ export function ClarityInsightsPanel({ data }: { data: ClarityInsightsData }) {
           Clarity Data Export API
         </a>
         , which only serves the last {CLARITY_MAX_LOOKBACK_DAYS} days and allows{' '}
-        {CLARITY_DAILY_REQUEST_LIMIT} requests per day, so Dash caches one snapshot for 6 hours. Clarity does not
-        document whether active time is a per-session average or a total for the window, so treat it as a trend
-        rather than an exact figure. Open a heatmap or a recording in Clarity to see what these numbers mean on the
-        page.
+        {CLARITY_DAILY_REQUEST_LIMIT} requests per day, so Dash caches one snapshot for 6 hours and every breakdown
+        here comes out of that same free snapshot. Times are averages per session. Pages reached with and without a{' '}
+        <code className="detail-mono">www.</code> prefix are counted as one page. Open a heatmap or a recording in
+        Clarity to see what these numbers mean on the page.
       </p>
     </PanelShell>
   );

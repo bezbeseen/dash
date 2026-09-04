@@ -5,6 +5,7 @@
  * Run `npm run verify:clarity-mapping` after changing lib/analytics/clarity-api.ts.
  */
 import {
+  activeTimeSharePercentage,
   botSharePercentage,
   mapClarityInsights,
   pickNumber,
@@ -21,9 +22,12 @@ function check(label: string, actual: unknown, expected: unknown) {
 }
 
 /**
- * Shaped after the live production payload behind the panel: 9 human sessions, 12 bot sessions,
- * 19 distinct users. Numeric strings and mixed casing are reproduced exactly as Clarity sends them
- * (see the sample in the Data Export API docs and microsoft/clarity#640).
+ * Ground truth: the real production payload, captured from /api/integrations/clarity?raw=1.
+ * Field names and values are exactly what the live API returned — note `distinctUserCount`, which
+ * contradicts the `distantUserCount` in Microsoft's published sample. Session counts are typed as
+ * strings the way the docs sample shows them while the newer fields arrive as JSON numbers, which
+ * is the mixed typing the mapper has to absorb. Long row lists are trimmed to the rows the
+ * assertions depend on.
  */
 const LIVE_PAYLOAD = [
   {
@@ -32,28 +36,28 @@ const LIVE_PAYLOAD = [
       {
         totalSessionCount: '9',
         totalBotSessionCount: '12',
-        distantUserCount: '19',
-        PagesPerSessionPercentage: 1.4137,
+        distinctUserCount: '19',
+        pagesPerSessionPercentage: 1.4090909090909092,
       },
     ],
   },
   {
     metricName: 'EngagementTime',
-    information: [{ totalTime: '1204', activeTime: '51' }],
+    information: [{ totalTime: 212, activeTime: 51 }],
   },
   {
     metricName: 'ScrollDepth',
-    information: [{ averageScrollDepth: 36.0 }],
+    information: [{ averageScrollDepth: 36 }],
   },
   {
     metricName: 'DeadClickCount',
     information: [
       {
-        sessionsCount: '9',
+        sessionsCount: 9,
         sessionsWithMetricPercentage: 33.333,
         sessionsWithoutMetricPercentage: 66.667,
-        pagesViews: '5',
-        subTotal: '5',
+        pagesViews: 5,
+        subTotal: 5,
       },
     ],
   },
@@ -61,26 +65,73 @@ const LIVE_PAYLOAD = [
     metricName: 'QuickbackClick',
     information: [
       {
-        sessionsCount: '9',
+        sessionsCount: 9,
         sessionsWithMetricPercentage: 11.111,
         sessionsWithoutMetricPercentage: 88.889,
-        pagesViews: '1',
-        subTotal: '1',
+        pagesViews: 1,
+        subTotal: 1,
       },
     ],
   },
+  {
+    metricName: 'PopularPages',
+    information: [
+      { url: 'https://www.getbeseen.com/', visitsCount: 5 },
+      { url: 'https://getbeseen.com/', visitsCount: 3 },
+      { url: 'https://getbeseen.com/products/signs/window-graphics.html', visitsCount: 2 },
+    ],
+  },
+  {
+    metricName: 'ReferrerUrl',
+    information: [
+      { name: null, sessionsCount: 3 },
+      { name: 'https://www.google.com/', sessionsCount: 2 },
+      { name: 'https://getbeseen.com/products/signs/window-graphics.html', sessionsCount: 2 },
+      { name: 'https://www.bing.com/', sessionsCount: 1 },
+      { name: 'https://appcenter.intuit.com/', sessionsCount: 1 },
+      { name: 'https://yelp-sales.lightning.force.com/', sessionsCount: 1 },
+    ],
+  },
+  {
+    metricName: 'PageTitle',
+    information: [
+      { name: 'GetBeSeen - Professional Printing, Design & Marketing | Santa Clara, CA', sessionsCount: 6 },
+      { name: 'Window Graphics | GetBeSeen', sessionsCount: 2 },
+    ],
+  },
+  { metricName: 'Browser', information: [{ name: 'Chrome', sessionsCount: 7 }, { name: 'Edge', sessionsCount: 2 }] },
+  { metricName: 'OS', information: [{ name: 'MacOSX', sessionsCount: 6 }, { name: 'Windows', sessionsCount: 3 }] },
+  { metricName: 'Device', information: [{ name: 'PC', sessionsCount: 9 }] },
+  { metricName: 'Country', information: [{ name: 'United States', sessionsCount: 9 }] },
 ];
 
 // ---- realistic payload maps to the expected typed shape
 const live = mapClarityInsights(LIVE_PAYLOAD, 3);
 check('traffic: totalSessionCount is the human (bot-excluded) count', live.traffic.humanSessions, 9);
 check('traffic: bot sessions read from totalBotSessionCount', live.traffic.botSessions, 12);
-check('traffic: distantUserCount is the docs spelling of the user count', live.traffic.distinctUsers, 19);
-check('traffic: PagesPerSessionPercentage is a ratio, not a percentage', live.traffic.pagesPerSession, 1.4137);
-check('scroll depth mapped', live.averageScrollDepth, 36);
-check('engagement: active time mapped', live.activeEngagementSeconds, 51);
-check('engagement: total time mapped', live.totalEngagementSeconds, 1204);
+check('traffic: the live spelling distinctUserCount resolves', live.traffic.distinctUsers, 19);
+check('traffic: pagesPerSessionPercentage is a ratio, not a percentage', live.traffic.pagesPerSession, 1.4090909090909092);
+check('scroll depth is already a percentage', live.averageScrollDepth, 36);
+check('engagement: active seconds per session', live.averageActiveTimeSeconds, 51);
+check('engagement: total seconds per session', live.averageTotalTimeSeconds, 212);
+check('engagement: active share matches Clarity\u2019s own Active Time %', activeTimeSharePercentage(live), (51 / 212) * 100);
 check('numOfDays carried through', live.numOfDays, 3);
+
+// The docs sample spells it distantUserCount; the live API does not. Both must resolve.
+check(
+  'traffic: the docs spelling distantUserCount is still accepted as a fallback',
+  mapClarityInsights([{ metricName: 'Traffic', information: [{ distantUserCount: '189733' }] }], 1).traffic
+    .distinctUsers,
+  189733,
+);
+check(
+  'traffic: the live spelling wins when a payload somehow carries both',
+  mapClarityInsights(
+    [{ metricName: 'Traffic', information: [{ distinctUserCount: 19, distantUserCount: 999 }] }],
+    1,
+  ).traffic.distinctUsers,
+  19,
+);
 
 check('bots can exceed humans because Clarity filters them out of the session count', recordedSessions(live.traffic), 21);
 check('bot share is measured against recorded sessions, not human ones', botSharePercentage(live.traffic), (12 / 21) * 100);
@@ -103,6 +154,132 @@ check('signals: every documented metric gets a row even when absent', live.signa
 const rageClicks = live.signals.find((s) => s.key === 'RageClickCount');
 check('signal: metric missing from the payload is null, not zero', rageClicks?.sessionPercentage, null);
 check('signal: missing occurrences are null, not zero', rageClicks?.occurrences, null);
+
+// ---- all seven breakdowns parse out of the same free response
+check('breakdown: popular pages parsed', live.breakdowns.popularPages.length, 2);
+check('breakdown: referrers parsed', live.breakdowns.referrers.length, 6);
+check('breakdown: page titles parsed', live.breakdowns.pageTitles.length, 2);
+check('breakdown: browsers parsed', live.breakdowns.browsers.length, 2);
+check('breakdown: operating systems parsed', live.breakdowns.operatingSystems.length, 2);
+check('breakdown: devices parsed', live.breakdowns.devices.length, 1);
+check('breakdown: countries parsed', live.breakdowns.countries.length, 1);
+
+check('breakdown: plain rows read name/sessionsCount', live.breakdowns.browsers[0], {
+  key: 'chrome',
+  label: 'Chrome',
+  href: null,
+  count: 7,
+});
+check('breakdown: OS ordering is highest first', live.breakdowns.operatingSystems.map((r) => r.label), [
+  'MacOSX',
+  'Windows',
+]);
+check('breakdown: page titles are left verbatim', live.breakdowns.pageTitles[1]?.label, 'Window Graphics | GetBeSeen');
+
+// PopularPages diverges from every other breakdown: url/visitsCount rather than name/sessionsCount.
+check('breakdown: pages read the url/visitsCount pair', live.breakdowns.popularPages[0], {
+  key: 'getbeseen.com/',
+  label: '/',
+  href: 'https://www.getbeseen.com/',
+  count: 8,
+});
+check(
+  'breakdown: www and non-www variants of one page merge into a single row',
+  live.breakdowns.popularPages.filter((r) => r.label === '/').length,
+  1,
+);
+check(
+  'breakdown: merging sums the split counts rather than showing the larger half',
+  live.breakdowns.popularPages[0]?.count,
+  5 + 3,
+);
+check('breakdown: deeper paths keep their full path as the label', live.breakdowns.popularPages[1], {
+  key: 'getbeseen.com/products/signs/window-graphics.html',
+  label: '/products/signs/window-graphics.html',
+  href: 'https://getbeseen.com/products/signs/window-graphics.html',
+  count: 2,
+});
+
+// A null referrer name is Clarity's way of saying the visitor arrived directly.
+check('breakdown: null referrer becomes Direct', live.breakdowns.referrers[0], {
+  key: 'direct',
+  label: 'Direct',
+  href: null,
+  count: 3,
+});
+check(
+  'breakdown: referrers collapse to host, dropping the landing path',
+  live.breakdowns.referrers.map((r) => r.label),
+  ['Direct', 'google.com', 'getbeseen.com', 'bing.com', 'appcenter.intuit.com', 'yelp-sales.lightning.force.com'],
+);
+check('breakdown: referrer host links back to that host root', live.breakdowns.referrers[1]?.href, 'https://www.google.com/');
+check(
+  'breakdown: a self-referral keeps its own host rather than becoming Direct',
+  live.breakdowns.referrers[2],
+  { key: 'getbeseen.com', label: 'getbeseen.com', href: 'https://getbeseen.com/', count: 2 },
+);
+check(
+  'breakdown: two referrer paths on one host merge into a single host row',
+  mapClarityInsights(
+    [
+      {
+        metricName: 'ReferrerUrl',
+        information: [
+          { name: 'https://www.google.com/', sessionsCount: 2 },
+          { name: 'https://google.com/search?q=signs', sessionsCount: 4 },
+        ],
+      },
+    ],
+    1,
+  ).breakdowns.referrers,
+  [{ key: 'google.com', label: 'google.com', href: 'https://www.google.com/', count: 6 }],
+);
+
+const unparseable = mapClarityInsights(
+  [
+    {
+      metricName: 'ReferrerUrl',
+      information: [
+        { name: 'android-app://com.google.android.gm', sessionsCount: 2 },
+        { name: 'nonsense referrer', sessionsCount: 1 },
+      ],
+    },
+    { metricName: 'PopularPages', information: [{ url: 'not a url', visitsCount: 1 }] },
+  ],
+  1,
+);
+check(
+  'breakdown: a non-http referrer scheme still reduces to its host',
+  unparseable.breakdowns.referrers[0]?.label,
+  'com.google.android.gm',
+);
+check('breakdown: an unparseable referrer is kept verbatim', unparseable.breakdowns.referrers[1]?.label, 'nonsense referrer');
+check('breakdown: an unparseable page url is kept verbatim with no link', unparseable.breakdowns.popularPages[0], {
+  key: 'not a url',
+  label: 'not a url',
+  href: null,
+  count: 1,
+});
+
+// ---- absent or unusable breakdowns yield an empty list so the panel can omit the table
+const sparseBreakdowns = mapClarityInsights(
+  [
+    { metricName: 'Browser', information: [] },
+    { metricName: 'OS', information: [{ name: 'Windows' }] },
+    { metricName: 'PopularPages', information: [{ visitsCount: 3 }] },
+    { metricName: 'Device', information: [{ name: null, sessionsCount: 4 }] },
+  ],
+  1,
+);
+check('breakdown: metric missing entirely yields an empty list', sparseBreakdowns.breakdowns.referrers, []);
+check('breakdown: metric present but empty yields an empty list', sparseBreakdowns.breakdowns.browsers, []);
+check('breakdown: a row with no count is skipped', sparseBreakdowns.breakdowns.operatingSystems, []);
+check('breakdown: a page row with no url is skipped', sparseBreakdowns.breakdowns.popularPages, []);
+check(
+  'breakdown: a plain row with a null name is labelled rather than dropped',
+  sparseBreakdowns.breakdowns.devices,
+  [{ key: '(not set)', label: '(not set)', href: null, count: 4 }],
+);
 
 // ---- pickNumber must never cross-match a similarly named field
 check('pickNumber: exact key match', pickNumber({ totalSessionCount: '9' }, ['totalSessionCount']), 9);
@@ -164,7 +341,7 @@ const stringy = mapClarityInsights(
 check('coercion: numeric strings become numbers', stringy.traffic.humanSessions, 1234);
 check('coercion: decimal string ratio', stringy.traffic.pagesPerSession, 2.5);
 check('coercion: decimal string percentage', stringy.averageScrollDepth, 41.5);
-check('coercion: string seconds', stringy.activeEngagementSeconds, 90);
+check('coercion: string seconds', stringy.averageActiveTimeSeconds, 90);
 
 const junk = mapClarityInsights(
   [{ metricName: 'Traffic', information: [{ totalSessionCount: '', totalBotSessionCount: 'NaN', distantUserCount: null }] }],
@@ -179,7 +356,8 @@ const sparse = mapClarityInsights([{ metricName: 'Traffic', information: [{ tota
 check('missing: bot sessions absent stays null', sparse.traffic.botSessions, null);
 check('missing: pages per session absent stays null', sparse.traffic.pagesPerSession, null);
 check('missing: scroll depth metric absent stays null', sparse.averageScrollDepth, null);
-check('missing: engagement metric absent stays null', sparse.activeEngagementSeconds, null);
+check('missing: engagement metric absent stays null', sparse.averageActiveTimeSeconds, null);
+check('missing: no engagement data means no active share to render', activeTimeSharePercentage(sparse), null);
 check('missing: no bot data means no bot share to render', botSharePercentage(sparse.traffic), null);
 check('missing: recorded sessions falls back to the human count alone', recordedSessions(sparse.traffic), 5);
 
