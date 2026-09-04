@@ -64,6 +64,7 @@ function summaryCards(totals: Ga4Totals, previous: Ga4Totals) {
       value: formatDuration(totals.averageSessionDuration),
       current: totals.averageSessionDuration,
       previous: previous.averageSessionDuration,
+      isCount: false,
     },
     {
       key: 'bounce',
@@ -72,6 +73,7 @@ function summaryCards(totals: Ga4Totals, previous: Ga4Totals) {
       current: totals.bounceRate,
       previous: previous.bounceRate,
       lowerIsBetter: true,
+      isCount: false,
     },
   ];
 }
@@ -151,6 +153,7 @@ export function WebAnalyticsDashboard({ data }: { data: WebAnalyticsPageData }) 
               current={card.current}
               previous={card.previous}
               lowerIsBetter={card.lowerIsBetter}
+              isCount={card.isCount}
             />
           </div>
         ))}

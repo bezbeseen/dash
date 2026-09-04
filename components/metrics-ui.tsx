@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 
+import { describeDelta } from '@/lib/metrics/delta';
+
 export type NamedCount = { name: string; count: number };
 
 export function formatMetricInt(n: number): string {
@@ -10,21 +12,34 @@ export function DeltaBadge({
   current,
   previous,
   lowerIsBetter = false,
+  isCount = true,
 }: {
   current: number;
   previous: number;
   lowerIsBetter?: boolean;
+  /** Rates and durations are not event counts, so the small-sample rule must not apply to them. */
+  isCount?: boolean;
 }) {
-  if (previous <= 0) {
+  const verdict = describeDelta(current, previous, lowerIsBetter, isCount);
+
+  if (verdict.kind === 'no_prior') {
     return <span className="small text-body-secondary">no prior data</span>;
   }
-  const change = (current - previous) / previous;
-  const up = change >= 0;
-  const flat = Math.abs(change) < 0.005;
-  const good = lowerIsBetter ? !up : up;
+
+  if (verdict.kind === 'raw') {
+    return (
+      <span className="small text-body-secondary tabular-nums">
+        {formatMetricInt(verdict.from)} &rarr; {formatMetricInt(verdict.to)}
+      </span>
+    );
+  }
+
+  const tone = verdict.flat ? 'text-body-secondary' : verdict.good ? 'text-success' : 'text-danger';
   return (
-    <span className={`small fw-semibold ${flat ? 'text-body-secondary' : good ? 'text-success' : 'text-danger'}`}>
-      {flat ? '±0%' : `${up ? '+' : ''}${(change * 100).toFixed(1)}%`}
+    <span className={`small fw-semibold ${tone}`}>
+      {verdict.flat
+        ? '±0%'
+        : `${verdict.change >= 0 ? '+' : ''}${(verdict.change * 100).toFixed(1)}%`}
     </span>
   );
 }
@@ -35,6 +50,7 @@ export function MetricCard({
   current,
   previous,
   lowerIsBetter,
+  isCount,
   hint,
 }: {
   label: string;
@@ -42,6 +58,7 @@ export function MetricCard({
   current: number;
   previous: number;
   lowerIsBetter?: boolean;
+  isCount?: boolean;
   hint?: ReactNode;
 }) {
   return (
@@ -49,7 +66,7 @@ export function MetricCard({
       <div className="card-body">
         <p className="menu-label mb-1">{label}</p>
         <p className="h4 fw-semibold mb-1 tabular-nums">{value}</p>
-        <DeltaBadge current={current} previous={previous} lowerIsBetter={lowerIsBetter} />
+        <DeltaBadge current={current} previous={previous} lowerIsBetter={lowerIsBetter} isCount={isCount} />
         {hint ? <p className="small text-body-secondary mb-0 mt-1">{hint}</p> : null}
       </div>
     </div>

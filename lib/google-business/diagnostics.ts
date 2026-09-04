@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db/prisma';
 import {
   GbpApiError,
+  redactUrl,
   type GbpFailureReason,
   type GbpResponseBodyKind,
 } from '@/lib/google-business/api-errors';
@@ -9,7 +10,12 @@ import { gbpAccountsListUrl, gbpLocationsListUrl } from '@/lib/google-business/a
 import { fetchGrantedScopes, GBP_BUSINESS_MANAGE_SCOPE } from '@/lib/google-business/oauth';
 import {
   fetchGbpMetricTotals,
+  fetchGbpSearchKeywords,
+  formatGbpMonthRange,
   gbpDailyMetricsUrl,
+  gbpKeywordMonthRange,
+  gbpKeywordMonthsForRange,
+  gbpSearchKeywordsUrl,
   gbpTrailingRange,
   GBP_DAILY_METRICS,
 } from '@/lib/google-business/performance-api';
@@ -37,6 +43,14 @@ export type GbpAccessProbe = {
   failureReason: GbpFailureReason | null;
   performanceApiOk: boolean | null;
   error: string | null;
+  /** Tracked apart from the daily metrics: this endpoint answers only in whole calendar months. */
+  searchKeywords: {
+    months: string;
+    url: string;
+    returned: number | null;
+    usedFallbackMonth: boolean | null;
+    error: string | null;
+  } | null;
 };
 
 function emptyProbe(): GbpAccessProbe {
@@ -56,6 +70,7 @@ function emptyProbe(): GbpAccessProbe {
     failureReason: null,
     performanceApiOk: null,
     error: null,
+    searchKeywords: null,
   };
 }
 
@@ -120,6 +135,27 @@ export async function probeGbpPerformanceAccess(): Promise<GbpAccessProbe> {
     probe.lastStep = 'performance';
     await fetchGbpMetricTotals(token, probe.locationResourceName, PROBE_DAYS);
     probe.performanceApiOk = true;
+
+    const keywordMonths = gbpKeywordMonthRange(gbpKeywordMonthsForRange(PROBE_DAYS));
+    probe.searchKeywords = {
+      months: formatGbpMonthRange(keywordMonths),
+      url: redactUrl(gbpSearchKeywordsUrl(probe.locationResourceName, keywordMonths)),
+      returned: null,
+      usedFallbackMonth: null,
+      error: null,
+    };
+    try {
+      const keywords = await fetchGbpSearchKeywords(token, probe.locationResourceName, PROBE_DAYS);
+      probe.searchKeywords = {
+        months: formatGbpMonthRange(keywords.months),
+        url: redactUrl(gbpSearchKeywordsUrl(probe.locationResourceName, keywords.months)),
+        returned: keywords.keywords.length,
+        usedFallbackMonth: keywords.usedFallbackMonth,
+        error: null,
+      };
+    } catch (e) {
+      probe.searchKeywords.error = (e instanceof Error ? e.message : String(e)).slice(0, 400);
+    }
     return probe;
   } catch (e) {
     probe.performanceApiOk = false;

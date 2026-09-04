@@ -371,13 +371,16 @@ export function GbpMetricsDashboard({ data }: { data: GbpMetricsPageData }) {
           emptyText={
             data.searchKeywordsUnavailable
               ? 'Google did not return search terms for this listing. The endpoint needs the same project approval as the rest of the Performance API.'
-              : 'No search terms reported for these months.'
+              : `Google published no search terms for ${data.searchKeywordsMonths}. Keyword data is released only for whole calendar months and lands later than the daily numbers above, so the newest complete month can still be empty.`
           }
         />
         {keywordRows.length > 0 ? (
           <p className="small text-body-secondary mb-0 mt-2">
-            Search terms are published per calendar month, so this covers the months {data.rangeLabel} touches rather
-            than the exact window.
+            Covers {data.searchKeywordsMonths}. Search terms are published per whole calendar month, so this ignores
+            the {data.rangeDays}-day selector.
+            {data.searchKeywordsUsedFallbackMonth
+              ? ' Google had not published the newest complete month yet, so this steps back one further.'
+              : ''}
             {anyThreshold
               ? ' Rare terms are reported only as an upper bound, so some counts are a ceiling, not an exact number.'
               : ''}
@@ -395,7 +398,8 @@ export function GbpMetricsDashboard({ data }: { data: GbpMetricsPageData }) {
         >
           Business Profile Performance API
         </a>
-        . Impressions count each unique person once per day, so surface totals do not add up to visits. Ranges end{' '}
+        . The four surfaces sum to the impressions total, but each counts a person once per day, so someone who used
+        both Search and Maps is counted on both. Ranges end{' '}
         {GBP_REPORTING_LAG_DAYS} days back because Google finalises daily numbers late; comparing to the previous period
         stays honest that way.
       </p>

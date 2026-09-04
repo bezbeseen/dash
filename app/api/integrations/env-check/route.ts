@@ -302,6 +302,14 @@ export async function GET(req: NextRequest) {
         hints.push(
           `Google Business Profile probe failed at ${gbpAccessProbe.lastStep ?? 'an unknown step'}: ${gbpAccessProbe.error ?? 'unknown'}`,
         );
+      } else if (gbpAccessProbe.searchKeywords?.error) {
+        hints.push(
+          `Google Business Profile search keywords failed for ${gbpAccessProbe.searchKeywords.months}: ${gbpAccessProbe.searchKeywords.error}`,
+        );
+      } else if (gbpAccessProbe.searchKeywords?.returned === 0) {
+        hints.push(
+          `Google published no search keywords for ${gbpAccessProbe.searchKeywords.months}. That endpoint answers only in whole calendar months and trails the daily metrics, so an empty list is Google's answer rather than a rejected request. The exact request is in accessProbe.searchKeywords.url.`,
+        );
       }
     } catch (e) {
       gbpAccessProbe = gbpProbeUnavailable(e instanceof Error ? e.message.slice(0, 200) : 'probe_failed');

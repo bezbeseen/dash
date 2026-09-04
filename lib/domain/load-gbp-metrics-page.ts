@@ -5,7 +5,10 @@ import { fetchGrantedScopes, GBP_BUSINESS_MANAGE_SCOPE } from '@/lib/google-busi
 import {
   fetchGbpMetricTotals,
   fetchGbpSearchKeywords,
+  formatGbpMonthRange,
   formatGbpRange,
+  gbpKeywordMonthRange,
+  gbpKeywordMonthsForRange,
   gbpTrailingRange,
   GBP_DAILY_METRICS,
   type GbpMetricTotals,
@@ -56,6 +59,9 @@ export type GbpMetricsPageData =
       previousTotals: GbpMetricTotals;
       searchKeywords: GbpSearchKeyword[];
       searchKeywordsUnavailable: boolean;
+      /** Whole calendar months the keyword list covers, which the daily range cannot control. */
+      searchKeywordsMonths: string;
+      searchKeywordsUsedFallbackMonth: boolean;
       /** True when location names came from DB after a failed refresh (e.g. Account Management 429). */
       locationsFromStaleSnapshot: boolean;
       hasAnyData: boolean;
@@ -110,8 +116,15 @@ export async function loadGbpMetricsPageData(
     // Search keywords are a separate endpoint; losing them should not blank out the whole page.
     let searchKeywords: GbpSearchKeyword[] = [];
     let searchKeywordsUnavailable = false;
+    let searchKeywordsMonths = formatGbpMonthRange(
+      gbpKeywordMonthRange(gbpKeywordMonthsForRange(rangeDays)),
+    );
+    let searchKeywordsUsedFallbackMonth = false;
     try {
-      searchKeywords = await fetchGbpSearchKeywords(token, location.name, rangeDays);
+      const result = await fetchGbpSearchKeywords(token, location.name, rangeDays);
+      searchKeywords = result.keywords;
+      searchKeywordsMonths = formatGbpMonthRange(result.months);
+      searchKeywordsUsedFallbackMonth = result.usedFallbackMonth;
     } catch {
       searchKeywordsUnavailable = true;
     }
@@ -128,6 +141,8 @@ export async function loadGbpMetricsPageData(
       previousTotals,
       searchKeywords,
       searchKeywordsUnavailable,
+      searchKeywordsMonths,
+      searchKeywordsUsedFallbackMonth,
       locationsFromStaleSnapshot: source === 'db_stale',
       hasAnyData: totalsSum(totals) > 0,
     };

@@ -19,10 +19,16 @@ import {
   gbpLocationsListUrl,
 } from '../lib/google-business/api-urls';
 import {
+  formatGbpMonthRange,
   gbpDailyMetricsUrl,
+  gbpKeywordMonthRange,
+  gbpKeywordMonthsForRange,
   gbpSearchKeywordsUrl,
   gbpTrailingRange,
+  parseGbpSearchKeywords,
+  GBP_KEYWORD_PAGE_SIZE,
 } from '../lib/google-business/performance-api';
+import { describeDelta, SMALL_SAMPLE_BASELINE } from '../lib/metrics/delta';
 import {
   normalizeGbpAccountName,
   normalizeGbpLocationName,
@@ -110,9 +116,10 @@ check(
 );
 check(
   'searchkeywords matches the documented endpoint',
-  gbpSearchKeywordsUrl('locations/12345', range, 100),
+  gbpSearchKeywordsUrl('locations/12345', { startYear: 2026, startMonth: 1, endYear: 2026, endMonth: 3 }),
   'https://businessprofileperformance.googleapis.com/v1/locations/12345/searchkeywords/impressions/monthly?monthlyRange.start_month.year=2026&monthlyRange.start_month.month=1&monthlyRange.end_month.year=2026&monthlyRange.end_month.month=3&pageSize=100',
 );
+check('searchkeywords sends the documented maximum page size', GBP_KEYWORD_PAGE_SIZE, 100);
 check(
   'performance URLs accept a full account path for the location',
   gbpDailyMetricsUrl('accounts/123/locations/12345', ['CALL_CLICKS'], range).includes('/v1/locations/12345:'),
@@ -279,6 +286,162 @@ check(
   'redaction: applied when the error is built',
   buildGbpApiError('Google tokeninfo', 'https://oauth2.googleapis.com/tokeninfo?access_token=ya29.secret', 401, 'application/json', '{}').url,
   'https://oauth2.googleapis.com/tokeninfo?access_token=REDACTED',
+);
+
+// Keyword months: the endpoint only answers in whole calendar months, and never the current one.
+const midMonth = new Date(Date.UTC(2026, 8, 4)); // 2026-09-04, four days into September
+
+check('keyword months: 7d asks for one whole month', gbpKeywordMonthsForRange(7), 1);
+check('keyword months: 28d asks for one whole month', gbpKeywordMonthsForRange(28), 1);
+check('keyword months: 90d asks for three whole months', gbpKeywordMonthsForRange(90), 3);
+
+check(
+  'keyword range: a 7d selector still resolves to the last complete month, not a partial week',
+  gbpKeywordMonthRange(gbpKeywordMonthsForRange(7), 0, midMonth),
+  { startYear: 2026, startMonth: 8, endYear: 2026, endMonth: 8 },
+);
+check(
+  'keyword range: 28d excludes the incomplete current month',
+  gbpKeywordMonthRange(gbpKeywordMonthsForRange(28), 0, midMonth),
+  { startYear: 2026, startMonth: 8, endYear: 2026, endMonth: 8 },
+);
+check(
+  'keyword range: 90d covers three complete months ending last month',
+  gbpKeywordMonthRange(gbpKeywordMonthsForRange(90), 0, midMonth),
+  { startYear: 2026, startMonth: 6, endYear: 2026, endMonth: 8 },
+);
+check(
+  'keyword range: the fallback steps back one further whole month',
+  gbpKeywordMonthRange(1, 1, midMonth),
+  { startYear: 2026, startMonth: 7, endYear: 2026, endMonth: 7 },
+);
+check(
+  'keyword range: never includes the current month even on its first day',
+  gbpKeywordMonthRange(1, 0, new Date(Date.UTC(2026, 8, 1))),
+  { startYear: 2026, startMonth: 8, endYear: 2026, endMonth: 8 },
+);
+check(
+  'keyword range: in January it stays entirely in the previous year',
+  gbpKeywordMonthRange(3, 0, new Date(Date.UTC(2026, 0, 15))),
+  { startYear: 2025, startMonth: 10, endYear: 2025, endMonth: 12 },
+);
+check(
+  'keyword range: a span may still cross a year boundary',
+  gbpKeywordMonthRange(3, 0, new Date(Date.UTC(2026, 1, 15))),
+  { startYear: 2025, startMonth: 11, endYear: 2026, endMonth: 1 },
+);
+check(
+  'keyword range: fallback crosses a year boundary correctly',
+  gbpKeywordMonthRange(1, 1, new Date(Date.UTC(2026, 0, 15))),
+  { startYear: 2025, startMonth: 11, endYear: 2025, endMonth: 11 },
+);
+check(
+  'keyword range: request never reaches into the current month',
+  gbpKeywordMonthRange(3, 0, midMonth).endMonth < midMonth.getUTCMonth() + 1,
+  true,
+);
+
+check(
+  'month label: a single month reads as one month',
+  formatGbpMonthRange({ startYear: 2026, startMonth: 8, endYear: 2026, endMonth: 8 }),
+  'August 2026',
+);
+check(
+  'month label: a span names both ends',
+  formatGbpMonthRange({ startYear: 2026, startMonth: 6, endYear: 2026, endMonth: 8 }),
+  'June 2026 to August 2026',
+);
+
+// Keyword parsing: a threshold is Google withholding a small count, so the row must survive.
+const keywordBody = {
+  searchKeywordsCounts: [
+    { searchKeyword: 'sign shop near me', insightsValue: { value: '31' } },
+    { searchKeyword: 'custom banners', insightsValue: { threshold: '15' } },
+    { searchKeyword: '  vehicle wraps  ', insightsValue: { threshold: '15' } },
+    { searchKeyword: '', insightsValue: { value: '99' } },
+  ],
+};
+check(
+  'keyword parsing: threshold-only rows are kept, blank keywords dropped',
+  parseGbpSearchKeywords(keywordBody, 10),
+  [
+    { keyword: 'sign shop near me', count: 31, belowThreshold: false },
+    { keyword: 'custom banners', count: 15, belowThreshold: true },
+    { keyword: 'vehicle wraps', count: 15, belowThreshold: true },
+  ],
+);
+check(
+  'keyword parsing: a list of only thresholds is not emptied',
+  parseGbpSearchKeywords(
+    { searchKeywordsCounts: [{ searchKeyword: 'led signs', insightsValue: { threshold: '15' } }] },
+    10,
+  ).length,
+  1,
+);
+check('keyword parsing: an absent list is an empty list', parseGbpSearchKeywords({}, 10), []);
+check(
+  'keyword parsing: honours the requested limit',
+  parseGbpSearchKeywords(keywordBody, 1),
+  [{ keyword: 'sign shop near me', count: 31, belowThreshold: false }],
+);
+
+// Delta suppression: percentages on tiny baselines are noise, so they become raw movement.
+check('delta: a zero baseline has no prior data', describeDelta(5, 0).kind, 'no_prior');
+check('delta: 0 to 0 has no prior data', describeDelta(0, 0).kind, 'no_prior');
+check('delta: baseline 1 is too small for a percentage', describeDelta(3, 1), { kind: 'raw', from: 1, to: 3 });
+check('delta: calls 2 to 1 shows the movement, not -50%', describeDelta(1, 2), { kind: 'raw', from: 2, to: 1 });
+check('delta: clicks 8 to 5 shows the movement, not -37.5%', describeDelta(5, 8), { kind: 'raw', from: 8, to: 5 });
+check(
+  'delta: baseline 9 is still suppressed, 10 is not',
+  [describeDelta(20, 9).kind, describeDelta(20, 10).kind],
+  ['raw', 'percent'],
+);
+check('delta: the threshold is the documented baseline', SMALL_SAMPLE_BASELINE, 10);
+check(
+  'delta: baseline 23 to 48 keeps its percentage',
+  describeDelta(48, 23),
+  { kind: 'percent', change: (48 - 23) / 23, flat: false, good: true },
+);
+check(
+  'delta: GA4-scale counts are untouched by the rule',
+  [describeDelta(198, 179).kind, describeDelta(1240, 1100).kind, describeDelta(540, 600).kind],
+  ['percent', 'percent', 'percent'],
+);
+check(
+  'delta: a suppressed movement is never scored good or bad',
+  Object.prototype.hasOwnProperty.call(describeDelta(1, 2), 'good'),
+  false,
+);
+check(
+  'delta: an unchanged large count still reads flat',
+  describeDelta(500, 500),
+  { kind: 'percent', change: 0, flat: true, good: true },
+);
+
+check(
+  'delta: lowerIsBetter still inverts a rise into bad news',
+  [describeDelta(60, 50, true).kind, (describeDelta(60, 50, true) as { good: boolean }).good],
+  ['percent', false],
+);
+check(
+  'delta: lowerIsBetter still scores a fall as good',
+  (describeDelta(40, 50, true) as { good: boolean }).good,
+  true,
+);
+check(
+  'delta: a bounce rate of 0.45 is not treated as a small sample',
+  describeDelta(0.42, 0.45, true, false).kind,
+  'percent',
+);
+check(
+  'delta: a short average session is not treated as a small sample',
+  describeDelta(7.5, 6, false, false).kind,
+  'percent',
+);
+check(
+  'delta: a rate keeps lowerIsBetter scoring while opting out of the count rule',
+  (describeDelta(0.52, 0.45, true, false) as { good: boolean }).good,
+  false,
 );
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);

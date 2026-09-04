@@ -203,6 +203,10 @@ Sidebar **GBP metrics** (`/dashboard/gbp`) reads the [Business Profile Performan
 
 Ranges end **3 days before today**, because Google finalises daily performance numbers 48-72 hours late (direction requests sometimes later). Ending at today would make the newest window permanently short and every delta read falsely negative.
 
+**Top search terms ignore the day selector.** `searchkeywords.impressions.monthly` aggregates by whole calendar month and the current month is never published, so Dash asks for complete months only — the last one for 7d and 28d, the last three for 90d — and labels which months it actually got. If the newest complete month has not been published yet the request steps back one further month rather than showing an empty table. Terms with very low counts come back as an upper bound instead of an exact number; those rows are kept and flagged, since dropping them would empty the table for a low-volume listing.
+
+Percentage deltas are **suppressed below a prior-period count of 10** and replaced with the raw movement (`2 → 1`), uncoloured. At that scale a percentage reports sampling noise, not a trend. Rates and durations opt out of this, since they are not event counts.
+
 Setup, all in the **same Google Cloud project as `GOOGLE_CLIENT_ID`**:
 
 1. Enable **[Business Profile Performance API](https://console.cloud.google.com/apis/library/businessprofileperformance.googleapis.com)**, and keep **My Business Account Management** and **Business Information** enabled — those resolve the location id.
