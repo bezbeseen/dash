@@ -195,6 +195,25 @@ The [Data Export API](https://learn.microsoft.com/en-us/clarity/setup-and-instal
 
 `/api/integrations/env-check` reports `analytics.clarityDataExport` (token set, project ID, quota, and the deep links), and hints when Clarity is recording but `CLARITY_API_TOKEN` is missing.
 
+## Google Business Profile metrics
+
+Sidebar **GBP metrics** (`/dashboard/gbp`) reads the [Business Profile Performance API](https://developers.google.com/my-business/reference/performance/rest) server-side using the OAuth connection from Settings, over **7 / 28 / 90** days with each number against the previous period: impressions (Search and Maps, desktop and mobile), calls, website clicks, direction requests, messages, bookings, plus the top search terms people used to find the listing.
+
+**No new env vars.** The account and location are resolved from the stored connection (Account Management → Business Information), cached in the database for 30 minutes so repeated page views cannot trip Google's per-minute limits. If the profile has more than one location, buttons switch between them.
+
+Ranges end **3 days before today**, because Google finalises daily performance numbers 48-72 hours late (direction requests sometimes later). Ending at today would make the newest window permanently short and every delta read falsely negative.
+
+Setup, all in the **same Google Cloud project as `GOOGLE_CLIENT_ID`**:
+
+1. Enable **[Business Profile Performance API](https://console.cloud.google.com/apis/library/businessprofileperformance.googleapis.com)**, and keep **My Business Account Management** and **Business Information** enabled — those resolve the location id.
+2. Enabling is **not** enough. Check **[APIs & Services → Quotas](https://console.cloud.google.com/apis/api/businessprofileperformance.googleapis.com/quotas)**: **0** requests/minute means Google has not approved the project, **300** means it has.
+3. If it is 0, submit the **[Business Profile API access form](https://support.google.com/business/contact/api_default)** → **Application for Basic API Access**, giving your Cloud **project number** from an email that is an owner/manager on the profile. A human reviews it, so expect a wait.
+4. Sidebar **Settings → Connect Google Business Profile**. The OAuth scope Dash requests, **`https://www.googleapis.com/auth/business.manage`**, already covers performance reads — the same scope that lists accounts and locations.
+
+The page has a distinct state for each failure instead of one generic error: not connected, token missing the `business.manage` scope (prompts a reconnect), API disabled, quota/rate limit, not an owner of the profile, no locations, and no activity in range. Search terms are published **per calendar month**, so that table covers the months the range touches and reports an upper bound rather than an exact count for rare terms.
+
+`/api/integrations/env-check` reports `googleBusinessProfile.accessProbe`: granted scopes, whether `business.manage` is present, account and location counts, the resolved `locations/{id}`, and whether a live Performance API call succeeded — plus hints telling you to reconnect or to request quota.
+
 ## Yelp leads → pre-quote tickets
 
 **"Request a Quote"** messages become pre-quote tickets (same lane as GHL leads). There are two paths, and **only the first is available to a normal advertiser**.

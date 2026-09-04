@@ -10,6 +10,12 @@ import { GMAIL_OAUTH_CALLBACK_PATH } from '@/lib/gmail/config';
 import { configuredYelpLeadMailbox } from '@/lib/gmail/scan-yelp-lead-emails';
 import { GBP_OAUTH_CALLBACK_PATH } from '@/lib/google-business/config';
 import {
+  gbpProbeUnavailable,
+  probeGbpPerformanceAccess,
+  type GbpAccessProbe,
+} from '@/lib/google-business/diagnostics';
+import { GBP_REPORTING_LAG_DAYS } from '@/lib/google-business/performance-api';
+import {
   ga4ReportingConfigured,
   getGa4PropertyId,
   getGa4ServiceAccountEmail,
@@ -274,6 +280,29 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  let gbpAccessProbe: GbpAccessProbe | null = null;
+  if (gbpConnections > 0) {
+    try {
+      gbpAccessProbe = await Promise.race([
+        probeGbpPerformanceAccess(),
+        new Promise<GbpAccessProbe>((resolve) =>
+          setTimeout(() => resolve(gbpProbeUnavailable('GBP probe timed out after 6s.')), 6000),
+        ),
+      ]);
+      if (gbpAccessProbe.hasBusinessManageScope === false) {
+        hints.push(
+          'The stored Google Business Profile token is missing https://www.googleapis.com/auth/business.manage. Reconnect Google Business Profile in Settings to grant the performance scope.',
+        );
+      } else if (gbpAccessProbe.performanceApiOk === false) {
+        hints.push(
+          `Google Business Profile performance probe failed: ${gbpAccessProbe.error ?? 'unknown'}. Enable businessprofileperformance.googleapis.com on the OAuth project; if its quota reads 0 requests/minute, the project still needs approval via Google's Business Profile API access form.`,
+        );
+      }
+    } catch (e) {
+      gbpAccessProbe = gbpProbeUnavailable(e instanceof Error ? e.message.slice(0, 200) : 'probe_failed');
+    }
+  }
+
   const slackUrl = process.env.SLACK_WEBHOOK_URL?.trim();
   const slackEnabled = process.env.SLACK_NOTIFICATIONS_ENABLED?.trim();
   const slackEnvGate = process.env.SLACK_WEBHOOK_ENV?.trim();
@@ -342,6 +371,15 @@ export async function GET(req: NextRequest) {
       storedConnections: gbpConnections,
       performanceApiLibrary:
         'https://console.cloud.google.com/apis/library/businessprofileperformance.googleapis.com',
+      requiredScope: 'https://www.googleapis.com/auth/business.manage',
+      /** Live read check: token, granted scopes, resolved location, and one Performance API call. */
+      accessProbe: gbpAccessProbe,
+      quotaCheck:
+        'https://console.cloud.google.com/apis/api/businessprofileperformance.googleapis.com/quotas — 0 requests/minute means the project is not approved yet.',
+      requestAccessForm:
+        'https://support.google.com/business/contact/api_default — choose "Application for Basic API Access" and give the Cloud project number. Approved projects get 300 QPM.',
+      reportingLagDays: GBP_REPORTING_LAG_DAYS,
+      dashboardPath: '/dashboard/gbp',
     },
     yelpFusion: {
       hasApiKey: Boolean(process.env.YELP_API_KEY?.trim()),
