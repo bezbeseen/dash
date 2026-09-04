@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/prisma';
+import { GbpApiError, type GbpFailureReason } from '@/lib/google-business/api-errors';
 import { fetchGbpLocationsResilient } from '@/lib/google-business/persisted-location-list';
 import { fetchGrantedScopes, GBP_BUSINESS_MANAGE_SCOPE } from '@/lib/google-business/oauth';
 import {
@@ -30,13 +31,19 @@ export function normalizeGbpLocationIndex(raw: string | undefined): number {
 
 export type GbpMetricsLocationOption = { name: string; title: string };
 
-export type GbpFailureKind = 'api_disabled' | 'quota' | 'permission' | 'unknown';
-
 export type GbpMetricsPageData =
   | { ok: false; kind: 'not_connected' }
   | { ok: false; kind: 'insufficient_scope'; googleEmail: string }
   | { ok: false; kind: 'no_locations'; googleEmail: string; accountCount: number }
-  | { ok: false; kind: 'error'; failure: GbpFailureKind; message: string; googleEmail: string | null }
+  | {
+      ok: false;
+      kind: 'error';
+      failure: GbpFailureReason;
+      message: string;
+      /** Request URL for the failed call, token-free, shown only for request-shape failures. */
+      requestUrl: string | null;
+      googleEmail: string | null;
+    }
   | {
       ok: true;
       googleEmail: string;
@@ -53,26 +60,6 @@ export type GbpMetricsPageData =
       locationsFromStaleSnapshot: boolean;
       hasAnyData: boolean;
     };
-
-/** `SERVICE_DISABLED` also arrives as a 403, so the disabled check has to run before the generic one. */
-function classifyGbpFailure(message: string): GbpFailureKind {
-  if (/SERVICE_DISABLED|has not been used in project|API is disabled/i.test(message)) {
-    return 'api_disabled';
-  }
-  if (/RESOURCE_EXHAUSTED|Quota exceeded|rateLimitExceeded|\b429\b/i.test(message)) {
-    return 'quota';
-  }
-  if (/PERMISSION_DENIED|\b403\b/i.test(message)) {
-    return 'permission';
-  }
-  return 'unknown';
-}
-
-function looksLikeScopeFailure(message: string): boolean {
-  return /ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficient authentication scopes|insufficient_scope|\b401\b/i.test(
-    message,
-  );
-}
 
 async function missingPerformanceScope(googleEmail: string): Promise<boolean> {
   try {
@@ -145,14 +132,25 @@ export async function loadGbpMetricsPageData(
       hasAnyData: totalsSum(totals) > 0,
     };
   } catch (e) {
+    const apiError = e instanceof GbpApiError ? e : null;
     const message = e instanceof Error ? e.message : 'Could not load Google Business Profile metrics.';
-    const failure = classifyGbpFailure(message);
+    const failure = apiError?.reason ?? 'unknown';
+
+    // Only a tokeninfo lookup can tell a narrow consent apart from a plain permission denial.
     if (
-      (looksLikeScopeFailure(message) || failure === 'permission') &&
+      (failure === 'scope' || failure === 'permission') &&
       (await missingPerformanceScope(googleEmail))
     ) {
       return { ok: false, kind: 'insufficient_scope', googleEmail };
     }
-    return { ok: false, kind: 'error', failure, message, googleEmail };
+
+    return {
+      ok: false,
+      kind: 'error',
+      failure,
+      message,
+      requestUrl: apiError?.url ?? null,
+      googleEmail,
+    };
   }
 }

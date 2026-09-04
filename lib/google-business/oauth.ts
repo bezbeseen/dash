@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { buildGbpApiError } from '@/lib/google-business/api-errors';
 import { requireGoogleOAuthClient } from '@/lib/google-business/config';
 
 /** Covers account listing, business information, and the Performance API. */
@@ -33,12 +34,16 @@ export async function exchangeGoogleBusinessCode(
  * the only way to tell an old narrow consent apart from a disabled API.
  */
 export async function fetchGrantedScopes(accessToken: string): Promise<string[]> {
-  const res = await fetch(
-    `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`,
-    { cache: 'no-store', signal: AbortSignal.timeout(8_000) },
-  );
+  const url = `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`;
+  const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8_000) });
   if (!res.ok) {
-    throw new Error(`Google tokeninfo ${res.status}: ${(await res.text()).slice(0, 400)}`);
+    throw buildGbpApiError(
+      'Google tokeninfo',
+      url,
+      res.status,
+      res.headers.get('content-type'),
+      await res.text(),
+    );
   }
   const body = (await res.json()) as { scope?: string };
   return body.scope?.split(/\s+/).filter(Boolean) ?? [];

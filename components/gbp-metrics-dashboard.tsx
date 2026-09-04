@@ -3,9 +3,9 @@ import type { ReactNode } from 'react';
 import { BreakdownCard, formatMetricInt, MetricCard, type NamedCount } from '@/components/metrics-ui';
 import {
   GBP_METRICS_RANGE_OPTIONS,
-  type GbpFailureKind,
   type GbpMetricsPageData,
 } from '@/lib/domain/load-gbp-metrics-page';
+import type { GbpFailureReason } from '@/lib/google-business/api-errors';
 import {
   GBP_IMPRESSION_METRICS,
   GBP_METRIC_LABELS,
@@ -81,7 +81,31 @@ function StateCard({
   );
 }
 
-function ErrorGuidance({ failure }: { failure: GbpFailureKind }) {
+function ErrorGuidance({ failure, requestUrl }: { failure: GbpFailureReason; requestUrl: string | null }) {
+  if (failure === 'endpoint' || failure === 'not_found' || failure === 'bad_request') {
+    return (
+      <div className="small text-body-secondary mb-3">
+        <p className="mb-2">
+          This is a <strong>request problem, not an approval problem</strong>. Google answered with an error page
+          rather than an API response, which means the URL Dash built did not match a Business Profile endpoint.
+          Enabling APIs or submitting the access form will not change it.
+        </p>
+        {requestUrl ? (
+          <p className="mb-2">
+            Attempted: <code className="detail-mono text-break">{requestUrl}</code>
+          </p>
+        ) : null}
+        <p className="mb-0">
+          Check <code className="detail-mono">googleBusinessProfile.accessProbe</code> in{' '}
+          <a href="/api/integrations/env-check" target="_blank" rel="noopener noreferrer">
+            /api/integrations/env-check
+          </a>{' '}
+          for the resolved account and location names, the exact URL attempted, and whether Google replied with JSON
+          or HTML.
+        </p>
+      </div>
+    );
+  }
   if (failure === 'quota') {
     return (
       <p className="small text-body-secondary mb-3">
@@ -116,7 +140,15 @@ function ErrorGuidance({ failure }: { failure: GbpFailureKind }) {
       </p>
     );
   }
-  return <SetupSteps />;
+  return (
+    <div className="small text-body-secondary mb-3">
+      <p className="mb-2">
+        Dash could not place this failure. The full setup checklist is below in case the connection was never
+        finished, but check the error text above first.
+      </p>
+      <SetupSteps />
+    </div>
+  );
 }
 
 function actionCards(totals: GbpMetricTotals, previous: GbpMetricTotals) {
@@ -192,11 +224,22 @@ export function GbpMetricsDashboard({ data }: { data: GbpMetricsPageData }) {
 
   if (!data.ok && data.kind === 'no_locations') {
     return (
-      <StateCard title="No locations found">
+      <StateCard title={data.accountCount === 0 ? 'No Business Profile accounts' : 'No locations found'}>
         <p className="small text-body-secondary mb-3">
-          Google returned {data.accountCount} account{data.accountCount === 1 ? '' : 's'} but no locations for{' '}
-          <code className="detail-mono text-break">{data.googleEmail}</code>. Confirm that account manages the Be Seen
-          listing, or reconnect with the Google login that owns it.
+          {data.accountCount === 0 ? (
+            <>
+              Google reports no Business Profile accounts for{' '}
+              <code className="detail-mono text-break">{data.googleEmail}</code>. That login has no Business Profile
+              access, so reconnect with the Google account that manages the Be Seen listing.
+            </>
+          ) : (
+            <>
+              Google returned {data.accountCount} account{data.accountCount === 1 ? '' : 's'} for{' '}
+              <code className="detail-mono text-break">{data.googleEmail}</code> but no locations in{' '}
+              {data.accountCount === 1 ? 'it' : 'the first one'}. Confirm that account manages the Be Seen listing,
+              or reconnect with the Google login that owns it.
+            </>
+          )}
         </p>
         <Link href="/dashboard/settings" className="btn btn-toolbar btn-toolbar-muted">
           Settings
@@ -211,7 +254,7 @@ export function GbpMetricsDashboard({ data }: { data: GbpMetricsPageData }) {
         <p className="small mb-3 font-monospace text-break" style={{ whiteSpace: 'pre-wrap' }}>
           {data.message}
         </p>
-        <ErrorGuidance failure={data.failure} />
+        <ErrorGuidance failure={data.failure} requestUrl={data.requestUrl} />
         <Link href="/dashboard/settings" className="btn btn-toolbar btn-toolbar-muted">
           Settings
         </Link>

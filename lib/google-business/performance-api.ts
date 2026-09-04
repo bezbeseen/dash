@@ -1,6 +1,8 @@
 /** Business Profile Performance API - same OAuth scope as account/location listing (`business.manage`). */
+import { gbpFetchJson } from '@/lib/google-business/api-client';
+import { normalizeGbpLocationName } from '@/lib/google-business/resource-names';
 
-const BASE = 'https://businessprofileperformance.googleapis.com/v1';
+export const GBP_PERFORMANCE_BASE = 'https://businessprofileperformance.googleapis.com/v1';
 
 /**
  * Google finalises performance data 2-3 days late, so every range ends here instead of today.
@@ -75,11 +77,7 @@ export type GbpSearchKeyword = {
 
 /** Full resource name ending in `locations/ID` to `locations/ID` for Performance API path. */
 export function gbpPerformanceLocationPath(locationResourceName: string): string {
-  const m = locationResourceName.match(/(locations\/[^/]+)$/);
-  if (!m) {
-    throw new Error(`Invalid GBP location resource: ${locationResourceName}`);
-  }
-  return m[1];
+  return normalizeGbpLocationName(locationResourceName);
 }
 
 function num(raw: string | undefined): number {
@@ -119,21 +117,37 @@ function emptyMetricTotals(): GbpMetricTotals {
   return totals;
 }
 
-async function getJson<T>(url: string, accessToken: string, label: string): Promise<T> {
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    cache: 'no-store',
-    signal: AbortSignal.timeout(10_000),
+export function gbpDailyMetricsUrl(
+  locationResourceName: string,
+  metrics: readonly GbpDailyMetric[],
+  range: GbpDailyRange,
+): string {
+  const location = normalizeGbpLocationName(locationResourceName);
+  const params = new URLSearchParams();
+  for (const metric of metrics) params.append('dailyMetrics', metric);
+  params.set('dailyRange.start_date.year', String(range.start.getUTCFullYear()));
+  params.set('dailyRange.start_date.month', String(range.start.getUTCMonth() + 1));
+  params.set('dailyRange.start_date.day', String(range.start.getUTCDate()));
+  params.set('dailyRange.end_date.year', String(range.end.getUTCFullYear()));
+  params.set('dailyRange.end_date.month', String(range.end.getUTCMonth() + 1));
+  params.set('dailyRange.end_date.day', String(range.end.getUTCDate()));
+  return `${GBP_PERFORMANCE_BASE}/${location}:fetchMultiDailyMetricsTimeSeries?${params.toString()}`;
+}
+
+export function gbpSearchKeywordsUrl(
+  locationResourceName: string,
+  range: GbpDailyRange,
+  pageSize = 100,
+): string {
+  const location = normalizeGbpLocationName(locationResourceName);
+  const params = new URLSearchParams({
+    'monthlyRange.start_month.year': String(range.start.getUTCFullYear()),
+    'monthlyRange.start_month.month': String(range.start.getUTCMonth() + 1),
+    'monthlyRange.end_month.year': String(range.end.getUTCFullYear()),
+    'monthlyRange.end_month.month': String(range.end.getUTCMonth() + 1),
+    pageSize: String(pageSize),
   });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`${label} ${res.status}: ${text.slice(0, 1200)}`);
-  }
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    throw new Error(`${label} returned invalid JSON.`);
-  }
+  return `${GBP_PERFORMANCE_BASE}/${location}/searchkeywords/impressions/monthly?${params.toString()}`;
 }
 
 export async function fetchGbpMetricTotals(
@@ -142,22 +156,12 @@ export async function fetchGbpMetricTotals(
   days: number,
   offsetPeriods = 0,
 ): Promise<GbpMetricTotals> {
-  const loc = gbpPerformanceLocationPath(locationResourceName);
   const range = gbpTrailingRange(days, offsetPeriods);
 
-  const params = new URLSearchParams();
-  for (const metric of GBP_DAILY_METRICS) params.append('dailyMetrics', metric);
-  params.set('dailyRange.start_date.year', String(range.start.getUTCFullYear()));
-  params.set('dailyRange.start_date.month', String(range.start.getUTCMonth() + 1));
-  params.set('dailyRange.start_date.day', String(range.start.getUTCDate()));
-  params.set('dailyRange.end_date.year', String(range.end.getUTCFullYear()));
-  params.set('dailyRange.end_date.month', String(range.end.getUTCMonth() + 1));
-  params.set('dailyRange.end_date.day', String(range.end.getUTCDate()));
-
-  const body = await getJson<FetchMultiResponse>(
-    `${BASE}/${loc}:fetchMultiDailyMetricsTimeSeries?${params.toString()}`,
+  const body = await gbpFetchJson<FetchMultiResponse>(
+    'GBP performance.fetchMultiDailyMetricsTimeSeries',
+    gbpDailyMetricsUrl(locationResourceName, GBP_DAILY_METRICS, range),
     accessToken,
-    'GBP Performance API',
   );
 
   const totals = emptyMetricTotals();
@@ -180,21 +184,10 @@ export async function fetchGbpSearchKeywords(
   days: number,
   limit = 10,
 ): Promise<GbpSearchKeyword[]> {
-  const loc = gbpPerformanceLocationPath(locationResourceName);
-  const { start, end } = gbpTrailingRange(days);
-
-  const params = new URLSearchParams({
-    'monthlyRange.start_month.year': String(start.getUTCFullYear()),
-    'monthlyRange.start_month.month': String(start.getUTCMonth() + 1),
-    'monthlyRange.end_month.year': String(end.getUTCFullYear()),
-    'monthlyRange.end_month.month': String(end.getUTCMonth() + 1),
-    pageSize: '100',
-  });
-
-  const body = await getJson<SearchKeywordsResponse>(
-    `${BASE}/${loc}/searchkeywords/impressions/monthly?${params.toString()}`,
+  const body = await gbpFetchJson<SearchKeywordsResponse>(
+    'GBP performance.searchkeywords',
+    gbpSearchKeywordsUrl(locationResourceName, gbpTrailingRange(days)),
     accessToken,
-    'GBP search keywords',
   );
 
   return (body.searchKeywordsCounts ?? [])

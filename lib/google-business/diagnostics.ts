@@ -1,8 +1,22 @@
 import { prisma } from '@/lib/db/prisma';
+import {
+  GbpApiError,
+  type GbpFailureReason,
+  type GbpResponseBodyKind,
+} from '@/lib/google-business/api-errors';
+import { listGbpAccounts, listGbpLocations } from '@/lib/google-business/account-api';
+import { gbpAccountsListUrl, gbpLocationsListUrl } from '@/lib/google-business/api-urls';
 import { fetchGrantedScopes, GBP_BUSINESS_MANAGE_SCOPE } from '@/lib/google-business/oauth';
-import { fetchGbpLocationsResilient } from '@/lib/google-business/persisted-location-list';
-import { fetchGbpMetricTotals, gbpPerformanceLocationPath } from '@/lib/google-business/performance-api';
+import {
+  fetchGbpMetricTotals,
+  gbpDailyMetricsUrl,
+  gbpTrailingRange,
+  GBP_DAILY_METRICS,
+} from '@/lib/google-business/performance-api';
+import { normalizeGbpAccountName, normalizeGbpLocationName } from '@/lib/google-business/resource-names';
 import { getValidGoogleBusinessAccessToken } from '@/lib/google-business/tokens';
+
+const PROBE_DAYS = 7;
 
 export type GbpAccessProbe = {
   connectedEmail: string | null;
@@ -10,45 +24,63 @@ export type GbpAccessProbe = {
   hasBusinessManageScope: boolean | null;
   accountCount: number | null;
   locationCount: number | null;
-  /** `locations/{id}` actually used for Performance API calls. */
-  locationPath: string | null;
-  locationSource: 'db_fresh' | 'api' | 'db_stale' | null;
+  /** `accounts/{id}` used as the locations.list parent. */
+  accountResourceName: string | null;
+  /** `locations/{id}` used for Performance API calls. */
+  locationResourceName: string | null;
+  urls: { accountsList: string; locationsList: string | null; dailyMetrics: string | null };
+  /** Last call attempted, so a failure below can be tied to a specific request. */
+  lastStep: 'tokeninfo' | 'accounts.list' | 'locations.list' | 'performance' | null;
+  failedUrl: string | null;
+  httpStatus: number | null;
+  responseBodyKind: GbpResponseBodyKind | null;
+  failureReason: GbpFailureReason | null;
   performanceApiOk: boolean | null;
   error: string | null;
 };
 
-const EMPTY: GbpAccessProbe = {
-  connectedEmail: null,
-  grantedScopes: null,
-  hasBusinessManageScope: null,
-  accountCount: null,
-  locationCount: null,
-  locationPath: null,
-  locationSource: null,
-  performanceApiOk: null,
-  error: null,
-};
+function emptyProbe(): GbpAccessProbe {
+  return {
+    connectedEmail: null,
+    grantedScopes: null,
+    hasBusinessManageScope: null,
+    accountCount: null,
+    locationCount: null,
+    accountResourceName: null,
+    locationResourceName: null,
+    urls: { accountsList: gbpAccountsListUrl(), locationsList: null, dailyMetrics: null },
+    lastStep: null,
+    failedUrl: null,
+    httpStatus: null,
+    responseBodyKind: null,
+    failureReason: null,
+    performanceApiOk: null,
+    error: null,
+  };
+}
 
 export function gbpProbeUnavailable(error: string): GbpAccessProbe {
-  return { ...EMPTY, performanceApiOk: false, error };
+  return { ...emptyProbe(), performanceApiOk: false, error };
 }
 
 /**
- * End-to-end read check for the GBP pipeline: stored token, granted scopes, location resolution, and
- * one small Performance API call. Distinguishes a stale consent from a project that lacks API quota.
+ * End-to-end read check for the GBP pipeline. Calls the live endpoints rather than the cached
+ * location snapshot, since the point is to see the real request URLs and Google's real answers.
  */
 export async function probeGbpPerformanceAccess(): Promise<GbpAccessProbe> {
   const connection = await prisma.googleBusinessConnection.findFirst({
     orderBy: { googleEmail: 'asc' },
     select: { googleEmail: true },
   });
-  if (!connection) return EMPTY;
+  if (!connection) return emptyProbe();
 
-  const probe: GbpAccessProbe = { ...EMPTY, connectedEmail: connection.googleEmail };
+  const probe = emptyProbe();
+  probe.connectedEmail = connection.googleEmail;
 
   try {
     const token = await getValidGoogleBusinessAccessToken(connection.googleEmail);
 
+    probe.lastStep = 'tokeninfo';
     try {
       const scopes = await fetchGrantedScopes(token);
       probe.grantedScopes = scopes;
@@ -57,23 +89,46 @@ export async function probeGbpPerformanceAccess(): Promise<GbpAccessProbe> {
       probe.grantedScopes = null;
     }
 
-    const { accountCount, allLocations, source } = await fetchGbpLocationsResilient(connection.googleEmail);
-    probe.accountCount = accountCount;
-    probe.locationCount = allLocations.length;
-    probe.locationSource = source;
+    probe.lastStep = 'accounts.list';
+    const { accounts } = await listGbpAccounts(token);
+    probe.accountCount = accounts?.length ?? 0;
 
-    const first = allLocations[0];
-    if (!first) {
-      probe.error = 'No locations returned for the connected Google account.';
+    const firstAccount = accounts?.[0]?.name;
+    if (!firstAccount) {
+      probe.error = 'Google returned no Business Profile accounts for this login.';
       return probe;
     }
-    probe.locationPath = gbpPerformanceLocationPath(first.name);
+    probe.accountResourceName = normalizeGbpAccountName(firstAccount);
+    probe.urls.locationsList = gbpLocationsListUrl(probe.accountResourceName);
 
-    await fetchGbpMetricTotals(token, first.name, 7);
+    probe.lastStep = 'locations.list';
+    const { locations } = await listGbpLocations(token, probe.accountResourceName);
+    probe.locationCount = locations?.length ?? 0;
+
+    const firstLocation = locations?.[0]?.name;
+    if (!firstLocation) {
+      probe.error = 'The first Business Profile account returned no locations.';
+      return probe;
+    }
+    probe.locationResourceName = normalizeGbpLocationName(firstLocation);
+    probe.urls.dailyMetrics = gbpDailyMetricsUrl(
+      probe.locationResourceName,
+      GBP_DAILY_METRICS,
+      gbpTrailingRange(PROBE_DAYS),
+    );
+
+    probe.lastStep = 'performance';
+    await fetchGbpMetricTotals(token, probe.locationResourceName, PROBE_DAYS);
     probe.performanceApiOk = true;
     return probe;
   } catch (e) {
     probe.performanceApiOk = false;
+    if (e instanceof GbpApiError) {
+      probe.failedUrl = e.url;
+      probe.httpStatus = e.httpStatus;
+      probe.responseBodyKind = e.bodyKind;
+      probe.failureReason = e.reason;
+    }
     probe.error = (e instanceof Error ? e.message : String(e)).slice(0, 400);
     return probe;
   }

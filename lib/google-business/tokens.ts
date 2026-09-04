@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/prisma';
+import { buildGbpApiError } from '@/lib/google-business/api-errors';
 import { requireGoogleOAuthClient } from '@/lib/gmail/config';
 
 const REFRESH_MARGIN_MS = 120_000;
@@ -28,7 +29,13 @@ async function refreshGoogleAccessToken(
   });
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(`Google token refresh failed ${res.status}: ${text.slice(0, 400)}`);
+    throw buildGbpApiError(
+      'Google token refresh',
+      'https://oauth2.googleapis.com/token',
+      res.status,
+      res.headers.get('content-type'),
+      text,
+    );
   }
   const json = JSON.parse(text) as TokenRefreshResponse;
   const access = json.access_token;
