@@ -20,6 +20,14 @@ import {
   reviewRequestGmailMailboxConnected,
 } from '@/lib/email/review-request-after-done';
 
+import {
+  CLARITY_DAILY_REQUEST_LIMIT,
+  CLARITY_MAX_LOOKBACK_DAYS,
+  clarityInsightsConfigured,
+  getClarityApiToken,
+  getClarityLinks,
+  getClarityProjectId,
+} from '@/lib/analytics/clarity-config';
 /**
  * Safe config snapshot (no secrets). For debugging OAuth on production.
  */
@@ -178,6 +186,11 @@ export async function GET(req: NextRequest) {
   } catch {
     gbpConnections = -1;
     if (dbUrlRaw) {
+  if (getClarityProjectId() && !getClarityApiToken()) {
+    hints.push(
+      'Microsoft Clarity is recording but CLARITY_API_TOKEN is unset, so /dashboard/analytics cannot show its numbers. Clarity → project → Settings → Data Export → Generate new API token.',
+    );
+  }
       hints.push(
         'Prisma could not reach the database (sample query failed). Confirm DATABASE_URL on this deployment, TLS (`?sslmode=require` if required), and that the DB allows connections from Vercel.',
       );
@@ -389,3 +402,12 @@ export async function GET(req: NextRequest) {
     hints,
   });
 }
+      /** Clarity Data Export API read behind the Clarity section of /dashboard/analytics. */
+      clarityDataExport: {
+        configured: clarityInsightsConfigured(),
+        apiTokenSet: Boolean(getClarityApiToken()),
+        projectId: getClarityProjectId(),
+        generateTokenAt: 'Clarity → your project → Settings → Data Export → Generate new API token (project admins only).',
+        quota: `${CLARITY_DAILY_REQUEST_LIMIT} requests per project per day, last ${CLARITY_MAX_LOOKBACK_DAYS} days only. Dash caches one snapshot for 6 hours.`,
+        deepLinks: getClarityLinks(),
+      },

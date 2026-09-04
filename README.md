@@ -182,6 +182,19 @@ This uses a **service account**, so there is no OAuth consent screen and nothing
 
 `/api/integrations/env-check` reports `analytics.ga4Reporting` including the service account email to grant access to. The page shows setup steps until it is configured, and a targeted hint if Google returns `PERMISSION_DENIED` (means step 3 is missing).
 
+**3. Microsoft Clarity behaviour signals** — the same page ends with a **Microsoft Clarity** section: sessions, distinct users, pages per session, bot sessions, scroll depth, active time, and the frustration signals GA4 has no equivalent for (dead clicks, rage clicks, excessive scrolling, quick backs, script errors, error clicks). It always links straight into Clarity for **heatmaps** and **session recordings**, which have no API.
+
+To turn on the numbers:
+
+1. Clarity → your project → **Settings → Data Export → Generate new API token**. Only **project admins** see this.
+2. Name the token **4-32 characters**, letters/digits/`-`/`_`/`.` only, no spaces, unique within the project.
+3. Copy the JWT (Clarity shows it once) into **`CLARITY_API_TOKEN`** and redeploy. Keep it server-side — never prefix it with `NEXT_PUBLIC_`.
+4. Set **`NEXT_PUBLIC_CLARITY_PROJECT_ID`** as well so the Heatmaps / Recordings buttons open your project instead of the Clarity home page.
+
+The [Data Export API](https://learn.microsoft.com/en-us/clarity/setup-and-installation/clarity-data-export-api) is heavily rationed: **10 requests per project per day** and **only the last 1-3 days** of data, no history and no time series. Dash therefore makes **one** request per refresh and caches the snapshot for **6 hours** (4 requests/day worst case), shows how old the snapshot is, and caches failures too so a bad token cannot burn the quota on every page view. Preview deployments share the same project quota. Exhausting it is its own UI state, not a generic error.
+
+`/api/integrations/env-check` reports `analytics.clarityDataExport` (token set, project ID, quota, and the deep links), and hints when Clarity is recording but `CLARITY_API_TOKEN` is missing.
+
 ## Yelp Leads → pre-quote tickets
 
 **"Request a Quote"** messages can create pre-quote tickets automatically (same lane as GHL leads). The webhook is implemented at **`POST /api/webhooks/yelp-leads`**; it fetches the lead plus its message events from the Leads API and upserts a job keyed on `yelpLeadId`, so follow-up messages update the existing ticket instead of duplicating it.

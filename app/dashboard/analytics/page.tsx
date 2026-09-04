@@ -1,5 +1,7 @@
 import Link from 'next/link';
+import { ClarityInsightsPanel } from '@/components/clarity-insights-panel';
 import { WebAnalyticsDashboard } from '@/components/web-analytics-dashboard';
+import { loadClarityInsightsData } from '@/lib/domain/load-clarity-insights';
 import {
   loadWebAnalyticsPageData,
   normalizeWebAnalyticsRange,
@@ -16,7 +18,10 @@ export default async function WebAnalyticsPage({ searchParams }: Props) {
   const daysRaw = Array.isArray(q.days) ? q.days[0] : q.days;
   const rangeDays = normalizeWebAnalyticsRange(daysRaw);
 
-  const data = await loadWebAnalyticsPageData(rangeDays);
+  const [data, clarityData] = await Promise.all([
+    loadWebAnalyticsPageData(rangeDays),
+    loadClarityInsightsData(),
+  ]);
 
   return (
     <div className="board-page">
@@ -44,7 +49,11 @@ export default async function WebAnalyticsPage({ searchParams }: Props) {
       </header>
 
       <div className="flex-grow-1 overflow-auto px-3 px-md-4 pb-5" style={{ minHeight: 0 }}>
-        <WebAnalyticsDashboard data={data} />
+        <div className="d-flex flex-column gap-4">
+          <WebAnalyticsDashboard data={data} />
+          <hr className="my-0" />
+          <ClarityInsightsPanel data={clarityData} />
+        </div>
       </div>
     </div>
   );
