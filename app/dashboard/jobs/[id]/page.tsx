@@ -60,6 +60,10 @@ type PageProps = {
     gmail_mailbox_error?: string;
     gmail_sync_error?: string;
     gmail_synced?: string;
+    yelp_synced?: string;
+    yelp_synced_count?: string;
+    yelp_sync_error?: string;
+    yelp_sync_denied?: string;
     gmail_match?: string;
     gmail_match_error?: string;
     qb_imported?: string;
@@ -82,6 +86,12 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const gmailMailboxError = sp.gmail_mailbox_error === '1';
   const gmailSyncError = sp.gmail_sync_error ? decodeURIComponent(sp.gmail_sync_error) : null;
   const gmailSyncedOk = sp.gmail_synced === '1';
+  const yelpSyncedOk = sp.yelp_synced === '1';
+  const yelpSyncDenied = sp.yelp_sync_denied === '1';
+  const yelpSyncError = sp.yelp_sync_error ? decodeURIComponent(sp.yelp_sync_error) : null;
+  const yelpSyncedCountRaw = sp.yelp_synced_count ? Number.parseInt(sp.yelp_synced_count, 10) : null;
+  const yelpSyncedInserted =
+    yelpSyncedCountRaw != null && Number.isFinite(yelpSyncedCountRaw) ? yelpSyncedCountRaw : null;
   const gmailMatchToast = ticketThreadMatchToast(sp.gmail_match);
   const gmailMatchError = sp.gmail_match_error?.trim() || gmailMatchToast.error;
   const qbImportedOk = sp.qb_imported === '1';
@@ -429,6 +439,11 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             gmailMessageTotalCount={gmailMessageTotalCount}
             gmailMessagesShownCount={gmailMessagesChronological.length}
             gmailMessagesUiTruncated={gmailMessagesUiTruncated}
+            canRefreshYelp={Boolean(job.yelpLeadId)}
+            yelpRefreshDenied={yelpSyncDenied}
+            yelpRefreshError={yelpSyncError}
+            yelpRefreshedOk={yelpSyncedOk}
+            yelpRefreshedInserted={yelpSyncedInserted}
           />
 
           <TicketGmailSection

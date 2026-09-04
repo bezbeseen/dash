@@ -19,7 +19,7 @@ import {
 } from '../lib/yelp/lead-classify';
 import { BoardStatus, GmailLinkSource, InboundLeadKind } from '@prisma/client';
 import { prequoteColumnForJob } from '../lib/domain/prequote-triage';
-import { buildYelpLeadProjectDescription } from '../lib/yelp/leads-webhook';
+import { buildYelpLeadProjectDescription, extractLeadIdsFromYelpWebhook } from '../lib/yelp/leads-webhook';
 import { yelpLeadDedupeLookupKeys, yelpLeadEmailJobWriteData } from '../lib/yelp/lead-ticket-write';
 import {
   formatYelpCorrespondenceActivityMessage,
@@ -45,6 +45,23 @@ import {
 import { parseDryRunQueryParam } from '../lib/yelp/scan-query';
 import { summarizeYelpScan, type YelpEmailOutcome } from '../lib/yelp/scan-summary';
 import { safeYelpUrl, YELP_BIZ_INBOX_URL } from '../lib/yelp/url';
+import {
+  YELP_BIZ_EVENT_NAME,
+  oldestEventCursor,
+  parseYelpLeadEventsPayload,
+  parseYelpLeadRecord,
+  parseYelpLeadTextEvents,
+  yelpBizFromLabel,
+  yelpBizSideFromUserType,
+} from '../lib/yelp/lead-events';
+import {
+  YELP_LEADS_DENIED_MESSAGE,
+  yelpGetLeadIdCandidates,
+  yelpIdsEqual,
+  yelpJobLookupKeysForLead,
+  yelpLeadMatchesConversation,
+  yelpStoredLeadIdVariants,
+} from '../lib/yelp/lead-ids';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -1166,6 +1183,221 @@ check('thread: rose bubble has no stay-eligible nag', thread[0]?.body.includes('
 assertNoUnsafeUrls(
   'thread bodies',
   thread.flatMap((item) => [item.body, item.originalBody]),
+);
+
+const liveHex = '40e2c35e0ac24393b3e4ec59e9be6b9c';
+check(
+  'ids: stored email key expands to yelp:hex and bare hex',
+  yelpStoredLeadIdVariants(`yelp:${liveHex}`).sort(),
+  [`yelp:${liveHex}`, liveHex].sort(),
+);
+check(
+  'ids: Get Lead tries mapped API id before the conversation hex',
+  yelpGetLeadIdCandidates({ yelpLeadId: `yelp:${liveHex}`, yelpApiLeadId: '18kPq7GPye-YQ3LyKyAZPw' }),
+  ['18kPq7GPye-YQ3LyKyAZPw', liveHex],
+);
+check(
+  'ids: webhook lookup includes API id, conversation hex, and reply+ hex',
+  yelpJobLookupKeysForLead({
+    apiLeadId: '18kPq7GPye-YQ3LyKyAZPw',
+    conversationId: '49-Acxgj7-0C5SAMG_J7Dg',
+    temporaryEmail: `reply+${liveHex}@messaging.yelp.com`,
+  }).sort(),
+  [
+    '18kPq7GPye-YQ3LyKyAZPw',
+    'yelp:18kPq7GPye-YQ3LyKyAZPw',
+    '49-Acxgj7-0C5SAMG_J7Dg',
+    'yelp:49-Acxgj7-0C5SAMG_J7Dg',
+    liveHex,
+    `yelp:${liveHex}`,
+  ].sort(),
+);
+check('ids: hex compare is case-insensitive', yelpIdsEqual(liveHex, liveHex.toUpperCase()), true);
+check(
+  'ids: lead payload maps conversation hex when API id differs',
+  yelpLeadMatchesConversation(
+    { id: '18kPq7GPye-YQ3LyKyAZPw', conversationId: liveHex, temporaryEmail: null },
+    liveHex,
+  ),
+  true,
+);
+check(
+  'ids: reply+ hex in temporary email still maps',
+  yelpLeadMatchesConversation(
+    {
+      id: 'xKgWk-XoFWBQucET-xr-hw',
+      conversationId: '49-Acxgj7-0C5SAMG_J7Dg',
+      temporaryEmail: `reply+${liveHex}@messaging.yelp.com`,
+    },
+    liveHex,
+  ),
+  true,
+);
+check(
+  'denied: ticket copy is exact',
+  YELP_LEADS_DENIED_MESSAGE,
+  'Yelp Leads API denied; replies stay on Yelp Biz',
+);
+
+const wrappedEvents = parseYelpLeadEventsPayload({
+  events: [
+    {
+      id: 'ev-old',
+      cursor: 'cursor-old',
+      event_type: 'TEXT',
+      user_type: 'CONSUMER',
+      time_created: '2026-08-28T12:00:00+00:00',
+      user_display_name: 'Rose L.',
+      event_content: { text: 'Need banners for a seminar.' },
+    },
+    {
+      id: 'ev-shop-1',
+      cursor: 'cursor-shop-1',
+      event_type: 'TEXT',
+      user_type: 'BIZ',
+      time_created: '2026-08-30T15:00:00+00:00',
+      user_display_name: 'Marc',
+      event_content: {
+        text: 'Rose, can you let me know what the banners will be used for, and if they need to be hemmed and grommeted?',
+      },
+    },
+    {
+      id: 'ev-shop-2',
+      cursor: 'cursor-shop-2',
+      event_type: 'TEXT',
+      user_type: 'BIZ',
+      time_created: '2026-09-01T18:00:00+00:00',
+      user_display_name: 'Marc',
+      channel: 'EMAIL',
+      event_content: {
+        text: 'Rose, is this something that you are still looking for? I wanted to bid for your business.',
+      },
+    },
+    {
+      id: 'ev-attach',
+      event_type: 'ATTACHMENT_GROUPING',
+      event_content: { text: 'photo.jpg' },
+    },
+  ],
+});
+check('events: wrapped payload is an array', wrappedEvents.length, 4);
+check('events: oldest cursor is the first page entry', oldestEventCursor(wrappedEvents), 'cursor-old');
+const textEvents = parseYelpLeadTextEvents(wrappedEvents);
+check('events: TEXT only, attachments dropped', textEvents.map((e) => e.eventId), [
+  'ev-old',
+  'ev-shop-1',
+  'ev-shop-2',
+]);
+check('events: shop user_type is BIZ', textEvents[1]?.userType, 'BIZ');
+check('side: BIZ is shop', yelpBizSideFromUserType('BIZ'), 'shop');
+check('side: CONSUMER is customer', yelpBizSideFromUserType('CONSUMER'), 'customer');
+check('label: uses display name', yelpBizFromLabel({ userType: 'BIZ', userDisplayName: 'Marc' }), 'Marc');
+
+const parsedLead = parseYelpLeadRecord({
+  id: '18kPq7GPye-YQ3LyKyAZPw',
+  business_id: 'VXi7gzRqPKp63X0u6fUtbg',
+  conversation_id: liveHex,
+  temporary_email_address: `reply+${liveHex}@messaging.yelp.com`,
+});
+check('lead: parses API id and conversation hex', parsedLead?.id, '18kPq7GPye-YQ3LyKyAZPw');
+check('lead: conversation_id kept', parsedLead?.conversationId, liveHex);
+
+check(
+  'webhook: NEW_EVENT lead_id extracted',
+  extractLeadIdsFromYelpWebhook({
+    data: { updates: [{ event_type: 'NEW_EVENT', event_id: 'evt', lead_id: 'TbvEUYEi02cmSBmqCjQbkg' }] },
+  }),
+  ['TbvEUYEi02cmSBmqCjQbkg'],
+);
+
+const noConvDesc =
+  buildYelpLeadProjectDescription(
+    { user: { display_name: 'Rose L.' }, project: { job_names: ['banners'] } },
+    wrappedEvents,
+    { includeConversation: false },
+  ).projectDescription ?? '';
+check('api: includeConversation false omits thread dump', noConvDesc.includes('Conversation (latest):'), false);
+
+const tShop1 = new Date('2026-08-30T15:00:00Z');
+const tShop2 = new Date('2026-09-01T18:00:00Z');
+const mixed = buildCorrespondenceThread({
+  shopMailboxEmails: ['contact@beseensignshop.com'],
+  messages: [
+    {
+      id: 'm-gmail',
+      gmailMessageId: 'g-raq',
+      subject: roseSubjectLine,
+      fromAddr: roseFrom,
+      toAddr: 'contact@beseensignshop.com',
+      date: t0,
+      snippet: roseBody,
+      createdAt: t0,
+      attachments: [],
+    },
+  ],
+  activityLogs: [
+    {
+      id: 'biz-1',
+      eventName: YELP_BIZ_EVENT_NAME,
+      message: 'Rose, can you let me know what the banners will be used for, and if they need to be hemmed and grommeted?',
+      metadata: {
+        eventId: 'ev-shop-1',
+        userType: 'BIZ',
+        userDisplayName: 'Marc',
+        timeCreated: tShop1.toISOString(),
+        text: 'Rose, can you let me know what the banners will be used for, and if they need to be hemmed and grommeted?',
+      },
+      createdAt: new Date('2026-09-04T09:00:00Z'),
+    },
+    {
+      id: 'biz-2',
+      eventName: YELP_BIZ_EVENT_NAME,
+      message: 'Rose, is this something that you are still looking for? I wanted to bid for your business.',
+      metadata: {
+        eventId: 'ev-shop-2',
+        userType: 'BIZ',
+        userDisplayName: 'Marc',
+        timeCreated: tShop2.toISOString(),
+        text: 'Rose, is this something that you are still looking for? I wanted to bid for your business.',
+      },
+      createdAt: new Date('2026-09-04T09:00:01Z'),
+    },
+    {
+      id: 'biz-unsafe',
+      eventName: YELP_BIZ_EVENT_NAME,
+      message: 'confirm',
+      metadata: {
+        eventId: 'ev-unsafe',
+        userType: 'CONSUMER',
+        timeCreated: t1.toISOString(),
+        text: `Please confirm here: https://biz.yelp.com/messaging/mark_as_replied_autosubmit/${liveHex}`,
+      },
+      createdAt: t1,
+    },
+  ],
+});
+check(
+  'thread: Yelp Biz shop bubbles mix with Gmail, chronological',
+  mixed.map((item) => item.id),
+  ['yelp-biz:biz-1', 'gmail:m-gmail', 'yelp-biz:biz-2', 'yelp-biz:biz-unsafe'],
+);
+check('thread: first shop Biz bubble is shop/right', mixed[0]?.side, 'shop');
+check('thread: shop Biz channel is yelp', mixed[0]?.channel, 'yelp');
+check('thread: shop fromLabel is Marc', mixed[0]?.fromLabel, 'Marc');
+check(
+  'thread: first shop body is the banners ask',
+  mixed[0]?.body.includes('hemmed and grommeted'),
+  true,
+);
+check(
+  'thread: second shop body is the still-looking follow-up',
+  mixed[2]?.body.includes('still looking for'),
+  true,
+);
+check('thread: action link in Biz text is redacted', mixed[3]?.body.includes('[yelp action link removed]'), true);
+assertNoUnsafeUrls(
+  'biz thread bodies',
+  mixed.flatMap((item) => [item.body, item.originalBody]),
 );
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);

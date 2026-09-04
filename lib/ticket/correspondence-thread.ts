@@ -11,6 +11,11 @@ import {
   formatYelpCorrespondenceSnippet,
   YELP_CORRESPONDENCE_EVENT_NAME,
 } from '@/lib/yelp/lead-correspondence';
+import {
+  YELP_BIZ_EVENT_NAME,
+  yelpBizFromLabel,
+  yelpBizSideFromUserType,
+} from '@/lib/yelp/lead-events';
 import { redactDestructiveYelpUrls } from '@/lib/yelp/url';
 
 export type CorrespondenceSide = 'customer' | 'shop' | 'unknown';
@@ -155,6 +160,40 @@ function yelpCorrespondenceSubject(metadata: Prisma.JsonValue | null | undefined
   return typeof subject === 'string' && subject.trim() ? subject.trim() : null;
 }
 
+function jsonStringField(obj: Prisma.JsonObject | null, key: string): string | null {
+  if (!obj) return null;
+  const v = obj[key];
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+function correspondenceItemFromYelpBizActivity(log: CorrespondenceActivity): CorrespondenceItem | null {
+  if (log.eventName !== YELP_BIZ_EVENT_NAME) return null;
+  const obj = asJsonObject(log.metadata);
+  const text = jsonStringField(obj, 'text') ?? log.message;
+  const userType = jsonStringField(obj, 'userType') ?? '';
+  const timeRaw = jsonStringField(obj, 'timeCreated');
+  const parsed = timeRaw ? new Date(timeRaw) : log.createdAt;
+  const at = Number.isNaN(parsed.getTime()) ? log.createdAt : parsed;
+  const body = redactDestructiveYelpUrls(text.trim());
+  return {
+    id: `yelp-biz:${log.id}`,
+    at,
+    side: yelpBizSideFromUserType(userType),
+    channel: 'yelp',
+    subject: null,
+    fromLabel: yelpBizFromLabel({
+      userType,
+      userDisplayName: jsonStringField(obj, 'userDisplayName'),
+    }),
+    fromAddr: null,
+    toAddr: null,
+    body,
+    trimmedBoilerplate: false,
+    originalBody: null,
+    attachments: [],
+  };
+}
+
 function compareChronological(a: CorrespondenceItem, b: CorrespondenceItem): number {
   const delta = a.at.getTime() - b.at.getTime();
   if (delta !== 0) return delta;
@@ -190,6 +229,12 @@ export function buildCorrespondenceThread(input: BuildCorrespondenceThreadInput)
   }
 
   for (const log of input.activityLogs) {
+    const bizItem = correspondenceItemFromYelpBizActivity(log);
+    if (bizItem) {
+      items.push(bizItem);
+      continue;
+    }
+
     if (log.eventName !== YELP_CORRESPONDENCE_EVENT_NAME) continue;
     const gmailMessageId = yelpCorrespondenceGmailMessageId(log.metadata);
     if (gmailMessageId && seenGmailMessageIds.has(gmailMessageId)) continue;

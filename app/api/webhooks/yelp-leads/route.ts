@@ -8,8 +8,15 @@ import {
 } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { yelpFetchLead, yelpFetchLeadEvents } from '@/lib/yelp/leads-api';
+import { parseYelpLeadRecord } from '@/lib/yelp/lead-events';
+import { withYelpLeadIdPrefix } from '@/lib/yelp/lead-ids';
+import { YELP_LEADS_DENIED_MESSAGE, YelpLeadsApiError, yelpFetchAllLeadEvents, yelpFetchLead } from '@/lib/yelp/leads-api';
 import { buildYelpLeadProjectDescription, extractLeadIdsFromYelpWebhook } from '@/lib/yelp/leads-webhook';
+import {
+  findJobForYelpLead,
+  persistYelpBizEventsForJob,
+  rememberYelpApiLeadId,
+} from '@/lib/yelp/sync-lead-conversation';
 
 /** Shared secret: append `?token=…` to the webhook URL in Yelp, or Authorization: Bearer, or X-Dash-Yelp-Secret. */
 function yelpInboundWebhookAuthorized(req: NextRequest): boolean {
@@ -63,14 +70,29 @@ export async function POST(req: NextRequest) {
     try {
       const [lead, events] = await Promise.all([
         yelpFetchLead(leadId),
-        yelpFetchLeadEvents(leadId, 40),
+        yelpFetchAllLeadEvents(leadId),
       ]);
 
-      const built = buildYelpLeadProjectDescription(lead, events);
-      const existing = await prisma.job.findUnique({
-        where: { yelpLeadId: leadId },
-        select: { id: true },
-      });
+      const parsedLead = parseYelpLeadRecord(lead);
+      const apiLeadId = parsedLead?.id ?? leadId;
+      const conversationId = parsedLead?.conversationId ?? null;
+      const built = buildYelpLeadProjectDescription(lead, events, { includeConversation: false });
+      const existing = await findJobForYelpLead(apiLeadId, conversationId, parsedLead?.temporaryEmail ?? null);
+
+      const attachEvents = async (jobId: string) => {
+        const persisted = await persistYelpBizEventsForJob({
+          jobId,
+          apiLeadId,
+          conversationId,
+          events,
+        });
+        const taken = await prisma.job.findFirst({
+          where: { yelpApiLeadId: apiLeadId, NOT: { id: jobId } },
+          select: { id: true },
+        });
+        if (!taken) await rememberYelpApiLeadId(jobId, apiLeadId);
+        return persisted;
+      };
 
       if (existing) {
         await prisma.job.update({
@@ -80,13 +102,23 @@ export async function POST(req: NextRequest) {
             customerName: built.customerName,
           },
         });
+        const persisted = await attachEvents(existing.id);
         await prisma.activityLog.create({
           data: {
             jobId: existing.id,
             source: EventSource.SYSTEM,
             eventName: 'yelp.lead_webhook',
-            message: 'Yelp lead updated (new message or event). Details refreshed from Leads API.',
-            metadata: { webhook: body as object, leadId, eventCount: events.length },
+            message:
+              persisted.inserted > 0
+                ? `Yelp lead updated; ${persisted.inserted} new Biz message(s).`
+                : 'Yelp lead updated (new message or event). Details refreshed from Leads API.',
+            metadata: {
+              webhook: body as object,
+              leadId: apiLeadId,
+              conversationId,
+              eventCount: events.length,
+              inserted: persisted.inserted,
+            },
           },
         });
         jobIds.push(existing.id);
@@ -99,7 +131,8 @@ export async function POST(req: NextRequest) {
           projectName: built.projectName,
           projectDescription: built.projectDescription,
           inboundLeadKind: InboundLeadKind.YELP_LEAD,
-          yelpLeadId: leadId,
+          yelpLeadId: conversationId ? withYelpLeadIdPrefix(conversationId) : leadId,
+          yelpApiLeadId: apiLeadId,
           boardStatus: BoardStatus.REQUESTED,
           productionStatus: ProductionStatus.NOT_STARTED,
           estimateStatus: EstimateStatus.UNKNOWN,
@@ -113,9 +146,11 @@ export async function POST(req: NextRequest) {
           source: EventSource.SYSTEM,
           eventName: 'inbound.yelp_lead',
           message: 'Pre-quote ticket created from Yelp Leads webhook.',
-          metadata: { webhook: body as object, leadId },
+          metadata: { webhook: body as object, leadId: apiLeadId, conversationId },
         },
       });
+
+      await attachEvents(job.id);
 
       if (built.seedEmail) {
         await prisma.linkedEmail.create({
@@ -129,6 +164,12 @@ export async function POST(req: NextRequest) {
 
       jobIds.push(job.id);
     } catch (e) {
+      if (e instanceof YelpLeadsApiError && e.isDenied) {
+        return NextResponse.json(
+          { ok: false, error: 'yelp_leads_denied', detail: YELP_LEADS_DENIED_MESSAGE },
+          { status: 200 },
+        );
+      }
       const msg = e instanceof Error ? e.message : String(e);
       return NextResponse.json(
         { ok: false, error: 'yelp_api_error', leadId, detail: msg.slice(0, 500) },

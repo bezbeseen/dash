@@ -108,6 +108,8 @@ model Job {
   qbOrderingAt         DateTime?
   /// Yelp Leads API webhook (Request a Quote / inbox) — deduped by yelpLeadId.
   yelpLeadId           String?           @unique
+  /// Partner Get Lead `id` when it differs from the conversation hex stored in yelpLeadId.
+  yelpApiLeadId        String?           @unique
   /// Set when this ticket was created from an inbound marketing webhook (form vs conversation).
   inboundLeadKind      InboundLeadKind?
   productionStatus     ProductionStatus  @default(NOT_STARTED)

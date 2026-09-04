@@ -43,6 +43,13 @@ export async function YelpLeadEmailSettingsSection() {
         Tickets imported so far: <strong>{importedCount}</strong>.
       </p>
 
+      <p className="small text-body-secondary mb-3">
+        Existing tickets also have <strong>Refresh Yelp conversation</strong> on Correspondence, which
+        pulls the Yelp Biz thread (shop + customer) through the Leads API so replies that never
+        reached Gmail still show on the ticket. If Yelp returns 403, Dash says{' '}
+        <strong>Yelp Leads API denied; replies stay on Yelp Biz</strong> and does not invent messages.
+      </p>
+
       {mailbox.reason ? <div className="alert alert-warning small py-2 px-3">{mailbox.reason}</div> : null}
 
       <div className="d-flex flex-wrap gap-2 align-items-center">

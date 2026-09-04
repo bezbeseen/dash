@@ -34,6 +34,7 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 export function buildYelpLeadProjectDescription(
   lead: Record<string, unknown>,
   events: unknown[],
+  opts?: { includeConversation?: boolean },
 ): { projectName: string; projectDescription: string | null; customerName: string; seedEmail: string | null } {
   const project = asRecord(lead.project);
   const jobNames = project?.job_names;
@@ -88,6 +89,8 @@ export function buildYelpLeadProjectDescription(
     lines.push(...formatYelpSurveyLines(pairs));
   }
 
+  const includeConversation = opts?.includeConversation !== false;
+
   const textEvents = events.filter((e) => {
     const ev = asRecord(e);
     if (ev?.event_type !== 'TEXT') return false;
@@ -96,7 +99,7 @@ export function buildYelpLeadProjectDescription(
     return typeof t === 'string' && t.trim().length > 0;
   });
 
-  const tail = textEvents.slice(-12);
+  const tail = includeConversation ? textEvents.slice(-12) : [];
   if (tail.length > 0) {
     lines.push('');
     lines.push('Conversation (latest):');

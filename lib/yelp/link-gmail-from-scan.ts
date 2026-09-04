@@ -54,7 +54,12 @@ export async function findExistingYelpJob(opts: {
 }): Promise<YelpJobGmailState | null> {
   if (opts.lookupKeys.length > 0) {
     const byLeadId = await prisma.job.findFirst({
-      where: { yelpLeadId: { in: opts.lookupKeys } },
+      where: {
+        OR: [
+          { yelpLeadId: { in: opts.lookupKeys } },
+          { yelpApiLeadId: { in: opts.lookupKeys } },
+        ],
+      },
       select: JOB_GMAIL_SELECT,
     });
     if (byLeadId) return byLeadId;

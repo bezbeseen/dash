@@ -30,9 +30,13 @@ import {
   YELP_SCAN_MAX_MESSAGES,
   type YelpScanLimits,
 } from '@/lib/yelp/scan-limits';
+import { yelpLeadsAccessTokenConfigured } from '@/lib/yelp/leads-api';
+import { syncYelpBizConversationForJob } from '@/lib/yelp/sync-lead-conversation';
 
 /** Small batches keep the whole scan inside the serverless function budget. */
 const FETCH_BATCH_SIZE = 5;
+/** Best-effort Biz-thread pulls during a scan; the ticket button covers the rest. */
+const YELP_BIZ_SCAN_SYNC_CAP = 8;
 
 export type YelpEmailCandidate = {
   gmailMessageId: string;
@@ -220,6 +224,18 @@ export async function scanYelpLeadEmails(opts: {
     email: mailboxEmail,
     connectionId: connection?.id ?? null,
   };
+  const yelpBizSynced = new Set<string>();
+
+  const maybePullYelpBiz = async (jobId: string) => {
+    if (!yelpLeadsAccessTokenConfigured()) return;
+    if (yelpBizSynced.has(jobId) || yelpBizSynced.size >= YELP_BIZ_SCAN_SYNC_CAP) return;
+    yelpBizSynced.add(jobId);
+    try {
+      await syncYelpBizConversationForJob(jobId);
+    } catch {
+      // Scan must still import tickets; Refresh Yelp conversation is the explicit path.
+    }
+  };
 
   // Gmail accepts either the address or "me"; which one works varies by account type.
   const userIds = [mailboxEmail, 'me'];
@@ -379,6 +395,7 @@ export async function scanYelpLeadEmails(opts: {
         skipReason,
         existingJobId: existing.id,
       });
+      if (!dryRun) await maybePullYelpBiz(existing.id);
       continue;
     }
     if (dryRun) {
@@ -409,6 +426,7 @@ export async function scanYelpLeadEmails(opts: {
       skipReason: null,
       existingJobId: created.jobId,
     });
+    await maybePullYelpBiz(created.jobId);
   }
 
   // Pass 2: follow-ups and weaker lead wording attach to the ticket pass 1 just opened
@@ -434,6 +452,7 @@ export async function scanYelpLeadEmails(opts: {
         skipReason,
         existingJobId: existing.id,
       });
+      if (!dryRun) await maybePullYelpBiz(existing.id);
       continue;
     }
 
@@ -474,6 +493,7 @@ export async function scanYelpLeadEmails(opts: {
         skipReason: null,
         existingJobId: created.jobId,
       });
+      await maybePullYelpBiz(created.jobId);
       continue;
     }
 

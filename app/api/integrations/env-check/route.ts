@@ -8,6 +8,7 @@ import {
 } from '@/lib/quickbooks/oauth';
 import { GMAIL_OAUTH_CALLBACK_PATH } from '@/lib/gmail/config';
 import { resolveYelpLeadMailboxState, type YelpMailboxState } from '@/lib/yelp/lead-mailbox';
+import { YELP_LEADS_DENIED_MESSAGE } from '@/lib/yelp/lead-ids';
 import { GBP_OAUTH_CALLBACK_PATH } from '@/lib/google-business/config';
 import {
   gbpProbeUnavailable,
@@ -452,6 +453,9 @@ export async function GET(req: NextRequest) {
       yelpLeadsVerifyTokenSet: Boolean(process.env.YELP_WEBHOOK_VERIFY_TOKEN?.trim()),
       /** Separate OAuth bearer Dash uses to call the Leads API; without it the webhook returns 503. */
       yelpLeadsAccessTokenSet: Boolean(process.env.YELP_LEADS_ACCESS_TOKEN?.trim()),
+      yelpBusinessIdSet: Boolean(process.env.YELP_BUSINESS_ID?.trim()),
+      yelpLeadsDeniedMessage: YELP_LEADS_DENIED_MESSAGE,
+      note: 'Get Lead / events need the partner lead id. Email tickets store the conversation hex; if they differ, set YELP_BUSINESS_ID so Dash can map them. A 403 means the token is partner-gated.',
       paths: [
         `${origin}/api/webhooks/inbound-form-lead`,
         `${origin}/api/webhooks/inbound-conversation`,
