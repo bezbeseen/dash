@@ -195,15 +195,31 @@ The [Data Export API](https://learn.microsoft.com/en-us/clarity/setup-and-instal
 
 `/api/integrations/env-check` reports `analytics.clarityDataExport` (token set, project ID, quota, and the deep links), and hints when Clarity is recording but `CLARITY_API_TOKEN` is missing.
 
-## Yelp Leads → pre-quote tickets
+## Yelp leads → pre-quote tickets
 
-**"Request a Quote"** messages can create pre-quote tickets automatically (same lane as GHL leads). The webhook is implemented at **`POST /api/webhooks/yelp-leads`**; it fetches the lead plus its message events from the Leads API and upserts a job keyed on `yelpLeadId`, so follow-up messages update the existing ticket instead of duplicating it.
+**"Request a Quote"** messages become pre-quote tickets (same lane as GHL leads). There are two paths, and **only the first is available to a normal advertiser**.
 
-Setup:
+### 1. Yelp notification emails (self-serve, recommended)
+
+Yelp's Leads API is *"limited to Yelp advertising and listing management reseller partners"* with a minimum spend, and Yelp points everyone else at a Zapier integration — but Zapier's webhook action is a premium app requiring the ~$20/month Professional plan. So Dash instead reads the **lead notification emails Yelp already sends you**, using the Gmail read-only scope it has.
+
+1. Set **`YELP_LEAD_EMAIL_MAILBOX`** to the address that receives Yelp lead emails (defaults to `REVIEW_REQUEST_SEND_AS_EMAIL`).
+2. Connect that **same mailbox** under **Settings → Gmail**.
+3. In **Settings → "Yelp leads → pre-quote tickets"**, click **Preview matches** for a dry run, then **Import Yelp leads**.
+
+`GET /api/integrations/yelp/scan-emails` is the dry run: it reports every Yelp message it looked at, whether it counted as a lead (and if not, why), and exactly what it parsed — without writing anything. `POST` to the same path imports. Both accept `?days=` and `?max=`.
+
+Tickets dedupe on `Job.yelpLeadId`, using the Yelp thread ID from links in the email when present and the Gmail thread ID otherwise, so re-scanning and follow-up messages will not create duplicates. Non-lead Yelp mail (ad reports, reviews, invoices, digests) is filtered out.
+
+Yelp reworks these email templates periodically. Every field is optional and the cleaned email body is always kept on the ticket, so a template change degrades detail rather than losing the lead. After editing the parser run **`npm run verify:yelp-email-parser`**.
+
+### 2. Yelp Leads API webhooks (partner-gated)
+
+Already implemented at **`POST /api/webhooks/yelp-leads`** for the day Yelp enables your app: it fetches the lead plus its message events and upserts a job keyed on `yelpLeadId`. It also only returns data for businesses **currently advertising** on Yelp, and does not support profiles using "Message the Business".
 
 1. **`YELP_WEBHOOK_VERIFY_TOKEN`** — your own shared secret (`openssl rand -hex 32`).
-2. **`YELP_LEADS_ACCESS_TOKEN`** — OAuth bearer token with the **Leads** scope (this is *not* the Fusion API key; see [Yelp Leads API](https://docs.developer.yelp.com/docs/leads-api)).
-3. Register the webhook URL with Yelp: **`https://<your-dash-domain>/api/webhooks/yelp-leads?token=<YELP_WEBHOOK_VERIFY_TOKEN>`** (the same value is also accepted as `Authorization: Bearer` or `X-Dash-Yelp-Secret`).
+2. **`YELP_LEADS_ACCESS_TOKEN`** — OAuth bearer with the **Leads** scope (*not* the Fusion API key; see [Yelp Leads API](https://docs.developer.yelp.com/docs/leads-api)).
+3. Register **`https://<your-dash-domain>/api/webhooks/yelp-leads?token=<YELP_WEBHOOK_VERIFY_TOKEN>`** (also accepted as `Authorization: Bearer` or `X-Dash-Yelp-Secret`).
 
 Opening that URL in a browser sends **GET** and returns a JSON hint — leads only arrive via Yelp's **POST**. Requests without the secret get `401`; a missing `YELP_LEADS_ACCESS_TOKEN` returns `503` so misconfiguration is obvious in Yelp's delivery log.
 

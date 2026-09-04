@@ -7,19 +7,13 @@ import {
   quickBooksOAuthCredentialsConfigured,
 } from '@/lib/quickbooks/oauth';
 import { GMAIL_OAUTH_CALLBACK_PATH } from '@/lib/gmail/config';
+import { configuredYelpLeadMailbox } from '@/lib/gmail/scan-yelp-lead-emails';
 import { GBP_OAUTH_CALLBACK_PATH } from '@/lib/google-business/config';
 import {
   ga4ReportingConfigured,
   getGa4PropertyId,
   getGa4ServiceAccountEmail,
 } from '@/lib/analytics/ga4-config';
-import {
-  getReviewRequestSendAsEmail,
-  reviewRequestEmailAttachInvoicePdfEnabled,
-  reviewRequestEmailFeatureEnabled,
-  reviewRequestGmailMailboxConnected,
-} from '@/lib/email/review-request-after-done';
-
 import {
   CLARITY_DAILY_REQUEST_LIMIT,
   CLARITY_MAX_LOOKBACK_DAYS,
@@ -28,6 +22,13 @@ import {
   getClarityLinks,
   getClarityProjectId,
 } from '@/lib/analytics/clarity-config';
+import {
+  getReviewRequestSendAsEmail,
+  reviewRequestEmailAttachInvoicePdfEnabled,
+  reviewRequestEmailFeatureEnabled,
+  reviewRequestGmailMailboxConnected,
+} from '@/lib/email/review-request-after-done';
+
 /**
  * Safe config snapshot (no secrets). For debugging OAuth on production.
  */
@@ -179,6 +180,11 @@ export async function GET(req: NextRequest) {
       `NEXT_PUBLIC_APP_URL host "${nextPublicHost}" does not match "${requestHost}". Fix for correct Gmail/Slack links and optional redirect fallbacks.`,
     );
   }
+  if (getClarityProjectId() && !getClarityApiToken()) {
+    hints.push(
+      'Microsoft Clarity is recording but CLARITY_API_TOKEN is unset, so /dashboard/analytics cannot show its numbers. Clarity → project → Settings → Data Export → Generate new API token.',
+    );
+  }
 
   let gbpConnections = 0;
   try {
@@ -186,11 +192,6 @@ export async function GET(req: NextRequest) {
   } catch {
     gbpConnections = -1;
     if (dbUrlRaw) {
-  if (getClarityProjectId() && !getClarityApiToken()) {
-    hints.push(
-      'Microsoft Clarity is recording but CLARITY_API_TOKEN is unset, so /dashboard/analytics cannot show its numbers. Clarity → project → Settings → Data Export → Generate new API token.',
-    );
-  }
       hints.push(
         'Prisma could not reach the database (sample query failed). Confirm DATABASE_URL on this deployment, TLS (`?sslmode=require` if required), and that the DB allows connections from Vercel.',
       );
@@ -202,6 +203,23 @@ export async function GET(req: NextRequest) {
     reviewGmailReady = await reviewRequestGmailMailboxConnected();
   } catch {
     reviewGmailReady = false;
+  }
+
+  const yelpLeadMailbox = configuredYelpLeadMailbox();
+  let yelpLeadMailboxConnected = false;
+  let yelpLeadTicketCount = -1;
+  try {
+    if (yelpLeadMailbox) {
+      yelpLeadMailboxConnected = Boolean(
+        await prisma.gmailConnection.findFirst({
+          where: { googleEmail: { equals: yelpLeadMailbox.toLowerCase(), mode: 'insensitive' } },
+          select: { id: true },
+        }),
+      );
+    }
+    yelpLeadTicketCount = await prisma.job.count({ where: { inboundLeadKind: 'YELP_LEAD' } });
+  } catch {
+    /* db error already hinted */
   }
 
   let gmailConnectionCount = -1;
@@ -328,6 +346,18 @@ export async function GET(req: NextRequest) {
     yelpFusion: {
       hasApiKey: Boolean(process.env.YELP_API_KEY?.trim()),
     },
+    /**
+     * Primary Yelp lead path: Dash reads Yelp notification emails, because the
+     * Leads API is gated to advertising resellers with a minimum spend.
+     */
+    yelpLeadEmails: {
+      mailbox: yelpLeadMailbox,
+      mailboxConnectedToGmail: yelpLeadMailboxConnected,
+      configured: Boolean(yelpLeadMailbox && yelpLeadMailboxConnected),
+      ticketsImported: yelpLeadTicketCount,
+      previewUrl: `${origin}/api/integrations/yelp/scan-emails`,
+      note: 'Set YELP_LEAD_EMAIL_MAILBOX (falls back to REVIEW_REQUEST_SEND_AS_EMAIL) and connect that mailbox under Settings → Gmail.',
+    },
     reviewRequestEmail: {
       featureEnabled: reviewRequestEmailFeatureEnabled(),
       sendAsEmail: getReviewRequestSendAsEmail(),
@@ -398,10 +428,6 @@ export async function GET(req: NextRequest) {
         serviceAccountEmail: getGa4ServiceAccountEmail(),
         grantAccessAt: 'GA4 → Admin → Property access management → add the service account email as Viewer.',
       },
-    },
-    hints,
-  });
-}
       /** Clarity Data Export API read behind the Clarity section of /dashboard/analytics. */
       clarityDataExport: {
         configured: clarityInsightsConfigured(),
@@ -411,3 +437,7 @@ export async function GET(req: NextRequest) {
         quota: `${CLARITY_DAILY_REQUEST_LIMIT} requests per project per day, last ${CLARITY_MAX_LOOKBACK_DAYS} days only. Dash caches one snapshot for 6 hours.`,
         deepLinks: getClarityLinks(),
       },
+    },
+    hints,
+  });
+}
