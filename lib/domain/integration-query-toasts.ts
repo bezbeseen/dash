@@ -82,6 +82,31 @@ export function gbpToastFromQuery(q: {
   return { connected, error };
 }
 
+export function yelpScanToastFromQuery(q: {
+  yelp_scan?: string;
+  yelp_created?: string;
+  yelp_matched?: string;
+  yelp_scanned?: string;
+  yelp_scan_error?: string;
+}): { message: string | null; error: string | null } {
+  const error = q.yelp_scan_error?.trim()
+    ? `Yelp email scan failed: ${q.yelp_scan_error.trim()}`
+    : null;
+  if (q.yelp_scan !== '1') {
+    return { message: null, error };
+  }
+  const created = Number.parseInt(q.yelp_created ?? '0', 10) || 0;
+  const matched = Number.parseInt(q.yelp_matched ?? '0', 10) || 0;
+  const scanned = Number.parseInt(q.yelp_scanned ?? '0', 10) || 0;
+  const message =
+    created > 0
+      ? `Yelp: created ${created} pre-quote ticket${created === 1 ? '' : 's'} from ${matched} lead email${matched === 1 ? '' : 's'}.`
+      : matched > 0
+        ? `Yelp: found ${matched} lead email${matched === 1 ? '' : 's'}, all already imported.`
+        : `Yelp: no lead emails found in the ${scanned} Yelp message${scanned === 1 ? '' : 's'} scanned.`;
+  return { message, error };
+}
+
 export function syncToastFromQuery(q: { synced?: string; sync_error?: string }): {
   synced: boolean;
   syncError: string | null;

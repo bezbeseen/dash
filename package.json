@@ -17,6 +17,7 @@
     "seed": "tsx prisma/seed.ts",
     "import-csv": "tsx scripts/import-transaction-csv.ts",
     "clear-prequoted": "tsx scripts/clear-prequoted-jobs.ts",
+    "verify:yelp-email-parser": "tsx scripts/verify-yelp-email-parser.ts",
     "docker:build": "docker build -t dash:latest .",
     "docker:up": "docker compose up -d --build"
   },

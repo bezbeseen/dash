@@ -6,9 +6,11 @@ import {
   gmailToastFromQuery,
   qbToastFromQuery,
   syncToastFromQuery,
+  yelpScanToastFromQuery,
 } from '@/lib/domain/integration-query-toasts';
 import { GoogleBusinessSettingsSection } from '@/components/google-business-settings-section';
 import { YelpApiSettingsSection } from '@/components/yelp-api-settings-section';
+import { YelpLeadEmailSettingsSection } from '@/components/yelp-lead-email-settings-section';
 import { QuickBooksConnectButton } from '@/components/quickbooks-connect-button';
 import { QuickBooksSyncForm } from '@/components/quickbooks-sync-form';
 
@@ -26,6 +28,11 @@ type SettingsPageProps = {
     synced?: string;
     sync_error?: string;
     sync_warn?: string;
+    yelp_scan?: string;
+    yelp_created?: string;
+    yelp_matched?: string;
+    yelp_scanned?: string;
+    yelp_scan_error?: string;
     e?: string;
     i?: string;
   }>;
@@ -41,6 +48,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const { connected: gmailConnected, error: gmailError } = gmailToastFromQuery(q);
   const { connected: gbpConnected, error: gbpError } = gbpToastFromQuery(q);
   const { synced, syncError } = syncToastFromQuery(q);
+  const { message: yelpScanMessage, error: yelpScanError } = yelpScanToastFromQuery(q);
   const syncWarnEmpty = q.sync_warn === 'empty';
 
   return (
@@ -63,7 +71,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         syncWarnEmpty ||
         qbConnected ||
         gmailConnected ||
-        gbpConnected) && (
+        gbpConnected ||
+        yelpScanMessage ||
+        yelpScanError) && (
         <div className="board-toasts" role="status">
           {syncError ? <div className="board-toast board-toast-error">QuickBooks sync error: {syncError}</div> : null}
           {synced ? (
@@ -83,6 +93,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           {qbConnected ? <div className="board-toast board-toast-ok">QuickBooks connected.</div> : null}
           {gmailConnected ? <div className="board-toast board-toast-ok">Gmail connected.</div> : null}
           {gbpConnected ? <div className="board-toast board-toast-ok">Google Business Profile connected.</div> : null}
+          {yelpScanError ? <div className="board-toast board-toast-error">{yelpScanError}</div> : null}
+          {yelpScanMessage ? <div className="board-toast board-toast-ok">{yelpScanMessage}</div> : null}
         </div>
       )}
 
@@ -175,6 +187,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         </section>
 
         <GoogleBusinessSettingsSection />
+
+        <YelpLeadEmailSettingsSection />
 
         <YelpApiSettingsSection />
 
