@@ -9,10 +9,8 @@ import {
 import { google } from 'googleapis';
 import { prisma } from '@/lib/db/prisma';
 import { extractGmailMessageText, gmailHeader } from '@/lib/gmail/message-text';
-import {
-  getGmailOAuth2ClientForConnection,
-  getGmailOAuth2ClientForSendMailbox,
-} from '@/lib/gmail/tokens-db';
+import { getGmailOAuth2ClientForSendMailbox } from '@/lib/gmail/tokens-db';
+import { resolveYelpLeadMailboxState, type YelpMailboxState } from '@/lib/yelp/lead-mailbox';
 import {
   looksLikeYelpLeadEmail,
   parseYelpLeadEmail,
@@ -40,6 +38,8 @@ export type YelpEmailCandidate = {
 
 export type YelpEmailScanResult = {
   mailboxEmail: string;
+  /** Which setting chose this mailbox, so results are self-describing. */
+  mailbox: YelpMailboxState;
   query: string;
   scanned: number;
   matched: number;
@@ -49,31 +49,15 @@ export type YelpEmailScanResult = {
   candidates: YelpEmailCandidate[];
 };
 
-/** Mailbox that receives Yelp notifications: explicit env, then the send-as mailbox. */
-export function configuredYelpLeadMailbox(): string | null {
-  return (
-    process.env.YELP_LEAD_EMAIL_MAILBOX?.trim() ||
-    process.env.REVIEW_REQUEST_SEND_AS_EMAIL?.trim() ||
-    null
-  );
-}
+/** Thrown when the configured mailbox is missing or not Gmail-connected. */
+export class YelpMailboxNotReadyError extends Error {
+  readonly state: YelpMailboxState;
 
-async function resolveMailbox(requested: string | null): Promise<{
-  auth: Awaited<ReturnType<typeof getGmailOAuth2ClientForSendMailbox>>;
-  email: string;
-}> {
-  const wanted = requested?.trim() || configuredYelpLeadMailbox();
-  if (wanted) {
-    return { auth: await getGmailOAuth2ClientForSendMailbox(wanted), email: wanted.toLowerCase() };
+  constructor(state: YelpMailboxState) {
+    super(state.reason ?? 'Yelp lead mailbox is not ready.');
+    this.name = 'YelpMailboxNotReadyError';
+    this.state = state;
   }
-  const conn = await prisma.gmailConnection.findFirst({ orderBy: { updatedAt: 'desc' } });
-  if (!conn) {
-    throw new Error('No Gmail mailbox is connected. Connect the mailbox that receives Yelp emails in Settings.');
-  }
-  return {
-    auth: await getGmailOAuth2ClientForConnection(conn.id),
-    email: conn.googleEmail ?? 'me',
-  };
 }
 
 /** Both the email path and the (gated) Leads API path could see the same lead. */
@@ -101,11 +85,18 @@ export async function scanYelpLeadEmails(opts: {
   const maxMessages = Math.min(Math.max(opts.maxMessages ?? YELP_SCAN_DEFAULT_MAX_MESSAGES, 1), 100);
   const dryRun = opts.dryRun ?? false;
 
-  const { auth, email: mailboxEmail } = await resolveMailbox(opts.mailboxEmail ?? null);
+  const mailboxState = await resolveYelpLeadMailboxState(opts.mailboxEmail ?? null);
+  if (!mailboxState.ready) {
+    throw new YelpMailboxNotReadyError(mailboxState);
+  }
+  const mailboxEmail = mailboxState.mailbox;
+
+  const auth = await getGmailOAuth2ClientForSendMailbox(mailboxEmail);
   const gmail = google.gmail({ version: 'v1', auth });
   const query = `from:yelp.com newer_than:${lookbackDays}d`;
 
-  const userIds = mailboxEmail && mailboxEmail !== 'me' ? [mailboxEmail, 'me'] : ['me'];
+  // Gmail accepts either the address or "me"; which one works varies by account type.
+  const userIds = [mailboxEmail, 'me'];
   let ids: { id: string; threadId: string }[] = [];
   let effectiveUserId = userIds[0];
   let listErr: unknown = null;
@@ -276,6 +267,7 @@ export async function scanYelpLeadEmails(opts: {
   const matched = candidates.filter((c) => c.matched).length;
   return {
     mailboxEmail,
+    mailbox: mailboxState,
     query,
     scanned: candidates.length,
     matched,

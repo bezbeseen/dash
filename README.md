@@ -222,9 +222,11 @@ The page has a distinct state for each failure instead of one generic error: not
 
 Yelp's Leads API is *"limited to Yelp advertising and listing management reseller partners"* with a minimum spend, and Yelp points everyone else at a Zapier integration — but Zapier's webhook action is a premium app requiring the ~$20/month Professional plan. So Dash instead reads the **lead notification emails Yelp already sends you**, using the Gmail read-only scope it has.
 
-1. Set **`YELP_LEAD_EMAIL_MAILBOX`** to the address that receives Yelp lead emails (defaults to `REVIEW_REQUEST_SEND_AS_EMAIL`).
-2. Connect that **same mailbox** under **Settings → Gmail**.
+1. Connect the mailbox that receives Yelp lead emails under **Settings → Gmail**.
+2. Optionally set **`YELP_LEAD_EMAIL_MAILBOX`**. Leave it unset to use the review-request send-as mailbox, which itself falls back to `contact@beseensignshop.com` — so no environment variable is needed when Yelp mail arrives there.
 3. In **Settings → "Yelp leads → pre-quote tickets"**, click **Preview matches** for a dry run, then **Import Yelp leads**.
+
+`env-check → yelpLeadEmails` reports the address that will actually be scanned, **which setting chose it** (`YELP_LEAD_EMAIL_MAILBOX`, `REVIEW_REQUEST_SEND_AS_EMAIL`, or the built-in default), whether that address is Gmail-connected, and every connected mailbox — so an address mismatch is visible without opening the database. The Settings panel and both endpoints resolve through the same function, so a diagnostic can never disagree with what the scan does.
 
 `GET /api/integrations/yelp/scan-emails` is the dry run: it reports every Yelp message it looked at, whether it counted as a lead (and if not, why), and exactly what it parsed — without writing anything. `POST` to the same path imports. Both accept `?days=` and `?max=`.
 

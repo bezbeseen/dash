@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  configuredYelpLeadMailbox,
   scanYelpLeadEmails,
+  YelpMailboxNotReadyError,
   YELP_SCAN_DEFAULT_LOOKBACK_DAYS,
   YELP_SCAN_DEFAULT_MAX_MESSAGES,
 } from '@/lib/gmail/scan-yelp-lead-emails';
+import { resolveYelpLeadMailboxState } from '@/lib/yelp/lead-mailbox';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -36,14 +37,15 @@ export async function GET(req: NextRequest) {
     const result = await scanYelpLeadEmails({ ...opts, dryRun: true });
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
+    if (e instanceof YelpMailboxNotReadyError) {
+      return NextResponse.json(
+        { ok: false, error: 'mailbox_not_connected', reason: e.message, mailbox: e.state },
+        { status: 409 },
+      );
+    }
     const message = e instanceof Error ? e.message : 'scan_failed';
     return NextResponse.json(
-      {
-        ok: false,
-        error: message,
-        configuredMailbox: configuredYelpLeadMailbox(),
-        hint: 'Set YELP_LEAD_EMAIL_MAILBOX to the mailbox that receives Yelp lead emails and connect it under Settings → Gmail.',
-      },
+      { ok: false, error: message, mailbox: await resolveYelpLeadMailboxState(opts.mailboxEmail) },
       { status: 502 },
     );
   }
@@ -70,6 +72,15 @@ export async function POST(req: NextRequest) {
     });
     return settings(q.toString());
   } catch (e) {
+    if (e instanceof YelpMailboxNotReadyError) {
+      if (wantsJson) {
+        return NextResponse.json(
+          { ok: false, error: 'mailbox_not_connected', reason: e.message, mailbox: e.state },
+          { status: 409 },
+        );
+      }
+      return settings(new URLSearchParams({ yelp_scan_error: e.message.slice(0, 400) }).toString());
+    }
     const message = e instanceof Error ? e.message : 'scan_failed';
     if (wantsJson) {
       return NextResponse.json({ ok: false, error: message }, { status: 502 });

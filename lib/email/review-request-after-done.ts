@@ -18,8 +18,18 @@ export function reviewRequestEmailFeatureEnabled(): boolean {
   return true;
 }
 
-export function getReviewRequestSendAsEmail(): string {
-  return (process.env.REVIEW_REQUEST_SEND_AS_EMAIL ?? DEFAULT_SEND_AS).trim().toLowerCase() || DEFAULT_SEND_AS;
+/**
+ * Narrower than `ProcessEnv` so tests can pass a literal without every Next-required key.
+ * The index signature keeps `process.env` assignable despite the weak-type check.
+ */
+export type ReviewRequestSendAsEnv = {
+  REVIEW_REQUEST_SEND_AS_EMAIL?: string | undefined;
+  [key: string]: string | undefined;
+};
+
+/** `env` is injectable so callers can be tested without mutating `process.env`. */
+export function getReviewRequestSendAsEmail(env: ReviewRequestSendAsEnv = process.env): string {
+  return (env.REVIEW_REQUEST_SEND_AS_EMAIL ?? DEFAULT_SEND_AS).trim().toLowerCase() || DEFAULT_SEND_AS;
 }
 
 /**
