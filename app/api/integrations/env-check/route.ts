@@ -7,7 +7,7 @@ import {
   quickBooksOAuthCredentialsConfigured,
 } from '@/lib/quickbooks/oauth';
 import { GMAIL_OAUTH_CALLBACK_PATH } from '@/lib/gmail/config';
-import { configuredYelpLeadMailbox } from '@/lib/gmail/scan-yelp-lead-emails';
+import { resolveYelpLeadMailboxState, type YelpMailboxState } from '@/lib/yelp/lead-mailbox';
 import { GBP_OAUTH_CALLBACK_PATH } from '@/lib/google-business/config';
 import {
   gbpProbeUnavailable,
@@ -211,18 +211,11 @@ export async function GET(req: NextRequest) {
     reviewGmailReady = false;
   }
 
-  const yelpLeadMailbox = configuredYelpLeadMailbox();
-  let yelpLeadMailboxConnected = false;
+  // Same resolver the scan route uses, so this diagnostic cannot disagree with runtime.
+  let yelpLeadMailbox: YelpMailboxState | null = null;
   let yelpLeadTicketCount = -1;
   try {
-    if (yelpLeadMailbox) {
-      yelpLeadMailboxConnected = Boolean(
-        await prisma.gmailConnection.findFirst({
-          where: { googleEmail: { equals: yelpLeadMailbox.toLowerCase(), mode: 'insensitive' } },
-          select: { id: true },
-        }),
-      );
-    }
+    yelpLeadMailbox = await resolveYelpLeadMailboxState(null);
     yelpLeadTicketCount = await prisma.job.count({ where: { inboundLeadKind: 'YELP_LEAD' } });
   } catch {
     /* db error already hinted */
@@ -389,12 +382,19 @@ export async function GET(req: NextRequest) {
      * Leads API is gated to advertising resellers with a minimum spend.
      */
     yelpLeadEmails: {
-      mailbox: yelpLeadMailbox,
-      mailboxConnectedToGmail: yelpLeadMailboxConnected,
-      configured: Boolean(yelpLeadMailbox && yelpLeadMailboxConnected),
+      /** Address the scan will actually read. */
+      mailbox: yelpLeadMailbox?.mailbox ?? null,
+      /** YELP_LEAD_EMAIL_MAILBOX, REVIEW_REQUEST_SEND_AS_EMAIL, or the built-in default. */
+      mailboxSource: yelpLeadMailbox?.source ?? null,
+      mailboxFromEnv: yelpLeadMailbox?.fromEnv ?? null,
+      mailboxConnectedToGmail: yelpLeadMailbox?.connected ?? null,
+      configured: yelpLeadMailbox?.ready ?? false,
+      /** Listed so an address mismatch is obvious without opening the database. */
+      connectedMailboxes: yelpLeadMailbox?.connectedMailboxes ?? [],
+      notReadyReason: yelpLeadMailbox?.reason ?? null,
       ticketsImported: yelpLeadTicketCount,
       previewUrl: `${origin}/api/integrations/yelp/scan-emails`,
-      note: 'Set YELP_LEAD_EMAIL_MAILBOX (falls back to REVIEW_REQUEST_SEND_AS_EMAIL) and connect that mailbox under Settings → Gmail.',
+      note: 'Optional YELP_LEAD_EMAIL_MAILBOX overrides the review-request send-as mailbox. That mailbox must appear in connectedMailboxes.',
     },
     reviewRequestEmail: {
       featureEnabled: reviewRequestEmailFeatureEnabled(),
