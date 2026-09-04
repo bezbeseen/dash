@@ -20,6 +20,7 @@
     "verify:yelp-email-parser": "tsx scripts/verify-yelp-email-parser.ts",
     "verify:thread-matcher": "tsx scripts/verify-thread-matcher.ts",
     "verify:clarity-mapping": "tsx scripts/verify-clarity-mapping.ts",
+    "verify:gbp-api": "tsx scripts/verify-gbp-api.ts",
     "docker:build": "docker build -t dash:latest .",
     "docker:up": "docker compose up -d --build"
   },

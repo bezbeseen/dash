@@ -286,9 +286,21 @@ export async function GET(req: NextRequest) {
         hints.push(
           'The stored Google Business Profile token is missing https://www.googleapis.com/auth/business.manage. Reconnect Google Business Profile in Settings to grant the performance scope.',
         );
+      } else if (gbpAccessProbe.failureReason === 'endpoint' || gbpAccessProbe.failureReason === 'bad_request') {
+        hints.push(
+          `Google Business Profile ${gbpAccessProbe.lastStep ?? 'request'} was rejected before reaching the API (HTTP ${gbpAccessProbe.httpStatus ?? '?'}, ${gbpAccessProbe.responseBodyKind ?? 'unknown'} body). This is a malformed request URL in Dash, not a Google Cloud approval problem. Compare accessProbe.failedUrl against the documented endpoint.`,
+        );
+      } else if (gbpAccessProbe.failureReason === 'api_disabled') {
+        hints.push(
+          'The Business Profile APIs are not enabled on the project behind GOOGLE_CLIENT_ID. Enable businessprofileperformance.googleapis.com, mybusinessaccountmanagement.googleapis.com, and mybusinessbusinessinformation.googleapis.com.',
+        );
+      } else if (gbpAccessProbe.failureReason === 'quota') {
+        hints.push(
+          "Google is refusing Business Profile calls for quota reasons. If the project's quota reads 0 requests/minute it was never approved, so submit Google's Business Profile API access form; otherwise wait and retry.",
+        );
       } else if (gbpAccessProbe.performanceApiOk === false) {
         hints.push(
-          `Google Business Profile performance probe failed: ${gbpAccessProbe.error ?? 'unknown'}. Enable businessprofileperformance.googleapis.com on the OAuth project; if its quota reads 0 requests/minute, the project still needs approval via Google's Business Profile API access form.`,
+          `Google Business Profile probe failed at ${gbpAccessProbe.lastStep ?? 'an unknown step'}: ${gbpAccessProbe.error ?? 'unknown'}`,
         );
       }
     } catch (e) {
