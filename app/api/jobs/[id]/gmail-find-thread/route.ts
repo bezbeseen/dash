@@ -58,10 +58,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   }
 
-  const redirect = (key: string, value: string) => {
+  const redirect = (key: string, value: string, hash = 'ticket-gmail') => {
     const u = postActionRedirect(req, jobId, `/dashboard/jobs/${jobId}`);
     u.searchParams.set(key, value);
-    u.hash = 'ticket-gmail';
+    u.hash = hash;
     return NextResponse.redirect(u);
   };
 
@@ -84,6 +84,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return redirect(
         'gmail_match',
         linked.syncError ? `confirmed_sync_failed:${linked.syncError.slice(0, 200)}` : 'confirmed',
+        linked.syncError ? 'ticket-gmail' : 'ticket-correspondence',
       );
     }
 
@@ -97,6 +98,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return redirect(
         'gmail_match',
         outcome.syncError ? `linked_sync_failed:${outcome.syncError.slice(0, 200)}` : 'linked',
+        outcome.syncError ? 'ticket-gmail' : 'ticket-correspondence',
       );
     }
     if (outcome.status === 'suggested') {

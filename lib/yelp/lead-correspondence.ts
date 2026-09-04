@@ -13,6 +13,9 @@ import { redactDestructiveYelpUrls } from '@/lib/yelp/url';
 /** Gmail stores a short snippet; keep enough of the cleaned body to read a reply. */
 export const YELP_CORRESPONDENCE_SNIPPET_MAX = 2000;
 
+/** Activity log event when a follow-up Yelp notification is attached to an existing ticket. */
+export const YELP_CORRESPONDENCE_EVENT_NAME = 'inbound.yelp_correspondence';
+
 export function isYelpReplySubject(subject: string): boolean {
   return /^(?:re|fw|fwd)\s*:/i.test(subject.trim());
 }

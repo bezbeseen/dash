@@ -1594,6 +1594,106 @@ body {
   line-height: 1.45;
   color: var(--bs-secondary-color);
 }
+
+.gmail-advanced-details {
+  margin-top: 4px;
+  border: var(--bs-border-width) solid var(--bs-border-color);
+  border-radius: 12px;
+  padding: 10px 16px 14px;
+  background: var(--bs-tertiary-bg);
+}
+.gmail-advanced-summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--bs-secondary-color);
+}
+.gmail-advanced-body {
+  margin-top: 14px;
+}
+
+.correspondence-thread {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.correspondence-item {
+  display: flex;
+  flex-direction: column;
+  max-width: min(100%, 42rem);
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: var(--bs-border-width) solid var(--bs-border-color);
+  background-color: var(--bs-tertiary-bg);
+}
+.correspondence-item.is-customer,
+.correspondence-item.is-unknown {
+  margin-right: auto;
+}
+.correspondence-item.is-shop {
+  margin-left: auto;
+  background-color: var(--bs-primary-bg-subtle);
+  border-color: var(--bs-primary-border-subtle);
+}
+.correspondence-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.correspondence-item-who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.correspondence-side-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+}
+.correspondence-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.correspondence-item-body {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: min(50vh, 360px);
+  overflow: auto;
+}
+.correspondence-item-body-original {
+  font-size: 13px;
+  color: var(--bs-secondary-color);
+}
+.correspondence-boilerplate {
+  margin-top: 10px;
+  border-top: var(--bs-border-width) solid var(--bs-border-color);
+  padding-top: 8px;
+}
+.correspondence-boilerplate summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bs-secondary-color);
+}
+.correspondence-empty {
+  margin: 0;
+}
 .gmail-attachment-list {
   margin: 0;
   padding-left: 1.1rem;

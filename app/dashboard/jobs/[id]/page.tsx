@@ -15,6 +15,7 @@ import { TicketQuickBooksInvoiceActivitySection } from '@/components/ticket-deta
 import type { InvoiceActivitySkipReason } from '@/components/ticket-detail/ticket-qb-invoice-activity-section';
 import { TicketActionsSection } from '@/components/ticket-detail/ticket-actions-section';
 import { TicketActivityLogSection } from '@/components/ticket-detail/ticket-activity-log-section';
+import { TicketCorrespondenceSection } from '@/components/ticket-detail/ticket-correspondence-section';
 import { TicketDetailFooter } from '@/components/ticket-detail/ticket-detail-footer';
 import { TicketLeadDetailsSection } from '@/components/ticket-detail/ticket-lead-details-section';
 import { TicketDetailToc, type TicketTocItem } from '@/components/ticket-detail/ticket-detail-toc';
@@ -44,6 +45,7 @@ import type { InvoiceActivityTimeline } from '@/lib/quickbooks/types-activity';
 import { resolveRealmIdForJob } from '@/lib/quickbooks/realm';
 import { GMAIL_UI_MESSAGE_CAP } from '@/lib/gmail/ui-limits';
 import { fmtDetailDate } from '@/lib/ticket/format';
+import { buildCorrespondenceThread } from '@/lib/ticket/correspondence-thread';
 import Link from 'next/link';
 import {
   reviewRequestEmailFeatureEnabled,
@@ -128,6 +130,11 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const gmailMessageTotalCount = await prisma.gmailSyncedMessage.count({ where: { jobId: id } });
   const gmailMessagesChronological = [...job.gmailMessages].reverse();
   const gmailMessagesUiTruncated = gmailMessageTotalCount > GMAIL_UI_MESSAGE_CAP;
+  const correspondenceItems = buildCorrespondenceThread({
+    messages: gmailMessagesChronological,
+    activityLogs: job.activityLogs,
+    shopMailboxEmails: gmailConnections.map((c) => c.googleEmail),
+  });
 
   // Suggestions live in the activity log; they are stale once any later event changed the link.
   const gmailSuggestionLog = job.gmailThreadId
@@ -238,6 +245,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   }
   tocItems.push({ id: 'ticket-tasks', label: 'Tasks' });
   tocItems.push(
+    { id: 'ticket-correspondence', label: 'Correspondence' },
     { id: 'ticket-gmail', label: 'Gmail' },
     { id: 'ticket-seed-email', label: 'Seed email' },
   );
@@ -413,15 +421,23 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
 
           <TicketTasksSection sectionId="ticket-tasks" jobId={job.id} />
 
+          <TicketCorrespondenceSection
+            sectionId="ticket-correspondence"
+            jobId={job.id}
+            items={correspondenceItems}
+            gmailThreadId={job.gmailThreadId}
+            gmailMessageTotalCount={gmailMessageTotalCount}
+            gmailMessagesShownCount={gmailMessagesChronological.length}
+            gmailMessagesUiTruncated={gmailMessagesUiTruncated}
+          />
+
           <TicketGmailSection
             sectionId="ticket-gmail"
             jobId={job.id}
             gmailThreadId={job.gmailThreadId}
             gmailConnectionId={job.gmailConnectionId}
             connections={gmailConnections}
-            messages={gmailMessagesChronological}
             gmailMessageTotalCount={gmailMessageTotalCount}
-            gmailMessagesUiTruncated={gmailMessagesUiTruncated}
             threadError={gmailThreadError}
             mailboxError={gmailMailboxError}
             syncError={gmailSyncError}

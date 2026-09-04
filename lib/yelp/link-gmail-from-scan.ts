@@ -8,6 +8,7 @@ import { prisma } from '@/lib/db/prisma';
 import {
   formatYelpCorrespondenceActivityMessage,
   formatYelpCorrespondenceSnippet,
+  YELP_CORRESPONDENCE_EVENT_NAME,
   yelpMessageDedupeLookupKeys,
   yelpScanShouldWriteGmailLink,
 } from '@/lib/yelp/lead-correspondence';
@@ -81,7 +82,7 @@ async function correspondenceAlreadyLogged(jobId: string, gmailMessageId: string
   const hit = await prisma.activityLog.findFirst({
     where: {
       jobId,
-      eventName: 'inbound.yelp_correspondence',
+      eventName: YELP_CORRESPONDENCE_EVENT_NAME,
       metadata: { path: ['gmailMessageId'], equals: gmailMessageId },
     },
     select: { id: true },
@@ -165,7 +166,7 @@ export async function recordYelpEmailOnJob(opts: {
       data: {
         jobId: job.id,
         source: EventSource.SYSTEM,
-        eventName: 'inbound.yelp_correspondence',
+        eventName: YELP_CORRESPONDENCE_EVENT_NAME,
         message: formatYelpCorrespondenceActivityMessage(message.subject),
         metadata: {
           gmailMessageId: message.gmailMessageId,

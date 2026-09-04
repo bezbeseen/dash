@@ -1,7 +1,7 @@
 /**
  * Checks the Yelp lead-email parser against representative notification emails.
  * Yelp reworks these templates periodically — run `npm run verify:yelp-email-parser`
- * after changing lib/yelp/lead-email.ts or the Gmail text extractor.
+ * after changing lib/yelp/lead-email.ts, lib/ticket/correspondence-thread.ts, or the Gmail text extractor.
  */
 import { htmlToPlainText } from '../lib/gmail/message-text';
 import {
@@ -26,10 +26,16 @@ import {
   formatYelpCorrespondenceSnippet,
   isYelpFirstContactLead,
   isYelpReplySubject,
+  YELP_CORRESPONDENCE_EVENT_NAME,
   yelpMessageDedupeLookupKeys,
   yelpRejectionMayAttachToExistingTicket,
   yelpScanShouldWriteGmailLink,
 } from '../lib/yelp/lead-correspondence';
+import {
+  buildCorrespondenceThread,
+  correspondenceBodyForDisplay,
+  correspondenceSideFromFromHeader,
+} from '../lib/ticket/correspondence-thread';
 import {
   defaultMaxMessagesForLookback,
   resolveYelpScanLimits,
@@ -1071,6 +1077,95 @@ check(
     '19f7255d19aefc74',
   ),
   false,
+);
+
+const roseDisplay = correspondenceBodyForDisplay({
+  snippet: roseBody,
+  fromAddr: roseFrom,
+  subject: roseSubjectLine,
+});
+check('thread: rose body keeps the seminar ask', roseDisplay.body.includes('stock/crypto'), true);
+check('thread: rose body drops stay-eligible nag', roseDisplay.body.includes('stay eligible'), false);
+check('thread: rose trims Yelp chrome', roseDisplay.trimmedBoilerplate, true);
+assertNoUnsafeUrls('thread rose display', [roseDisplay.body, roseDisplay.originalBody]);
+
+check(
+  'thread: connected mailbox is shop',
+  correspondenceSideFromFromHeader('Bez <contact@beseensignshop.com>', ['contact@beseensignshop.com']),
+  'shop',
+);
+check(
+  'thread: Yelp proxy sender is customer',
+  correspondenceSideFromFromHeader(roseFrom, ['contact@beseensignshop.com']),
+  'customer',
+);
+
+const t0 = new Date('2026-09-01T12:00:00Z');
+const t1 = new Date('2026-09-02T12:00:00Z');
+const t2 = new Date('2026-09-03T12:00:00Z');
+const thread = buildCorrespondenceThread({
+  shopMailboxEmails: ['contact@beseensignshop.com'],
+  messages: [
+    {
+      id: 'm2',
+      gmailMessageId: 'g2',
+      subject: 'Re: wrap',
+      fromAddr: 'Be Seen <contact@beseensignshop.com>',
+      toAddr: 'jane@example.com',
+      date: t2,
+      snippet: 'We can do Friday.',
+      createdAt: t2,
+      attachments: [],
+    },
+    {
+      id: 'm1',
+      gmailMessageId: 'g1',
+      subject: roseSubjectLine,
+      fromAddr: roseFrom,
+      toAddr: 'contact@beseensignshop.com',
+      date: t0,
+      snippet: roseBody,
+      createdAt: t0,
+      attachments: [],
+    },
+  ],
+  activityLogs: [
+    {
+      id: 'a1',
+      eventName: YELP_CORRESPONDENCE_EVENT_NAME,
+      message: formatYelpCorrespondenceActivityMessage(larryFollowUpSubject),
+      metadata: { gmailMessageId: 'g1', subject: larryFollowUpSubject },
+      createdAt: t1,
+    },
+    {
+      id: 'a2',
+      eventName: YELP_CORRESPONDENCE_EVENT_NAME,
+      message: formatYelpCorrespondenceActivityMessage(larryFollowUpSubject),
+      metadata: { gmailMessageId: 'g-only-activity', subject: larryFollowUpSubject },
+      createdAt: t1,
+    },
+    {
+      id: 'a3',
+      eventName: 'gmail.thread_synced',
+      message: 'Synced',
+      metadata: null,
+      createdAt: t2,
+    },
+  ],
+});
+check(
+  'thread: Gmail plus unmatched Yelp activity, oldest first',
+  thread.map((item) => item.id),
+  ['gmail:m1', 'yelp:a2', 'gmail:m2'],
+);
+check('thread: matching Yelp activity is not duplicated', thread.length, 3);
+check('thread: first bubble is customer', thread[0]?.side, 'customer');
+check('thread: shop reply sits last', thread[2]?.side, 'shop');
+check('thread: unmatched follow-up is Yelp channel', thread[1]?.channel, 'yelp');
+check('thread: rose bubble has no stay-eligible nag', thread[0]?.body.includes('stay eligible'), false);
+assertNoUnsafeUrls(
+  'thread bodies',
+  thread.flatMap((item) => [item.body, item.originalBody]),
 );
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);

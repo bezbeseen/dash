@@ -25,11 +25,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const u = postActionRedirect(req, jobId, `/dashboard/jobs/${jobId}`);
     u.searchParams.set('gmail_synced', '1');
+    u.hash = 'ticket-correspondence';
     return NextResponse.redirect(u);
   } catch (e) {
     const msg = e instanceof Error ? encodeURIComponent(e.message) : 'sync_failed';
     const u = postActionRedirect(req, jobId, `/dashboard/jobs/${jobId}`);
     u.searchParams.set('gmail_sync_error', msg);
+    u.hash = 'ticket-gmail';
     return NextResponse.redirect(u);
   }
 }

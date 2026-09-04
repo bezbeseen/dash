@@ -21,8 +21,8 @@ export function TicketLinkedEmailsSection({ sectionId, jobId, links, emailError 
       <h2 className="detail-section-title">Seed email (Gmail)</h2>
       <p className="meta ticket-doc-note">
         <strong>Bookmark only:</strong> paste a Gmail link (and optional subject/from) so the team can open the same
-        thread in a click. Nothing here talks to Google — use <strong>Gmail on this ticket</strong> above to sync
-        messages into Dash.
+        thread in a click. Nothing here talks to Google — read synced mail in <strong>Correspondence</strong>,
+        and use <strong>Gmail on this ticket</strong> (Advanced) to find or sync a thread.
       </p>
       {emailError ? (
         <p className="board-toast board-toast-error" style={{ marginBottom: 12 }}>
