@@ -40,33 +40,6 @@ export type ParsedYelpLeadEmail = {
 
 const YELP_SENDER = /(^|[@.])yelp\.com$/i;
 
-/** Subject/body markers that distinguish lead mail from ad receipts, reviews and newsletters. */
-const LEAD_SIGNALS = [
-  /request(?:ed)?\s+a\s+quote/i,
-  /quote\s+request/i,
-  /new\s+lead/i,
-  /sent\s+you\s+a\s+(?:new\s+)?message/i,
-  /new\s+message/i,
-  /responded\s+to\s+your\s+(?:message|quote)/i,
-  /wants\s+a\s+quote/i,
-  /is\s+interested\s+in/i,
-  /replied\s+to\s+your/i,
-  /you\s+have\s+a\s+new/i,
-];
-
-/** Mail from Yelp that is definitely not a customer lead. */
-const NON_LEAD_SIGNALS = [
-  /your\s+(?:ad|advertising|campaign)\s+(?:report|summary|performance|receipt|invoice)/i,
-  /payment\s+(?:receipt|confirmation|failed)/i,
-  /your\s+invoice/i,
-  /new\s+review/i,
-  /weekly\s+(?:summary|report|digest)/i,
-  /monthly\s+(?:summary|report|digest)/i,
-  /password/i,
-  /verify\s+your\s+email/i,
-  /billing/i,
-];
-
 /**
  * True for Yelp's per-lead reply proxy addresses, which stand in for the consumer.
  * Yelp's own notification senders live on yelp.com too and must not be mistaken for a customer.
@@ -85,12 +58,6 @@ export function senderIsYelp(fromHeader: string): boolean {
   const addr = (m ? m[1] : fromHeader).trim().toLowerCase();
   const domain = addr.split('@').pop() ?? '';
   return YELP_SENDER.test(domain);
-}
-
-export function looksLikeYelpLeadEmail(subject: string, body: string): boolean {
-  const haystack = `${subject}\n${body.slice(0, 4000)}`;
-  if (NON_LEAD_SIGNALS.some((re) => re.test(subject))) return false;
-  return LEAD_SIGNALS.some((re) => re.test(haystack));
 }
 
 /**
@@ -269,16 +236,26 @@ function extractCustomerName(subject: string, body: string): string | null {
   return fromBody ? tidyCustomerName(fromBody) : null;
 }
 
+/** Drops wrapping punctuation the number was typed inside, e.g. "Best, Mozhgan (555…)". */
+function tidyPhone(candidate: string): string {
+  let out = candidate.trim();
+  if (!out.includes(')')) out = out.replace(/^\(+/, '');
+  if (!out.includes('(')) out = out.replace(/\)+$/, '');
+  return out.replace(/^[\s.,;:]+|[\s.,;:]+$/g, '');
+}
+
 function extractPhone(body: string): string | null {
   const labelled = firstMatch(body, [
     /^\s*(?:phone|phone\s*number|mobile|tel|telephone|contact\s*number)\s*[:\-]\s*(.+?)\s*$/im,
   ]);
   const candidate =
-    labelled ?? /(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/.exec(body)?.[0] ?? null;
+    labelled ??
+    /(?:\+?1[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}/.exec(body)?.[0] ??
+    null;
   if (!candidate) return null;
   const digits = candidate.replace(/\D/g, '');
   if (digits.length < 10 || digits.length > 15) return null;
-  return candidate.trim().slice(0, 80);
+  return tidyPhone(candidate).slice(0, 80);
 }
 
 function extractEmail(body: string): string | null {

@@ -13,6 +13,9 @@ import {
   normalizePhoneDigits,
   type InboundPhoneRule,
 } from '@/lib/domain/inbound-phone-rules';
+import { isShopPlaceholderName } from '@/lib/domain/shop-name';
+
+export { isShopPlaceholderName };
 
 const GENERIC_PROJECT_NAMES = new Set(
   [
@@ -23,31 +26,6 @@ const GENERIC_PROJECT_NAMES = new Set(
     'voice call',
   ].map((s) => s.toLowerCase()),
 );
-
-const DEFAULT_SHOP_NAME_PATTERNS = [
-  'beseen',
-  'beseenprint',
-  'beseenprintsignanddesign',
-  'beseenprintsign',
-  'printsignanddesign',
-];
-
-function shopNamePatterns(): string[] {
-  const raw = process.env.INBOUND_SHOP_NAME_PATTERNS?.trim();
-  if (!raw) return DEFAULT_SHOP_NAME_PATTERNS;
-  return raw
-    .split(',')
-    .map((s) => s.toLowerCase().replace(/[^a-z0-9]/g, ''))
-    .filter(Boolean);
-}
-
-export function isShopPlaceholderName(name: string | null | undefined): boolean {
-  const n = name?.trim();
-  if (!n) return false;
-  const compact = n.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (!compact) return false;
-  return shopNamePatterns().some((p) => compact.includes(p) || p.includes(compact));
-}
 
 function isGenericProjectLabel(name: string | null | undefined): boolean {
   const n = name?.trim().toLowerCase();

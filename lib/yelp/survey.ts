@@ -67,7 +67,11 @@ export function parseYelpSurveyPairsFromText(
   for (const raw of text.split('\n')) {
     const line = raw.trim();
 
-    if (looksLikeSurveyQuestion(line)) {
+    // A line directly under an unanswered question is that answer, even when it ends in
+    // "?" — customers reply to "any other details" with questions of their own, and Yelp
+    // gives no other marker to tell the two apart.
+    const awaitingAnswer = current !== null && current.answers.length === 0;
+    if (!awaitingAnswer && looksLikeSurveyQuestion(line)) {
       current = { question: line, answers: [] };
       pairs.push(current);
       continue;
@@ -85,9 +89,33 @@ export function parseYelpSurveyPairsFromText(
     current.answers.push(line);
   }
 
-  return pairs
-    .map((p) => ({ question: p.question, answers: p.answers.filter(Boolean) }))
-    .filter((p) => p.answers.length > 0);
+  return mergeDuplicateQuestions(
+    pairs
+      .map((p) => ({ question: p.question, answers: p.answers.filter(Boolean) }))
+      .filter((p) => p.answers.length > 0),
+  );
+}
+
+/**
+ * Yelp sometimes renders the free-text question in its own block above the questionnaire
+ * and again inside it, so the same question can appear twice in one body.
+ */
+function mergeDuplicateQuestions(pairs: YelpSurveyPair[]): YelpSurveyPair[] {
+  const byQuestion = new Map<string, YelpSurveyPair>();
+  for (const pair of pairs) {
+    const key = normalizeMarker(pair.question);
+    const existing = byQuestion.get(key);
+    if (!existing) {
+      byQuestion.set(key, pair);
+      continue;
+    }
+    for (const answer of pair.answers) {
+      if (!existing.answers.some((a) => normalizeMarker(a) === normalizeMarker(answer))) {
+        existing.answers.push(answer);
+      }
+    }
+  }
+  return [...byQuestion.values()];
 }
 
 /** Matches the Leads API layout: a blank line, the question, then bulleted answers. */

@@ -11,12 +11,12 @@ import { prisma } from '@/lib/db/prisma';
 import { extractGmailMessageText, gmailHeader } from '@/lib/gmail/message-text';
 import { getGmailOAuth2ClientForSendMailbox } from '@/lib/gmail/tokens-db';
 import { resolveYelpLeadMailboxState, type YelpMailboxState } from '@/lib/yelp/lead-mailbox';
+import { parseYelpLeadEmail, senderIsYelp, type ParsedYelpLeadEmail } from '@/lib/yelp/lead-email';
 import {
-  looksLikeYelpLeadEmail,
-  parseYelpLeadEmail,
-  senderIsYelp,
-  type ParsedYelpLeadEmail,
-} from '@/lib/yelp/lead-email';
+  classifyYelpLeadEmail,
+  resolveYelpOwnIdentity,
+  type YelpRejectionCategory,
+} from '@/lib/yelp/lead-classify';
 import { summarizeYelpScan, type YelpEmailOutcome, type YelpScanCounts } from '@/lib/yelp/scan-summary';
 import {
   resolveYelpScanLimits,
@@ -34,6 +34,8 @@ export type YelpEmailCandidate = {
   from: string;
   receivedAt: string | null;
   outcome: YelpEmailOutcome;
+  /** Why a non-lead was binned, so the preview explains itself. */
+  rejectionCategory: YelpRejectionCategory | null;
   /** Human-readable detail behind the outcome; null when the lead was imported cleanly. */
   skipReason: string | null;
   parsed: ParsedYelpLeadEmail | null;
@@ -97,6 +99,8 @@ export async function scanYelpLeadEmails(opts: {
   }
   const mailboxEmail = mailboxState.mailbox;
 
+  const identity = resolveYelpOwnIdentity(mailboxEmail);
+
   const auth = await getGmailOAuth2ClientForSendMailbox(mailboxEmail);
   const gmail = google.gmail({ version: 'v1', auth });
   const query = `from:yelp.com newer_than:${lookbackDays}d`;
@@ -156,6 +160,7 @@ export async function scanYelpLeadEmails(opts: {
           from: '',
           receivedAt: null,
           outcome: 'fetch_failed',
+          rejectionCategory: null,
           skipReason: `fetch failed: ${item.error ?? 'unknown'}`,
           parsed: null,
           existingJobId: null,
@@ -184,17 +189,20 @@ export async function scanYelpLeadEmails(opts: {
         candidates.push({
           ...base,
           outcome: 'not_a_lead',
+          rejectionCategory: 'not_yelp_sender',
           skipReason: 'sender is not yelp.com',
           parsed: null,
           existingJobId: null,
         });
         continue;
       }
-      if (!looksLikeYelpLeadEmail(subject, bodyText)) {
+      const verdict = classifyYelpLeadEmail({ subject, body: bodyText, from, identity });
+      if (!verdict.isLead) {
         candidates.push({
           ...base,
           outcome: 'not_a_lead',
-          skipReason: 'no lead wording (looks like a report, review or receipt)',
+          rejectionCategory: verdict.category,
+          skipReason: verdict.reason,
           parsed: null,
           existingJobId: null,
         });
@@ -214,6 +222,7 @@ export async function scanYelpLeadEmails(opts: {
         candidates.push({
           ...base,
           outcome: 'already_imported',
+          rejectionCategory: null,
           skipReason: 'already imported',
           parsed,
           existingJobId,
@@ -224,6 +233,7 @@ export async function scanYelpLeadEmails(opts: {
         candidates.push({
           ...base,
           outcome: 'new_lead_preview',
+          rejectionCategory: null,
           skipReason: 'dry run: no ticket written',
           parsed,
           existingJobId: null,
@@ -276,13 +286,21 @@ export async function scanYelpLeadEmails(opts: {
         }
 
         createdJobIds.push(job.id);
-        candidates.push({ ...base, outcome: 'ticket_created', skipReason: null, parsed, existingJobId: job.id });
+        candidates.push({
+          ...base,
+          outcome: 'ticket_created',
+          rejectionCategory: null,
+          skipReason: null,
+          parsed,
+          existingJobId: job.id,
+        });
       } catch (e) {
         // A concurrent scan may have claimed the same yelpLeadId (unique column).
         const msg = e instanceof Error ? e.message : String(e);
         candidates.push({
           ...base,
           outcome: 'create_failed',
+          rejectionCategory: null,
           skipReason: `create failed: ${msg.slice(0, 200)}`,
           parsed,
           existingJobId: null,

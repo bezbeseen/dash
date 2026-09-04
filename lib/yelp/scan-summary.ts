@@ -18,6 +18,8 @@ export type YelpEmailOutcome =
   /** A new lead whose ticket insert failed. */
   | 'create_failed';
 
+import type { YelpRejectionCategory } from '@/lib/yelp/lead-classify';
+
 export type YelpScanCounts = {
   /** Yelp messages the scan looked at. Equals the sum of the outcome buckets. */
   messagesExamined: number;
@@ -25,6 +27,8 @@ export type YelpScanCounts = {
   leadEmailsFound: number;
   /** Messages from Yelp that were not leads. */
   rejectedNotLeads: number;
+  /** Why they were not leads, so a rejection never has to be guessed at. */
+  rejectedByReason: Record<YelpRejectionCategory, number>;
   /** Leads that already had a ticket. */
   alreadyImported: number;
   /** Leads with no ticket yet. In a dry run these are the ones an import would create. */
@@ -37,8 +41,26 @@ export type YelpScanCounts = {
   createFailed: number;
 };
 
-export function summarizeYelpScan(items: { outcome: YelpEmailOutcome }[]): YelpScanCounts {
+const REJECTION_CATEGORIES: YelpRejectionCategory[] = [
+  'not_yelp_sender',
+  'consumer_marketing',
+  'reply_to_our_own_request',
+  'own_business_reply',
+  'own_account_request',
+  'not_lead_wording',
+];
+
+export function summarizeYelpScan(
+  items: { outcome: YelpEmailOutcome; rejectionCategory?: YelpRejectionCategory | null }[],
+): YelpScanCounts {
   const tally = (outcome: YelpEmailOutcome) => items.filter((i) => i.outcome === outcome).length;
+
+  const rejectedByReason = Object.fromEntries(
+    REJECTION_CATEGORIES.map((category) => [
+      category,
+      items.filter((i) => i.outcome === 'not_a_lead' && i.rejectionCategory === category).length,
+    ]),
+  ) as Record<YelpRejectionCategory, number>;
 
   const alreadyImported = tally('already_imported');
   const preview = tally('new_lead_preview');
@@ -50,6 +72,7 @@ export function summarizeYelpScan(items: { outcome: YelpEmailOutcome }[]): YelpS
     messagesExamined: items.length,
     leadEmailsFound: alreadyImported + newLeadsFound,
     rejectedNotLeads: tally('not_a_lead'),
+    rejectedByReason,
     alreadyImported,
     newLeadsFound,
     ticketsCreated: created,

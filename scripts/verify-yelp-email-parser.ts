@@ -7,10 +7,15 @@ import { htmlToPlainText } from '../lib/gmail/message-text';
 import {
   cleanYelpEmailBody,
   extractYelpConversationId,
-  looksLikeYelpLeadEmail,
   parseYelpLeadEmail,
   senderIsYelp,
 } from '../lib/yelp/lead-email';
+import {
+  classifyYelpLeadEmail,
+  looksLikeYelpLeadEmail,
+  resolveYelpOwnIdentity,
+  type YelpOwnIdentity,
+} from '../lib/yelp/lead-classify';
 import { buildYelpLeadProjectDescription } from '../lib/yelp/leads-webhook';
 import { defaultMaxMessagesForLookback, resolveYelpScanLimits } from '../lib/yelp/scan-limits';
 import { summarizeYelpScan, type YelpEmailOutcome } from '../lib/yelp/scan-summary';
@@ -472,6 +477,114 @@ check('terminator: contiguous multi-line answer kept', wrapped.survey[0]?.answer
   'and one small window decal',
 ]);
 
+/**
+ * Layout variant: the free-text question sits under the heading, detached from the main
+ * questionnaire, and the customer's answer is itself a question — which used to be read
+ * as the next question and dropped, losing the whole substance of the lead.
+ */
+const deborah = parseYelpLeadEmail({
+  subject: yelpSubject('Deborah Grant'),
+  from: yelpFrom('dd11ee22ff33aa44bb55cc66dd77ee88'),
+  body: `You have a new signmaking request.
+
+Are there any other details you'd like to share?
+
+do you make and install window clings?
+
+Deborah Grant
+0
+0
+0
+3 hours
+100%
+© 2026 | Yelp Inc, 350 Mission Street, San Francisco, CA 94105, USA | business.yelp.com
+`,
+  gmailThreadId: '19d8f8971915d31b',
+  receivedAt: null,
+});
+check('detached: question-shaped answer is captured', deborah.customerNotes, 'do you make and install window clings?');
+check('detached: survey pair parsed', deborah.survey, [
+  { question: "Are there any other details you'd like to share?", answers: ['do you make and install window clings?'] },
+]);
+check('detached: customer name kept', deborah.customerName, 'Deborah Grant');
+check('detached: job type still parsed', deborah.jobType, 'signmaking');
+check(
+  'detached: footer stays out of the answers',
+  /Yelp Inc|^\d+$|100%|3 hours/m.test(deborah.survey.flatMap((p) => p.answers).join('\n')),
+  false,
+);
+check(
+  'detached: customer notes shown in description',
+  (deborah.projectDescription ?? '').includes('Customer notes:\ndo you make and install window clings?'),
+  true,
+);
+
+// Same shape with a one-word question as the answer.
+const consultation = parseYelpLeadEmail({
+  subject: yelpSubject('Behzaad M.'),
+  from: yelpFrom('ee22ff3344aa5566bb7788cc99dd00ee'),
+  body: `You have a new signmaking request.
+
+Are there any other details you'd like to share?
+
+Consultation?
+
+Behzaad M.
+`,
+  gmailThreadId: 'gt10',
+  receivedAt: null,
+});
+check('detached: one-word question answer kept', consultation.customerNotes, 'Consultation?');
+
+// A detached pair plus the contiguous run: both are collected, duplicates merged once.
+const bothRuns = parseYelpLeadEmail({
+  subject: yelpSubject('Priya R.'),
+  from: yelpFrom('ff3344aa5566bb7788cc99dd00ee11ff'),
+  body: `You have a new sign printing request.
+
+Are there any other details you'd like to share?
+
+can you rush this?
+
+Priya requested a quote from Be Seen Print Sign and Design for a sign printing.
+
+What size banner do you need?
+36" x 48"
+Are there any other details you'd like to share?
+can you rush this?
+In what location do you need the service?
+95131
+
+Priya R.
+0
+0
+0
+`,
+  gmailThreadId: 'gt11',
+  receivedAt: null,
+});
+check('detached: both runs merged in order', bothRuns.survey.map((p) => p.question), [
+  "Are there any other details you'd like to share?",
+  'What size banner do you need?',
+  'In what location do you need the service?',
+]);
+check('detached: duplicate question keeps one answer', bothRuns.survey[0]?.answers, ['can you rush this?']);
+check('detached: zip still terminated cleanly', bothRuns.survey.at(-1)?.answers, ['95131']);
+
+// ---- phone punctuation
+const wrappedPhone = parseYelpLeadEmail({
+  subject: yelpSubject('Mozhgan'),
+  from: yelpFrom('aa5566bb7788cc99dd00ee11ff2233aa'),
+  body: `Mozhgan requested a quote from Be Seen Print Sign and Design for a signmaking.
+
+Are there any other details you'd like to share?
+Please text me. Best, Mozhgan (5405583727)
+`,
+  gmailThreadId: '19e8fd9b33af2386',
+  receivedAt: null,
+});
+check('phone: unbalanced wrapping paren stripped', wrappedPhone.phone, '5405583727');
+
 // ---- the other observed job types, plus one Yelp has not sent yet
 const jobTypeCases: [string, string, string][] = [
   ['signmaking', 'signmaking', 'Bob F.'],
@@ -674,6 +787,122 @@ const dryRun = summarizeYelpScan([
 check('counts: dry run reports 9 rejected, not 11 "skipped"', dryRun.rejectedNotLeads, 9);
 check('counts: dry run creates nothing', dryRun.ticketsCreated, 0);
 check('counts: dry run new leads are the importable ones', dryRun.newLeadsFound, 11);
+
+// ---------------------------------------------------------------------------
+// Classifier: Yelp routes four kinds of mail through the same reply proxy.
+// ---------------------------------------------------------------------------
+const identity: YelpOwnIdentity = resolveYelpOwnIdentity('bez@beseensignshop.com', {
+  YELP_OWN_ACCOUNT_NAMES: 'behzaad',
+});
+check('identity: shop patterns derived from config and mailbox domain', identity.shopNamePatterns.includes('beseensignshop'), true);
+check('identity: account names include the mailbox local part', identity.accountNames.includes('bez'), true);
+
+function classify(subject: string, body: string, from = 'Yelp <reply+aa11bb22cc33dd44ee55ff6677889900@messaging.yelp.com>') {
+  const verdict = classifyYelpLeadEmail({ subject, body, from, identity });
+  return verdict.isLead ? 'lead' : verdict.category;
+}
+
+// (a) Braze consumer marketing aimed at the account holder.
+check(
+  'classify: braze campaign to the account holder',
+  classify(
+    'Oh, by the way Behzaad—we\u2019ve got pros for everything',
+    `What can you request a quote for?
+
+---------------------------------
+
+Find a pro: https://www.yelp.com/search?utm_source=Braze_consumer_reengagement&utm_medium=email`,
+    'Yelp <no-reply@mail.yelp.com>',
+  ),
+  'consumer_marketing',
+);
+check(
+  'classify: braze campaign recognised by sender alone',
+  classify(
+    'Why not tackle another project, Behzaad?',
+    `What's next on the list?
+
+No time like the
+present,
+Behzaad.
+
+https://ablink.email.yelp.com/ss/c/abc123`,
+    'Yelp <no-reply@mail.yelp.com>',
+  ),
+  'consumer_marketing',
+);
+
+// (b) Another business replying to a quote we requested: we are the customer.
+for (const shop of ['Docs and Images', 'Minuteman Press -Santa Clara', "Sam's Signs"]) {
+  check(
+    `classify: reply from ${shop}`,
+    classify(
+      `New message from ${shop}.`,
+      `Nel from ${shop} replied to you
+
+Thank you for reaching out. While we do not offer standalone consulting services...
+
+View message on Yelp`,
+    ),
+    'reply_to_our_own_request',
+  );
+}
+
+// (c) Our own shop replying, and our own account submitting a request.
+check(
+  'classify: our own shop replying',
+  classify(
+    'New message from Be Seen Print Sign and Design.',
+    `Marc from Be Seen Print Sign and Design replied to you
+
+Unable to service
+
+View message on Yelp`,
+  ),
+  'own_business_reply',
+);
+check(
+  'classify: our own account submitting a request',
+  classify(
+    yelpSubject('Behzaad M.'),
+    `You have a new signmaking request.
+
+Behzaad requested a quote from Be Seen Print Sign and Design for a signmaking.
+
+Are there any other details you'd like to share?
+
+Consultation?
+
+Behzaad M.`,
+  ),
+  'own_account_request',
+);
+check(
+  'classify: own-account detection needs the configured name',
+  classifyYelpLeadEmail({
+    subject: yelpSubject('Behzaad M.'),
+    body: 'Behzaad requested a quote from Be Seen Print Sign and Design for a signmaking.',
+    identity: resolveYelpOwnIdentity('bez@beseensignshop.com', {}),
+  }).isLead,
+  true,
+);
+
+// Genuine leads must survive all of it.
+check('classify: genuine raq lead', classify(roseSubjectLine, roseBody), 'lead');
+check(
+  'classify: a real customer follow-up is still a lead',
+  classify('Rose L. sent you a message', 'Rose L. sent you a new message. Can you do it by Friday?'),
+  'lead',
+);
+check(
+  'classify: a customer named like our shop pattern is not mistaken for us',
+  classify(
+    yelpSubject('Seenu B.'),
+    'Seenu requested a quote from Be Seen Print Sign and Design for a banner printing.',
+  ),
+  'lead',
+);
+check('classify: legacy helper still agrees on a lead', looksLikeYelpLeadEmail(roseSubjectLine, roseBody), true);
 
 // ---- scan limits: a backfill must not stop at the routine default
 const routine = resolveYelpScanLimits({});
