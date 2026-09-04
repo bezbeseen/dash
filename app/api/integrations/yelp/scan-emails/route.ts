@@ -66,9 +66,10 @@ export async function POST(req: NextRequest) {
     }
     const q = new URLSearchParams({
       yelp_scan: '1',
-      yelp_created: String(result.createdJobIds.length),
-      yelp_matched: String(result.matched),
-      yelp_scanned: String(result.scanned),
+      yelp_created: String(result.counts.ticketsCreated),
+      yelp_leads: String(result.counts.leadEmailsFound),
+      yelp_existing: String(result.counts.alreadyImported),
+      yelp_examined: String(result.counts.messagesExamined),
       yelp_truncated: result.truncated ? '1' : '0',
     });
     return settings(q.toString());

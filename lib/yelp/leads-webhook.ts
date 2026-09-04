@@ -1,5 +1,6 @@
 import { sanitizeJobProjectDescription } from '@/lib/domain/job-display';
 import { formatYelpSurveyLines, type YelpSurveyPair } from '@/lib/yelp/survey';
+import { buildYelpBizThreadUrl, redactDestructiveYelpUrls, safeYelpUrl } from '@/lib/yelp/url';
 
 export type YelpLeadWebhookUpdate = {
   event_type?: string;
@@ -50,11 +51,15 @@ export function buildYelpLeadProjectDescription(
   const lines: string[] = [];
   lines.push('Source: Yelp (Leads / Request a Quote)');
 
+  // Yelp's documented reply deep link; the thread URL is the older scheme it will replace.
   const bid = lead.business_id;
   const conv = lead.conversation_id;
-  if (typeof bid === 'string' && typeof conv === 'string') {
-    lines.push(`Inbox: https://biz.yelp.com/messaging/${encodeURIComponent(bid)}/thread/${encodeURIComponent(conv)}`);
-  }
+  const inbox =
+    safeYelpUrl(typeof lead.link_to_reply_in_yelp === 'string' ? lead.link_to_reply_in_yelp : null) ??
+    (typeof bid === 'string' && typeof conv === 'string'
+      ? safeYelpUrl(buildYelpBizThreadUrl(bid, conv))
+      : null);
+  if (inbox) lines.push(`Inbox: ${inbox}`);
 
   const phone =
     typeof lead.phone_number === 'string'
@@ -109,7 +114,7 @@ export function buildYelpLeadProjectDescription(
     }
   }
 
-  const merged = lines.join('\n').trim();
+  const merged = redactDestructiveYelpUrls(lines.join('\n').trim());
   const projectDescription = sanitizeJobProjectDescription(
     `Yelp · ${firstJob}`,
     merged.length > 0 ? merged : null,

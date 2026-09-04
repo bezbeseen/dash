@@ -32,8 +32,10 @@ type SettingsPageProps = {
     sync_warn?: string;
     yelp_scan?: string;
     yelp_created?: string;
-    yelp_matched?: string;
-    yelp_scanned?: string;
+    yelp_leads?: string;
+    yelp_existing?: string;
+    yelp_examined?: string;
+    yelp_truncated?: string;
     yelp_scan_error?: string;
     thread_match?: string;
     thread_linked?: string;

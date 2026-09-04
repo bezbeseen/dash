@@ -17,6 +17,7 @@ import {
   senderIsYelp,
   type ParsedYelpLeadEmail,
 } from '@/lib/yelp/lead-email';
+import { summarizeYelpScan, type YelpEmailOutcome, type YelpScanCounts } from '@/lib/yelp/scan-summary';
 
 export const YELP_SCAN_DEFAULT_LOOKBACK_DAYS = 14;
 export const YELP_SCAN_DEFAULT_MAX_MESSAGES = 20;
@@ -34,7 +35,8 @@ export type YelpEmailCandidate = {
   subject: string;
   from: string;
   receivedAt: string | null;
-  matched: boolean;
+  outcome: YelpEmailOutcome;
+  /** Human-readable detail behind the outcome; null when the lead was imported cleanly. */
   skipReason: string | null;
   parsed: ParsedYelpLeadEmail | null;
   existingJobId: string | null;
@@ -55,10 +57,8 @@ export type YelpEmailScanResult = {
   /** Which setting chose this mailbox, so results are self-describing. */
   mailbox: YelpMailboxState;
   query: string;
-  scanned: number;
-  matched: number;
+  counts: YelpScanCounts;
   createdJobIds: string[];
-  skipped: number;
   dryRun: boolean;
   limits: YelpScanLimits;
   /** True when Gmail had more matching mail than this scan looked at. */
@@ -177,7 +177,7 @@ export async function scanYelpLeadEmails(opts: {
           subject: '',
           from: '',
           receivedAt: null,
-          matched: false,
+          outcome: 'fetch_failed',
           skipReason: `fetch failed: ${item.error ?? 'unknown'}`,
           parsed: null,
           existingJobId: null,
@@ -203,13 +203,19 @@ export async function scanYelpLeadEmails(opts: {
       };
 
       if (!senderIsYelp(from)) {
-        candidates.push({ ...base, matched: false, skipReason: 'sender is not yelp.com', parsed: null, existingJobId: null });
+        candidates.push({
+          ...base,
+          outcome: 'not_a_lead',
+          skipReason: 'sender is not yelp.com',
+          parsed: null,
+          existingJobId: null,
+        });
         continue;
       }
       if (!looksLikeYelpLeadEmail(subject, bodyText)) {
         candidates.push({
           ...base,
-          matched: false,
+          outcome: 'not_a_lead',
           skipReason: 'no lead wording (looks like a report, review or receipt)',
           parsed: null,
           existingJobId: null,
@@ -227,11 +233,23 @@ export async function scanYelpLeadEmails(opts: {
       const existingJobId = await findExistingJobId(parsed);
 
       if (existingJobId) {
-        candidates.push({ ...base, matched: true, skipReason: 'already imported', parsed, existingJobId });
+        candidates.push({
+          ...base,
+          outcome: 'already_imported',
+          skipReason: 'already imported',
+          parsed,
+          existingJobId,
+        });
         continue;
       }
       if (dryRun) {
-        candidates.push({ ...base, matched: true, skipReason: null, parsed, existingJobId: null });
+        candidates.push({
+          ...base,
+          outcome: 'new_lead_preview',
+          skipReason: 'dry run: no ticket written',
+          parsed,
+          existingJobId: null,
+        });
         continue;
       }
 
@@ -280,13 +298,13 @@ export async function scanYelpLeadEmails(opts: {
         }
 
         createdJobIds.push(job.id);
-        candidates.push({ ...base, matched: true, skipReason: null, parsed, existingJobId: job.id });
+        candidates.push({ ...base, outcome: 'ticket_created', skipReason: null, parsed, existingJobId: job.id });
       } catch (e) {
         // A concurrent scan may have claimed the same yelpLeadId (unique column).
         const msg = e instanceof Error ? e.message : String(e);
         candidates.push({
           ...base,
-          matched: true,
+          outcome: 'create_failed',
           skipReason: `create failed: ${msg.slice(0, 200)}`,
           parsed,
           existingJobId: null,
@@ -295,7 +313,7 @@ export async function scanYelpLeadEmails(opts: {
     }
   }
 
-  const matched = candidates.filter((c) => c.matched).length;
+  const counts = summarizeYelpScan(candidates);
   const hitMessageCap = candidates.length >= maxMessages;
   const truncated = morePagesAvailable || hitMessageCap;
   const truncationReason = !truncated
@@ -308,10 +326,8 @@ export async function scanYelpLeadEmails(opts: {
     mailboxEmail,
     mailbox: mailboxState,
     query,
-    scanned: candidates.length,
-    matched,
+    counts,
     createdJobIds,
-    skipped: matched - createdJobIds.length,
     dryRun,
     limits,
     truncated,

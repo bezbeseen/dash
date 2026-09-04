@@ -10,8 +10,10 @@ import {
   looksLikeYelpLeadEmail,
   parseYelpLeadEmail,
   senderIsYelp,
-  trimUrlPunctuation,
 } from '../lib/yelp/lead-email';
+import { buildYelpLeadProjectDescription } from '../lib/yelp/leads-webhook';
+import { summarizeYelpScan, type YelpEmailOutcome } from '../lib/yelp/scan-summary';
+import { safeYelpUrl, YELP_BIZ_INBOX_URL } from '../lib/yelp/url';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -244,11 +246,83 @@ check('prod: customer name keeps last initial', rose.customerName, 'Rose L.');
 check('prod: job type from heading', rose.jobType, 'sign printing');
 check('prod: project name', rose.projectName, 'Yelp · sign printing');
 
-// BUG 3 — no trailing paren on the extracted URL.
-check('prod: thread url has no trailing paren', /[).,;]$/.test(rose.threadUrl ?? ''), false);
-check('prod: thread url keeps its query', (rose.threadUrl ?? '').endsWith('utm_campaign=Aug-30-2026'), true);
+// BUG 3 / URL safety — nothing destructive, no trailing paren, no tracking params.
+check('prod: inbox url is the plain biz inbox', rose.threadUrl, YELP_BIZ_INBOX_URL);
+check('prod: conversation id surfaced for finding the thread', rose.conversationId, ROSE_HEX);
+check('prod: conversation id in description', roseDesc.includes(`Yelp conversation id: ${ROSE_HEX}`), true);
 check('prod: broken url not left in description', roseDesc.includes('Aug-30-2026)'), false);
-check('trimUrlPunctuation: strips stacked punctuation', trimUrlPunctuation('https://x.test/a?b=1).'), 'https://x.test/a?b=1');
+check('safeYelpUrl: strips trailing punctuation', safeYelpUrl('https://biz.yelp.com/messaging).'), 'https://biz.yelp.com/messaging');
+check(
+  'safeYelpUrl: strips utm_ and ytl_ params',
+  safeYelpUrl('https://biz.yelp.com/messaging/BIZ/thread/ABC?utm_source=x&ytl_token=abc123&keep=1'),
+  'https://biz.yelp.com/messaging/BIZ/thread/ABC?keep=1',
+);
+check(
+  'safeYelpUrl: drops the only-param case cleanly',
+  safeYelpUrl('https://biz.yelp.com/messaging/BIZ/thread/ABC?utm_campaign=Aug-30-2026'),
+  'https://biz.yelp.com/messaging/BIZ/thread/ABC',
+);
+check(
+  'safeYelpUrl: refuses the autosubmit action endpoint',
+  safeYelpUrl(`https://biz.yelp.com/messaging/mark_as_replied_autosubmit/${ROSE_HEX}?utm_source=x`),
+  null,
+);
+for (const destructive of [
+  'https://biz.yelp.com/messaging/already_replied/abc',
+  'https://biz.yelp.com/messaging/not_interested/abc',
+  'https://biz.yelp.com/messaging/report_conversation/abc',
+  'https://www.yelp.com/one_click/abc',
+  'https://biz.yelp.com/thread/abc?reply_type=auto',
+]) {
+  check(`safeYelpUrl: refuses ${destructive.slice(0, 48)}`, safeYelpUrl(destructive), null);
+}
+
+/**
+ * Safety property: opening a Yelp action URL from a ticket marks the lead replied without
+ * a reply being sent. No stored string may contain one, in either ingest path.
+ */
+const FORBIDDEN_URL_MARKERS = ['mark_as_replied', 'autosubmit', 'reply_type=', 'ytl_', 'utm_'];
+function assertNoUnsafeUrls(label: string, stored: (string | null)[]) {
+  for (const marker of FORBIDDEN_URL_MARKERS) {
+    const offender = stored.find((s) => (s ?? '').toLowerCase().includes(marker));
+    check(`${label}: no "${marker}" in stored output`, offender ?? null, null);
+  }
+}
+assertNoUnsafeUrls('prod fixture', [
+  rose.projectDescription,
+  rose.threadUrl,
+  rose.projectName,
+  rose.customerName,
+  rose.dedupeKey,
+  rose.customerNotes,
+  ...rose.survey.flatMap((p) => [p.question, ...p.answers]),
+]);
+
+// An older template that did carry a real deep link keeps it, minus the tracking noise.
+const deepLinked = parseYelpLeadEmail({
+  subject: yelpSubject('Dana K.'),
+  from: yelpFrom('ab11cd22ef33ab44cd55ef66ab77cd88'),
+  body: `Dana requested a quote from Be Seen Print Sign and Design for a signmaking.
+
+[Reply to Dana on Yelp Biz](https://biz.yelp.com/messaging/oj517fznD2Gw2v5CUUIw_Q/thread/ab11cd22ef33ab44cd55ef66ab77cd88?utm_source=request_a_quote_first_message_v4)`,
+  gmailThreadId: 'gt6',
+  receivedAt: null,
+});
+check(
+  'prod: real deep link kept and de-tracked',
+  deepLinked.threadUrl,
+  'https://biz.yelp.com/messaging/oj517fznD2Gw2v5CUUIw_Q/thread/ab11cd22ef33ab44cd55ef66ab77cd88',
+);
+assertNoUnsafeUrls('deep-linked fixture', [deepLinked.projectDescription, deepLinked.threadUrl]);
+
+// No Yelp messaging link at all: no inbox line invented.
+const noInbox = parseYelpLeadEmail({
+  subject: 'You have a new lead from Marcus T.',
+  body: 'Marcus T. requested a quote for vehicle wraps. Call 480-555-0199.',
+  gmailThreadId: 'threadABC',
+  receivedAt: null,
+});
+check('prod: no inbox url when the email has none', noInbox.threadUrl, null);
 
 // BUG 4 — template garbage is gone.
 check('prod: invisible padding stripped', /[\u00ad\u034f\u200b-\u200f\ufeff]/.test(roseDesc), false);
@@ -419,6 +493,95 @@ check(
   cleanYelpEmailBody('{num_attachments, plural, one {# photo attachment} other {# photo attachments}}\nHello'),
   'Hello',
 );
+
+// ---- Leads API path: same safety property, same questionnaire formatting
+const apiLead = buildYelpLeadProjectDescription(
+  {
+    business_id: 'oj517fznD2Gw2v5CUUIw_Q',
+    conversation_id: ROSE_HEX,
+    link_to_reply_in_yelp:
+      'https://biz.yelp.com/leads_center/VXi7gzRqPKp63X0u6fUtbg/leads/18kPq7GPye-YQ3LyKyAZPw?utm_source=api',
+    user: { display_name: 'Rose L.' },
+    project: {
+      job_names: ['sign printing'],
+      survey_answers: [
+        { question_text: 'How many pages do you need to print?', answer_text: ['100+'] },
+        {
+          question_text: "Are there any other details you'd like to share?",
+          answer_text: ["it's for a stock/crypto seminar/boot camp"],
+        },
+      ],
+    },
+  },
+  [
+    {
+      event_type: 'TEXT',
+      user_type: 'CONSUMER',
+      event_content: {
+        text: `Please confirm here: https://biz.yelp.com/messaging/mark_as_replied_autosubmit/${ROSE_HEX}`,
+      },
+    },
+  ],
+);
+const apiDesc = apiLead.projectDescription ?? '';
+check(
+  'api: prefers link_to_reply_in_yelp, de-tracked',
+  apiDesc.includes('Inbox: https://biz.yelp.com/leads_center/VXi7gzRqPKp63X0u6fUtbg/leads/18kPq7GPye-YQ3LyKyAZPw'),
+  true,
+);
+check('api: action link inside conversation text is redacted', apiDesc.includes('[yelp action link removed]'), true);
+check(
+  'api: questionnaire formatting matches the email path',
+  apiDesc.includes('How many pages do you need to print?\n  • 100+'),
+  true,
+);
+assertNoUnsafeUrls('leads api path', [apiDesc, apiLead.projectName, apiLead.customerName]);
+
+const apiThreadFallback = buildYelpLeadProjectDescription(
+  { business_id: 'BIZ123', conversation_id: 'CONV456', user: { display_name: 'Dana K.' }, project: {} },
+  [],
+);
+check(
+  'api: falls back to the thread deep link',
+  (apiThreadFallback.projectDescription ?? '').includes('Inbox: https://biz.yelp.com/messaging/BIZ123/thread/CONV456'),
+  true,
+);
+
+// ---- honest scan counts
+const outcomes: YelpEmailOutcome[] = [
+  'not_a_lead',
+  'not_a_lead',
+  'not_a_lead',
+  'fetch_failed',
+  'already_imported',
+  'already_imported',
+  'ticket_created',
+  'ticket_created',
+  'create_failed',
+];
+const counts = summarizeYelpScan(outcomes.map((outcome) => ({ outcome })));
+check('counts: messages examined', counts.messagesExamined, 9);
+check('counts: lead emails found', counts.leadEmailsFound, 5);
+check('counts: rejected not leads', counts.rejectedNotLeads, 3);
+check('counts: already imported', counts.alreadyImported, 2);
+check('counts: new leads found', counts.newLeadsFound, 3);
+check('counts: tickets created', counts.ticketsCreated, 2);
+check('counts: fetch failed', counts.fetchFailed, 1);
+check('counts: create failed', counts.createFailed, 1);
+check(
+  'counts: buckets sum to messages examined',
+  counts.leadEmailsFound + counts.rejectedNotLeads + counts.fetchFailed,
+  counts.messagesExamined,
+);
+
+// The dry run the user saw: 20 examined, 11 leads, 9 not leads, 0 tickets written.
+const dryRun = summarizeYelpScan([
+  ...Array.from({ length: 11 }, () => ({ outcome: 'new_lead_preview' as YelpEmailOutcome })),
+  ...Array.from({ length: 9 }, () => ({ outcome: 'not_a_lead' as YelpEmailOutcome })),
+]);
+check('counts: dry run reports 9 rejected, not 11 "skipped"', dryRun.rejectedNotLeads, 9);
+check('counts: dry run creates nothing', dryRun.ticketsCreated, 0);
+check('counts: dry run new leads are the importable ones', dryRun.newLeadsFound, 11);
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

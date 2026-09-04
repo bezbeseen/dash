@@ -85,8 +85,9 @@ export function gbpToastFromQuery(q: {
 export function yelpScanToastFromQuery(q: {
   yelp_scan?: string;
   yelp_created?: string;
-  yelp_matched?: string;
-  yelp_scanned?: string;
+  yelp_leads?: string;
+  yelp_existing?: string;
+  yelp_examined?: string;
   yelp_truncated?: string;
   yelp_scan_error?: string;
 }): { message: string | null; error: string | null } {
@@ -97,14 +98,15 @@ export function yelpScanToastFromQuery(q: {
     return { message: null, error };
   }
   const created = Number.parseInt(q.yelp_created ?? '0', 10) || 0;
-  const matched = Number.parseInt(q.yelp_matched ?? '0', 10) || 0;
-  const scanned = Number.parseInt(q.yelp_scanned ?? '0', 10) || 0;
+  const leads = Number.parseInt(q.yelp_leads ?? '0', 10) || 0;
+  const existing = Number.parseInt(q.yelp_existing ?? '0', 10) || 0;
+  const examined = Number.parseInt(q.yelp_examined ?? '0', 10) || 0;
   const base =
     created > 0
-      ? `Yelp: created ${created} pre-quote ticket${created === 1 ? '' : 's'} from ${matched} lead email${matched === 1 ? '' : 's'}.`
-      : matched > 0
-        ? `Yelp: found ${matched} lead email${matched === 1 ? '' : 's'}, all already imported.`
-        : `Yelp: no lead emails found in the ${scanned} Yelp message${scanned === 1 ? '' : 's'} scanned.`;
+      ? `Yelp: created ${created} pre-quote ticket${created === 1 ? '' : 's'} from ${leads} lead email${leads === 1 ? '' : 's'} (${existing} already had a ticket).`
+      : leads > 0
+        ? `Yelp: found ${leads} lead email${leads === 1 ? '' : 's'}, all of which already had tickets.`
+        : `Yelp: examined ${examined} Yelp message${examined === 1 ? '' : 's'} and none were customer leads.`;
   const message =
     q.yelp_truncated === '1'
       ? `${base} The scan hit its message limit, so older Yelp mail was not read — run it again with a larger max.`

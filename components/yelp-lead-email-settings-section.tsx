@@ -21,7 +21,8 @@ export async function YelpLeadEmailSettingsSection() {
       <p className="small text-body-secondary mb-3">
         Yelp&apos;s Leads API is limited to advertising resellers with a minimum spend, so Dash reads Yelp&apos;s
         &quot;Request a Quote&quot; notification emails from a connected mailbox instead. Each new lead becomes a
-        Requested ticket, deduped so re-scanning is safe.
+        Requested ticket, deduped on Yelp&apos;s conversation id so re-scanning is safe. Every run reports what it
+        examined, how many were customer leads, how many already had tickets and how many tickets it created.
       </p>
 
       <p className="small mb-1">
@@ -69,6 +70,10 @@ export async function YelpLeadEmailSettingsSection() {
         <strong>{YELP_SCAN_MAX_MESSAGES} messages</strong> per run so the scan finishes inside the serverless time
         budget — anything beyond that needs a second run, and the response sets{' '}
         <code className="detail-mono">truncated: true</code> whenever older Yelp mail was left unread.
+      </p>
+      <p className="small text-body-secondary mt-2 mb-0">
+        Tickets link to the Yelp inbox, never to the one-click links in Yelp&apos;s email — those mark a lead as
+        replied without a reply being sent.
       </p>
     </section>
   );

@@ -7,6 +7,7 @@ import {
   parseYelpSurveyPairsFromText,
   type YelpSurveyPair,
 } from '@/lib/yelp/survey';
+import { redactDestructiveYelpUrls, safeYelpUrl, YELP_BIZ_INBOX_URL } from '@/lib/yelp/url';
 
 /**
  * Parses Yelp "new lead / new message" notification emails into pre-quote ticket fields.
@@ -28,6 +29,9 @@ export type ParsedYelpLeadEmail = {
   leadEmail: string | null;
   phone: string | null;
   jobType: string | null;
+  /** Yelp's conversation id, so the right thread is findable from the inbox. */
+  conversationId: string | null;
+  /** Always safe to click: never one of Yelp's one-click action endpoints. */
   threadUrl: string | null;
   serviceZip: string | null;
   survey: YelpSurveyPair[];
@@ -161,11 +165,6 @@ function dropBoilerplate(lines: string[]): string[] {
   return kept;
 }
 
-/** Trailing `)` leaks in from `[label](url)` markup; other punctuation from prose. */
-export function trimUrlPunctuation(url: string): string {
-  return url.replace(/[)\]}>,.;:!'"]+$/, '');
-}
-
 /**
  * Strips Yelp's template chrome so the questionnaire and the customer's own words remain.
  * Runs before any extraction so every field sees the same cleaned text.
@@ -216,19 +215,26 @@ function normalizeConversationId(id: string): string {
   return /^[0-9a-f]+$/i.test(id) ? id.toLowerCase() : id;
 }
 
-export function extractYelpThreadUrl(body: string): string | null {
-  const patterns = [
-    /https?:\/\/[^\s"'<>]*biz\.yelp\.com\/messaging\/[^\s"'<>]*/i,
-    /https?:\/\/[^\s"'<>]*biz\.yelp\.com\/leads[^\s"'<>]*/i,
-  ];
-  for (const re of patterns) {
-    const m = re.exec(body);
-    if (m) {
-      const url = trimUrlPunctuation(m[0]);
-      if (url) return url;
-    }
+/**
+ * Current lead notifications only link to one-click action endpoints, so no URL from the
+ * email can be stored (see lib/yelp/url.ts). Older templates carried a real
+ * `/messaging/<business-id>/thread/<conversation-id>` deep link; use that when present,
+ * otherwise the plain inbox, which the conversation id on the ticket narrows down. The
+ * business id needed to build the deep link ourselves is not in these emails.
+ */
+export function resolveSafeYelpInboxUrl(body: string, conversationId: string | null): string | null {
+  const deepLink = /https?:\/\/[^\s"'<>]*biz\.yelp\.com\/messaging\/[A-Za-z0-9_-]+\/thread\/[^\s"'<>]*/i.exec(
+    body,
+  );
+  const leadsCenter = /https?:\/\/[^\s"'<>]*biz\.yelp\.com\/leads_center\/[^\s"'<>]*/i.exec(body);
+
+  for (const candidate of [deepLink?.[0], leadsCenter?.[0]]) {
+    const safe = safeYelpUrl(candidate);
+    if (safe) return safe;
   }
-  return null;
+
+  const mentionsBizMessaging = /biz\.yelp\.com\/messaging/i.test(body);
+  return conversationId || mentionsBizMessaging ? YELP_BIZ_INBOX_URL : null;
 }
 
 function firstMatch(body: string, patterns: RegExp[]): string | null {
@@ -356,7 +362,7 @@ export function parseYelpLeadEmail(input: {
   const from = input.from ?? '';
 
   const conversationId = extractYelpConversationId(from, body);
-  const threadUrl = extractYelpThreadUrl(body);
+  const threadUrl = resolveSafeYelpInboxUrl(body, conversationId);
   const cleanBody = cleanYelpEmailBody(body);
 
   const survey = parseYelpSurveyPairsFromText(cleanBody);
@@ -378,7 +384,14 @@ export function parseYelpLeadEmail(input: {
   if (serviceLocation) lines.push(`Service location: ${serviceLocation}`);
   if (phone) lines.push(`Phone: ${phone}`);
   if (leadEmail) lines.push(`Reply to: ${leadEmail}`);
-  if (threadUrl) lines.push(`Yelp inbox: ${threadUrl.slice(0, 500)}`);
+  if (threadUrl) {
+    lines.push(
+      threadUrl === YELP_BIZ_INBOX_URL
+        ? `Yelp inbox: ${threadUrl} (open the conversation with the customer's name)`
+        : `Yelp inbox: ${threadUrl.slice(0, 500)}`,
+    );
+  }
+  if (conversationId) lines.push(`Yelp conversation id: ${conversationId}`);
 
   if (customerNotes) {
     lines.push('');
@@ -400,10 +413,14 @@ export function parseYelpLeadEmail(input: {
     dedupeFromYelp: Boolean(conversationId),
     customerName: customerName.slice(0, 512),
     projectName,
-    projectDescription: sanitizeJobProjectDescription(projectName, lines.join('\n').trim()),
+    projectDescription: sanitizeJobProjectDescription(
+      projectName,
+      redactDestructiveYelpUrls(lines.join('\n').trim()),
+    ),
     leadEmail,
     phone,
     jobType,
+    conversationId,
     threadUrl,
     serviceZip,
     survey,
