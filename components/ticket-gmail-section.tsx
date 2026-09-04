@@ -1,8 +1,15 @@
-import type { GmailConnection, GmailSyncedAttachment, GmailSyncedMessage } from '@prisma/client';
+import type { GmailConnection, GmailLinkSource, GmailSyncedAttachment, GmailSyncedMessage } from '@prisma/client';
 import Link from 'next/link';
 import { GmailConnectAnchor } from '@/components/gmail-connect-link';
+import { describeThreadMatchSignal, type StoredThreadSuggestion } from '@/lib/gmail/thread-match';
 
 type Msg = GmailSyncedMessage & { attachments: GmailSyncedAttachment[] };
+
+const LINK_SOURCE_LABEL: Record<GmailLinkSource, string> = {
+  MANUAL: 'pasted by hand',
+  CONFIRMED: 'accepted from a suggestion',
+  AUTO: 'matched automatically',
+};
 
 function fmtDate(d: Date | null) {
   if (!d) return '—';
@@ -32,6 +39,13 @@ type Props = {
   mailboxError?: boolean;
   syncError?: string | null;
   syncedOk?: boolean;
+  linkSource?: GmailLinkSource | null;
+  linkConfidence?: number | null;
+  /** Ranked matches from the last Find email thread run, when nothing was certain enough to attach. */
+  suggestions?: StoredThreadSuggestion[];
+  matchOk?: string | null;
+  matchInfo?: string | null;
+  matchError?: string | null;
 };
 
 const MAX_MAILBOXES = 3;
@@ -50,16 +64,24 @@ export function TicketGmailSection({
   mailboxError,
   syncError,
   syncedOk,
+  linkSource,
+  linkConfidence,
+  suggestions,
+  matchOk,
+  matchInfo,
+  matchError,
 }: Props) {
   const hasMailboxes = connections.length > 0;
   const defaultMailbox = gmailConnectionId ?? connections[0]?.id ?? '';
+  const ranked = suggestions ?? [];
 
   return (
     <section id={sectionId} className="ticket-detail-panel">
       <h2 className="detail-section-title">Gmail on this ticket</h2>
       <p className="meta ticket-doc-note">
-        Connect up to <strong>{MAX_MAILBOXES} Gmail accounts</strong>. Paste a full Gmail conversation URL (or thread ID),
-        pick the mailbox, <strong>Save thread</strong>, then <strong>Sync thread</strong> to download messages + attachments.
+        Connect up to <strong>{MAX_MAILBOXES} Gmail accounts</strong>. <strong>Find email thread</strong> searches them for
+        correspondence with this customer and attaches the thread when there is exactly one clear match; otherwise it lists
+        what it found so you can pick. Pasting a conversation URL by hand still works below.
       </p>
       <p className="meta ticket-doc-note" style={{ marginTop: -6 }}>
         <strong>Not the same as &quot;Seed email&quot; below:</strong> seed is only a quick bookmark + note — it{' '}
@@ -106,6 +128,106 @@ export function TicketGmailSection({
         <p className="board-toast board-toast-ok" style={{ marginBottom: 12 }}>
           Gmail thread synced.
         </p>
+      ) : null}
+      {matchError ? (
+        <p className="board-toast board-toast-error" style={{ marginBottom: 12 }}>
+          {matchError}
+        </p>
+      ) : null}
+      {matchOk ? (
+        <p className="board-toast board-toast-ok" style={{ marginBottom: 12 }}>
+          {matchOk}
+        </p>
+      ) : null}
+      {matchInfo ? (
+        <p className="board-toast" style={{ marginBottom: 12 }}>
+          {matchInfo}
+        </p>
+      ) : null}
+
+      <div className="gmail-auto-match" style={{ marginBottom: 20 }}>
+        <div className="d-flex flex-wrap gap-2 align-items-center">
+          <form action={`/api/jobs/${jobId}/gmail-find-thread`} method="post">
+            <button
+              type="submit"
+              className="btn btn-toolbar"
+              disabled={!hasMailboxes}
+              title={
+                hasMailboxes
+                  ? 'Search the connected mailboxes for this customer and attach the thread if there is only one clear match'
+                  : 'Connect a mailbox first'
+              }
+            >
+              Find email thread
+            </button>
+          </form>
+          <a
+            className="btn btn-toolbar btn-toolbar-muted"
+            href={`/api/jobs/${jobId}/gmail-find-thread`}
+            target="_blank"
+            rel="noreferrer"
+            title="Dry run: shows the searches and the ranking, writes nothing"
+          >
+            Preview matching
+          </a>
+          {gmailThreadId ? (
+            <form action={`/api/jobs/${jobId}/gmail-unlink`} method="post">
+              <button
+                type="submit"
+                className="btn btn-toolbar btn-toolbar-muted"
+                title="Detach the thread and delete the messages synced from it"
+              >
+                Unlink thread
+              </button>
+            </form>
+          ) : null}
+        </div>
+        {gmailThreadId && linkSource ? (
+          <p className="meta" style={{ marginTop: 10, marginBottom: 0 }}>
+            Current link was {LINK_SOURCE_LABEL[linkSource]}
+            {linkConfidence != null ? ` (confidence ${linkConfidence}/100)` : ''}. Automatic matching never replaces a link
+            you set or confirmed yourself.
+          </p>
+        ) : null}
+      </div>
+
+      {ranked.length > 0 && !gmailThreadId ? (
+        <div className="gmail-thread-suggestions" style={{ marginBottom: 20 }}>
+          <h3 className="detail-section-title" style={{ marginBottom: 8 }}>
+            Possible threads ({ranked.length})
+          </h3>
+          <p className="meta ticket-doc-note" style={{ marginTop: 0 }}>
+            None of these was certain enough to attach on its own. Check the participants before accepting.
+          </p>
+          <ul className="gmail-message-list">
+            {ranked.map((s) => (
+              <li key={s.threadId} className="gmail-message-card">
+                <div className="gmail-message-head">
+                  <strong>{s.subject || '(no subject)'}</strong>
+                  <span className="meta">{fmtDate(s.lastMessageAt ? new Date(s.lastMessageAt) : null)}</span>
+                </div>
+                <div className="gmail-message-meta meta">
+                  <span>Mailbox: {s.mailboxEmail}</span>
+                  {s.counterparties.length > 0 ? <span>With: {s.counterparties.join(', ')}</span> : null}
+                  <span>
+                    {s.messageCount} message{s.messageCount === 1 ? '' : 's'} · confidence {s.score}/100
+                  </span>
+                </div>
+                <p className="gmail-snippet">
+                  {s.reasons.length > 0
+                    ? s.reasons.join(' ')
+                    : `Matched on ${s.signals.map(describeThreadMatchSignal).join(', ')}.`}
+                </p>
+                <form action={`/api/jobs/${jobId}/gmail-find-thread`} method="post">
+                  <input type="hidden" name="threadId" value={s.threadId} />
+                  <button type="submit" className="btn btn-toolbar">
+                    Use this thread
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       <form className="linked-email-add-form" action={`/api/jobs/${jobId}/gmail-thread`} method="post">

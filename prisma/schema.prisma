@@ -66,6 +66,13 @@ enum TaskStatus {
   DONE
 }
 
+/// How Job.gmailThreadId came to be set. Automatic matching only ever overwrites AUTO links.
+enum GmailLinkSource {
+  MANUAL
+  CONFIRMED
+  AUTO
+}
+
 /// How a marketing-sourced pre-quote ticket was created (webhooks only; null for QuickBooks / manual jobs).
 enum InboundLeadKind {
   FORM
@@ -127,6 +134,11 @@ model Job {
   gmailThreadId        String?
   /// Which connected mailbox to use when calling Gmail API for this ticket (you / partner / contact@, etc.).
   gmailConnectionId    String?
+  /// Pasted by hand, accepted from a suggestion, or attached by the automatic matcher.
+  gmailLinkSource      GmailLinkSource?
+  gmailLinkedAt        DateTime?
+  /// Matcher score (0-100) behind an AUTO or CONFIRMED link; see the ActivityLog entry for the signals.
+  gmailLinkConfidence  Int?
   gmailConnection      GmailConnection? @relation(fields: [gmailConnectionId], references: [id], onDelete: SetNull)
   gmailMessages        GmailSyncedMessage[]
   tasks                Task[]

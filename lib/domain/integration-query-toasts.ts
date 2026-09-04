@@ -107,6 +107,85 @@ export function yelpScanToastFromQuery(q: {
   return { message, error };
 }
 
+export function threadMatchToastFromQuery(q: {
+  thread_match?: string;
+  thread_linked?: string;
+  thread_suggested?: string;
+  thread_scanned?: string;
+  thread_resync?: string;
+  thread_resynced?: string;
+  thread_resync_failed?: string;
+  thread_match_error?: string;
+}): { message: string | null; error: string | null } {
+  const error = q.thread_match_error?.trim() ? `Thread matching failed: ${q.thread_match_error.trim()}` : null;
+
+  if (q.thread_resync === '1') {
+    const ok = Number.parseInt(q.thread_resynced ?? '0', 10) || 0;
+    const failed = Number.parseInt(q.thread_resync_failed ?? '0', 10) || 0;
+    return {
+      message: `Gmail: re-synced ${ok} linked ticket${ok === 1 ? '' : 's'}${failed > 0 ? `, ${failed} failed` : ''}.`,
+      error,
+    };
+  }
+
+  if (q.thread_match !== '1') {
+    return { message: null, error };
+  }
+
+  const linked = Number.parseInt(q.thread_linked ?? '0', 10) || 0;
+  const suggested = Number.parseInt(q.thread_suggested ?? '0', 10) || 0;
+  const scanned = Number.parseInt(q.thread_scanned ?? '0', 10) || 0;
+  const parts: string[] = [];
+  if (linked > 0) parts.push(`attached ${linked} thread${linked === 1 ? '' : 's'}`);
+  if (suggested > 0) parts.push(`left suggestions on ${suggested} ticket${suggested === 1 ? '' : 's'}`);
+  const message =
+    parts.length > 0
+      ? `Gmail: scanned ${scanned} unlinked ticket${scanned === 1 ? '' : 's'} and ${parts.join(', ')}.`
+      : `Gmail: scanned ${scanned} unlinked ticket${scanned === 1 ? '' : 's'}, no confident matches.`;
+  return { message, error };
+}
+
+/** Ticket-level outcome of Find email thread; the value carries a reason after a colon. */
+export function ticketThreadMatchToast(raw: string | undefined): {
+  ok: string | null;
+  info: string | null;
+  error: string | null;
+} {
+  if (!raw) return { ok: null, info: null, error: null };
+  const [kind = '', ...rest] = raw.split(':');
+  const detail = rest.join(':').trim();
+
+  switch (kind) {
+    case 'linked':
+      return { ok: 'Matched a Gmail thread and synced it onto this ticket.', info: null, error: null };
+    case 'confirmed':
+      return { ok: 'Thread attached from the suggestion and synced.', info: null, error: null };
+    case 'linked_sync_failed':
+    case 'confirmed_sync_failed':
+      return {
+        ok: 'Thread attached to this ticket.',
+        info: null,
+        error: `Attached, but the first sync failed: ${detail}`,
+      };
+    case 'suggested':
+      return {
+        ok: null,
+        info: `Found ${detail || 'some'} possible thread(s) but none was certain — pick one below.`,
+        error: null,
+      };
+    case 'skipped':
+      return { ok: null, info: detail || 'Nothing to do for this ticket.', error: null };
+    case 'none':
+      return { ok: null, info: detail || 'No matching Gmail thread found.', error: null };
+    case 'unlinked':
+      return { ok: 'Gmail thread detached from this ticket.', info: null, error: null };
+    case 'not_linked':
+      return { ok: null, info: 'This ticket had no Gmail thread to detach.', error: null };
+    default:
+      return { ok: null, info: null, error: null };
+  }
+}
+
 export function syncToastFromQuery(q: { synced?: string; sync_error?: string }): {
   synced: boolean;
   syncError: string | null;

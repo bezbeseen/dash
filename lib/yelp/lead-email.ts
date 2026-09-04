@@ -52,6 +52,19 @@ const NON_LEAD_SIGNALS = [
   /billing/i,
 ];
 
+/**
+ * True for Yelp's per-lead reply proxy addresses, which stand in for the consumer.
+ * Yelp's own notification senders live on yelp.com too and must not be mistaken for a customer.
+ */
+export function isYelpProxyEmailAddress(address: string): boolean {
+  const [local = '', domain = ''] = address.trim().toLowerCase().split('@');
+  if (!/(?:^|\.)yelp\.com$/.test(domain)) return false;
+  // "no-reply" contains "reply"; Yelp's own notification sender must not read as a proxy.
+  if (/^(?:no-?reply|do-?not-?reply|donotreply)\b/.test(local)) return false;
+  if (/^(?:messaging|reply|leads?|msg)\./.test(domain)) return true;
+  return /(?:lead|msg|messag|reply)/.test(local) || /[._-][a-z0-9]{6,}$/.test(local);
+}
+
 export function senderIsYelp(fromHeader: string): boolean {
   const m = /<([^>]+)>/.exec(fromHeader);
   const addr = (m ? m[1] : fromHeader).trim().toLowerCase();
@@ -132,11 +145,7 @@ function extractEmail(body: string): string | null {
     if (/(?:beseensignshop|getbeseen)\./.test(domain)) continue;
 
     // Yelp's own domains only count when they are a per-lead reply proxy.
-    if (/(?:^|\.)yelp\.com$/.test(domain)) {
-      const proxySubdomain = /^(?:messaging|reply|leads?|msg)\./.test(domain);
-      const proxyLocal = /(?:lead|msg|messag|reply)/.test(local) || /[._-][a-z0-9]{6,}$/.test(local);
-      if (!proxySubdomain && !proxyLocal) continue;
-    }
+    if (/(?:^|\.)yelp\.com$/.test(domain) && !isYelpProxyEmailAddress(e)) continue;
 
     return e.slice(0, 512);
   }

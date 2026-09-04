@@ -6,8 +6,10 @@ import {
   gmailToastFromQuery,
   qbToastFromQuery,
   syncToastFromQuery,
+  threadMatchToastFromQuery,
   yelpScanToastFromQuery,
 } from '@/lib/domain/integration-query-toasts';
+import { GmailThreadMatchSettingsSection } from '@/components/gmail-thread-match-settings-section';
 import { GoogleBusinessSettingsSection } from '@/components/google-business-settings-section';
 import { YelpApiSettingsSection } from '@/components/yelp-api-settings-section';
 import { YelpLeadEmailSettingsSection } from '@/components/yelp-lead-email-settings-section';
@@ -33,6 +35,14 @@ type SettingsPageProps = {
     yelp_matched?: string;
     yelp_scanned?: string;
     yelp_scan_error?: string;
+    thread_match?: string;
+    thread_linked?: string;
+    thread_suggested?: string;
+    thread_scanned?: string;
+    thread_resync?: string;
+    thread_resynced?: string;
+    thread_resync_failed?: string;
+    thread_match_error?: string;
     e?: string;
     i?: string;
   }>;
@@ -49,6 +59,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const { connected: gbpConnected, error: gbpError } = gbpToastFromQuery(q);
   const { synced, syncError } = syncToastFromQuery(q);
   const { message: yelpScanMessage, error: yelpScanError } = yelpScanToastFromQuery(q);
+  const { message: threadMatchMessage, error: threadMatchError } = threadMatchToastFromQuery(q);
   const syncWarnEmpty = q.sync_warn === 'empty';
 
   return (
@@ -73,7 +84,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         gmailConnected ||
         gbpConnected ||
         yelpScanMessage ||
-        yelpScanError) && (
+        yelpScanError ||
+        threadMatchMessage ||
+        threadMatchError) && (
         <div className="board-toasts" role="status">
           {syncError ? <div className="board-toast board-toast-error">QuickBooks sync error: {syncError}</div> : null}
           {synced ? (
@@ -95,6 +108,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           {gbpConnected ? <div className="board-toast board-toast-ok">Google Business Profile connected.</div> : null}
           {yelpScanError ? <div className="board-toast board-toast-error">{yelpScanError}</div> : null}
           {yelpScanMessage ? <div className="board-toast board-toast-ok">{yelpScanMessage}</div> : null}
+          {threadMatchError ? <div className="board-toast board-toast-error">{threadMatchError}</div> : null}
+          {threadMatchMessage ? <div className="board-toast board-toast-ok">{threadMatchMessage}</div> : null}
         </div>
       )}
 
@@ -185,6 +200,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           <GmailSidebarHint />
           <GmailRedirectUriHint />
         </section>
+
+        <GmailThreadMatchSettingsSection />
 
         <GoogleBusinessSettingsSection />
 

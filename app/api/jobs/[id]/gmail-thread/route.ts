@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { EventSource } from '@prisma/client';
+import { EventSource, GmailLinkSource } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import {
   extractRfc822MsgIdForSearch,
@@ -56,7 +56,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   await prisma.job.update({
     where: { id: jobId },
-    data: { gmailThreadId: raw, gmailConnectionId: mailboxId },
+    data: {
+      gmailThreadId: raw,
+      gmailConnectionId: mailboxId,
+      gmailLinkSource: GmailLinkSource.MANUAL,
+      gmailLinkedAt: new Date(),
+      gmailLinkConfidence: null,
+    },
   });
 
   const logSnippet = raw.length > 48 ? `${raw.slice(0, 48)}…` : raw;

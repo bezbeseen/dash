@@ -24,7 +24,12 @@ import { boardStatusForTicketHeader } from '@/lib/domain/derive-board-status';
 import { BoardStatus } from '@prisma/client';
 import { jobIsLeadFirstTicket } from '@/lib/domain/lead-ticket';
 import { jobNeedsWrapUpReminder, jobWrapUpRecorded } from '@/lib/domain/production-workflow';
-import { jobErrorFromQuery, syncToastFromQuery } from '@/lib/domain/integration-query-toasts';
+import {
+  jobErrorFromQuery,
+  syncToastFromQuery,
+  ticketThreadMatchToast,
+} from '@/lib/domain/integration-query-toasts';
+import { parseStoredThreadSuggestions } from '@/lib/gmail/thread-match';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import { listJobDriveFolderPreview } from '@/lib/drive/list-for-job';
 import { canCreateDriveJobFolderFromTemplate } from '@/lib/drive/config';
@@ -53,6 +58,8 @@ type PageProps = {
     gmail_mailbox_error?: string;
     gmail_sync_error?: string;
     gmail_synced?: string;
+    gmail_match?: string;
+    gmail_match_error?: string;
     qb_imported?: string;
     drive_saved?: string;
     drive_error?: string;
@@ -73,6 +80,8 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const gmailMailboxError = sp.gmail_mailbox_error === '1';
   const gmailSyncError = sp.gmail_sync_error ? decodeURIComponent(sp.gmail_sync_error) : null;
   const gmailSyncedOk = sp.gmail_synced === '1';
+  const gmailMatchToast = ticketThreadMatchToast(sp.gmail_match);
+  const gmailMatchError = sp.gmail_match_error?.trim() || gmailMatchToast.error;
   const qbImportedOk = sp.qb_imported === '1';
   const driveSaved = sp.drive_saved === '1';
   let driveError: string | null = null;
@@ -119,6 +128,15 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const gmailMessageTotalCount = await prisma.gmailSyncedMessage.count({ where: { jobId: id } });
   const gmailMessagesChronological = [...job.gmailMessages].reverse();
   const gmailMessagesUiTruncated = gmailMessageTotalCount > GMAIL_UI_MESSAGE_CAP;
+
+  // Suggestions live in the activity log; they are stale once any later event changed the link.
+  const gmailSuggestionLog = job.gmailThreadId
+    ? null
+    : job.activityLogs.find((l) => l.eventName.startsWith('gmail.thread_')) ?? null;
+  const gmailSuggestions =
+    gmailSuggestionLog?.eventName === 'gmail.thread_suggested'
+      ? parseStoredThreadSuggestions(gmailSuggestionLog.metadata)
+      : [];
 
   const realmId = await resolveRealmIdForJob(job.quickbooksCompanyId);
   let qboInvoice: InvoiceSnapshot | null = null;
@@ -408,6 +426,12 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             mailboxError={gmailMailboxError}
             syncError={gmailSyncError}
             syncedOk={gmailSyncedOk}
+            linkSource={job.gmailLinkSource}
+            linkConfidence={job.gmailLinkConfidence}
+            suggestions={gmailSuggestions}
+            matchOk={gmailMatchToast.ok}
+            matchInfo={gmailMatchToast.info}
+            matchError={gmailMatchError}
           />
 
           <TicketLinkedEmailsSection
