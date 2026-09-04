@@ -33,24 +33,53 @@ function looksLikeSurveyQuestion(line: string): boolean {
   return !NOT_A_SURVEY_QUESTION.some((re) => re.test(t));
 }
 
+/** Compares template text ignoring case and punctuation, e.g. "Rose L." vs "Rose L". */
+function normalizeMarker(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /**
  * Pulls question/answer pairs out of the flattened email text. Yelp renders each
  * question on its own line followed by the consumer's answer on the following line(s),
  * with no labels to anchor on.
+ *
+ * The last question needs a terminator or it absorbs the whole footer positionally,
+ * whatever the content strippers happen not to recognise. Two structural ones are used:
+ * the questionnaire block is contiguous, so a blank line ends an answer run that already
+ * has an answer; and Yelp echoes the customer's name immediately before its stats card,
+ * which ends the questionnaire outright.
  */
-export function parseYelpSurveyPairsFromText(text: string): YelpSurveyPair[] {
-  const lines = text.split('\n');
+export function parseYelpSurveyPairsFromText(
+  text: string,
+  opts: { endMarkers?: readonly string[] } = {},
+): YelpSurveyPair[] {
+  const endMarkers = new Set(
+    (opts.endMarkers ?? []).map(normalizeMarker).filter((m) => m.length > 1),
+  );
+
   const pairs: YelpSurveyPair[] = [];
   let current: YelpSurveyPair | null = null;
 
-  for (const raw of lines) {
+  for (const raw of text.split('\n')) {
     const line = raw.trim();
+
     if (looksLikeSurveyQuestion(line)) {
       current = { question: line, answers: [] };
       pairs.push(current);
       continue;
     }
-    if (!current || !line) continue;
+
+    if (pairs.length > 0 && endMarkers.has(normalizeMarker(line))) break;
+
+    if (!current) continue;
+    if (!line) {
+      if (current.answers.length > 0) current = null;
+      continue;
+    }
     // Cap the run so a future template line that escapes cleaning cannot swallow the tail.
     if (current.answers.length >= 10) continue;
     current.answers.push(line);
@@ -91,9 +120,13 @@ export function findServiceZip(pairs: YelpSurveyPair[]): string | null {
   return null;
 }
 
-/** Location answers are often just a ZIP, but can be a city; keep whatever was given. */
+/**
+ * Location answers are often just a ZIP, but can be a city; keep whatever was given.
+ * Yelp asks this once with a single input, so only the first answer can be the location —
+ * anything after it is template text that leaked past the questionnaire terminator.
+ */
 export function findServiceLocation(pairs: YelpSurveyPair[]): string | null {
   const hit = pairs.find((p) => LOCATION_QUESTION.test(p.question));
-  const joined = hit?.answers.join(' ').trim();
-  return joined ? joined.slice(0, 200) : null;
+  const first = hit?.answers[0]?.trim();
+  return first ? first.slice(0, 200) : null;
 }

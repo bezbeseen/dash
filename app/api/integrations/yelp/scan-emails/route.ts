@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  scanYelpLeadEmails,
-  YelpMailboxNotReadyError,
-  YELP_SCAN_DEFAULT_LOOKBACK_DAYS,
-  YELP_SCAN_DEFAULT_MAX_MESSAGES,
-} from '@/lib/gmail/scan-yelp-lead-emails';
+import { scanYelpLeadEmails, YelpMailboxNotReadyError } from '@/lib/gmail/scan-yelp-lead-emails';
 import { resolveYelpLeadMailboxState } from '@/lib/yelp/lead-mailbox';
 
 export const dynamic = 'force-dynamic';
@@ -14,16 +9,17 @@ export const maxDuration = 60;
 
 function readOptions(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
-  const num = (key: string, fallback: number) => {
+  // Left undefined when absent so the scan applies its own adaptive default.
+  const num = (key: string) => {
     const raw = sp.get(key);
-    if (!raw) return fallback;
+    if (!raw) return undefined;
     const n = Number.parseInt(raw, 10);
-    return Number.isFinite(n) ? n : fallback;
+    return Number.isFinite(n) ? n : undefined;
   };
   return {
     mailboxEmail: sp.get('mailbox'),
-    lookbackDays: num('days', YELP_SCAN_DEFAULT_LOOKBACK_DAYS),
-    maxMessages: num('max', YELP_SCAN_DEFAULT_MAX_MESSAGES),
+    lookbackDays: num('days'),
+    maxMessages: num('max'),
   };
 }
 

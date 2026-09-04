@@ -121,16 +121,22 @@ const BOILERPLATE_LINES = [
   /^unsubscribe/i,
   /^manage\s+(?:your\s+)?(?:email\s+)?(?:notification\s+)?(?:preferences|settings)/i,
   /^download\s+the\s+yelp/i,
-  /^(?:©|\(c\)|copyright)\s*\d{4}\s*yelp/i,
-  /^yelp\s+inc\.?\s*,?\s*\d+/i,
+  // "© 2026 | Yelp Inc, 350 Mission Street, San Francisco, CA 94105, USA | business.yelp.com"
+  /^(?:©|\(c\)|copyright)\s*\d{4}\b/i,
+  /\byelp\s+inc\b/i,
+  /\bbusiness\.yelp\.com\s*$/i,
   /^this\s+(?:email|message)\s+was\s+sent/i,
   /^you\s+(?:are\s+)?receiv(?:ed|ing)\s+this/i,
   /^\d+\s+\w[\w\s.]*\s+(?:rd|road|st|street|ave|avenue|blvd|way|dr|drive)\b.*\b[a-z]{2}\s+\d{5}\b/i,
 ];
 
-/** "Your response time" is followed by its value on the next line. */
-const RESPONSE_STAT_LABEL = /^your\s+response\s+(?:time|rate)\b/i;
-const RESPONSE_STAT_VALUE = /^(?:\d+\s*%|\d+\s*(?:min|mins|minute|minutes|hour|hours|day|days)\b.*)$/i;
+/**
+ * Values from Yelp's stats card: "3 hours", "100%", and the unlabelled counters beside
+ * the attachment placeholder. Yelp emits the labels and the values in separate blocks, so
+ * they cannot be matched as a label/value pair — position is what distinguishes them from
+ * a real answer, which always sits directly under its question.
+ */
+const STATS_CARD_VALUE = /^(?:\d{1,4}|\d+\s*%|\d+\s*(?:min|mins|minute|minutes|hour|hours|day|days))$/i;
 
 function isBoilerplateLine(line: string): boolean {
   const t = line.trim();
@@ -145,21 +151,13 @@ function isBoilerplateLine(line: string): boolean {
 
 function dropBoilerplate(lines: string[]): string[] {
   const kept: string[] = [];
-  let dropStatValue = false;
-  let insideQuestionnaire = false;
+  let previousKeptWasQuestion = false;
 
   for (const line of lines) {
     const t = line.trim();
-    if (dropStatValue && RESPONSE_STAT_VALUE.test(t)) {
-      dropStatValue = false;
-      continue;
-    }
-    dropStatValue = RESPONSE_STAT_LABEL.test(t);
-    if (t.endsWith('?')) insideQuestionnaire = true;
-    // Bare counters sit beside the attachment placeholder with no documented meaning,
-    // but an identical-looking line inside the questionnaire is a real answer.
-    if (!insideQuestionnaire && /^\d{1,4}$/.test(t)) continue;
+    if (t && !previousKeptWasQuestion && STATS_CARD_VALUE.test(t)) continue;
     if (isBoilerplateLine(line)) continue;
+    if (t) previousKeptWasQuestion = t.endsWith('?');
     kept.push(line);
   }
   return kept;
@@ -365,12 +363,16 @@ export function parseYelpLeadEmail(input: {
   const threadUrl = resolveSafeYelpInboxUrl(body, conversationId);
   const cleanBody = cleanYelpEmailBody(body);
 
-  const survey = parseYelpSurveyPairsFromText(cleanBody);
+  const customerName = extractCustomerName(subject, cleanBody) ?? 'Yelp lead';
+
+  // Yelp echoes the customer's name just before its stats card, ending the questionnaire.
+  const survey = parseYelpSurveyPairsFromText(cleanBody, {
+    endMarkers: [customerName, customerName.split(/\s+/)[0] ?? ''],
+  });
   const customerNotes = findFreeTextAnswer(survey);
   const serviceZip = findServiceZip(survey);
   const serviceLocation = findServiceLocation(survey);
 
-  const customerName = extractCustomerName(subject, cleanBody) ?? 'Yelp lead';
   const jobType = extractYelpJobType(subject, cleanBody);
   const phone = extractPhone(cleanBody);
   const leadEmail = extractEmail(cleanBody);

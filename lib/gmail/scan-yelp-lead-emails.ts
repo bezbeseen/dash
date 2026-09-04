@@ -18,13 +18,11 @@ import {
   type ParsedYelpLeadEmail,
 } from '@/lib/yelp/lead-email';
 import { summarizeYelpScan, type YelpEmailOutcome, type YelpScanCounts } from '@/lib/yelp/scan-summary';
-
-export const YELP_SCAN_DEFAULT_LOOKBACK_DAYS = 14;
-export const YELP_SCAN_DEFAULT_MAX_MESSAGES = 20;
-
-/** Hard caps: a full scan has to finish inside the ~10s serverless budget. */
-export const YELP_SCAN_MAX_LOOKBACK_DAYS = 180;
-export const YELP_SCAN_MAX_MESSAGES = 100;
+import {
+  resolveYelpScanLimits,
+  YELP_SCAN_MAX_MESSAGES,
+  type YelpScanLimits,
+} from '@/lib/yelp/scan-limits';
 
 /** Small batches keep the whole scan inside the serverless function budget. */
 const FETCH_BATCH_SIZE = 5;
@@ -40,16 +38,6 @@ export type YelpEmailCandidate = {
   skipReason: string | null;
   parsed: ParsedYelpLeadEmail | null;
   existingJobId: string | null;
-};
-
-/** Echoed back so a capped scan is never mistaken for "that is all of them". */
-export type YelpScanLimits = {
-  lookbackDaysRequested: number;
-  lookbackDays: number;
-  lookbackDaysCap: number;
-  maxMessagesRequested: number;
-  maxMessages: number;
-  maxMessagesCap: number;
 };
 
 export type YelpEmailScanResult = {
@@ -99,18 +87,8 @@ export async function scanYelpLeadEmails(opts: {
   maxMessages?: number;
   dryRun?: boolean;
 }): Promise<YelpEmailScanResult> {
-  const lookbackDaysRequested = opts.lookbackDays ?? YELP_SCAN_DEFAULT_LOOKBACK_DAYS;
-  const maxMessagesRequested = opts.maxMessages ?? YELP_SCAN_DEFAULT_MAX_MESSAGES;
-  const lookbackDays = Math.min(Math.max(lookbackDaysRequested, 1), YELP_SCAN_MAX_LOOKBACK_DAYS);
-  const maxMessages = Math.min(Math.max(maxMessagesRequested, 1), YELP_SCAN_MAX_MESSAGES);
-  const limits: YelpScanLimits = {
-    lookbackDaysRequested,
-    lookbackDays,
-    lookbackDaysCap: YELP_SCAN_MAX_LOOKBACK_DAYS,
-    maxMessagesRequested,
-    maxMessages,
-    maxMessagesCap: YELP_SCAN_MAX_MESSAGES,
-  };
+  const limits: YelpScanLimits = resolveYelpScanLimits(opts);
+  const { lookbackDays, maxMessages } = limits;
   const dryRun = opts.dryRun ?? false;
 
   const mailboxState = await resolveYelpLeadMailboxState(opts.mailboxEmail ?? null);

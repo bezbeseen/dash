@@ -12,6 +12,7 @@ import {
   senderIsYelp,
 } from '../lib/yelp/lead-email';
 import { buildYelpLeadProjectDescription } from '../lib/yelp/leads-webhook';
+import { defaultMaxMessagesForLookback, resolveYelpScanLimits } from '../lib/yelp/scan-limits';
 import { summarizeYelpScan, type YelpEmailOutcome } from '../lib/yelp/scan-summary';
 import { safeYelpUrl, YELP_BIZ_INBOX_URL } from '../lib/yelp/url';
 
@@ -187,6 +188,13 @@ Sent to Be Seen Print Sign and Design
 377 Laurelwood Rd Santa Clara, CA 95054
 
 Don't miss out on future leads — stay responsive!
+${o.displayName}
+0
+0
+0
+3 hours
+100%
+© 2026 | Yelp Inc, 350 Mission Street, San Francisco, CA 94105, USA | business.yelp.com
 `;
 }
 
@@ -375,10 +383,94 @@ check(
     roseDesc.includes('How many pages do you need to print?\n  • 100+'),
   true,
 );
+// The last question used to run to end-of-body and vacuum up Yelp's stats card footer.
+check('prod: zip question has exactly one answer', rose.survey.at(-1)?.answers, ['95112']);
+check('prod: service location line is only the zip', roseDesc.includes('Service location: 95112\n'), true);
+const allAnswers = rose.survey.flatMap((p) => p.answers);
+check('prod: no copyright footer in any answer', allAnswers.filter((a) => /yelp inc/i.test(a)), []);
+check('prod: no response-rate value in any answer', allAnswers.filter((a) => /^\d+\s*%$/.test(a)), []);
+check(
+  'prod: no response-time value in any answer',
+  allAnswers.filter((a) => /^\d+\s*(?:minutes?|hours?|days?)$/i.test(a)),
+  [],
+);
+check('prod: no name echo in any answer', allAnswers.filter((a) => /^Rose L\.?$/.test(a)), []);
+check('prod: no bare counters in any answer', allAnswers.filter((a) => /^\d{1,4}$/.test(a) && a !== '95112'), []);
+
 check('prod: free-text answer surfaced', rose.customerNotes, "it's for a stock/crypto seminar/boot camp");
 check('prod: free-text answer prominent in description', roseDesc.includes('Customer notes:'), true);
 check('prod: service zip kept', rose.serviceZip, '95112');
 check('prod: yelp does not expose consumer email', rose.leadEmail, null);
+
+/**
+ * The strip list can only remove footer text we have already seen, so the terminator has
+ * to hold on its own: novel trailing content must not become an answer either.
+ */
+const novelFooter = parseYelpLeadEmail({
+  subject: yelpSubject('Alejandra M.'),
+  from: yelpFrom('ff11aa22bb33cc44dd55ee66ff778899'),
+  body: `You have a new sign printing request.
+
+Alejandra requested a quote from Be Seen Print Sign and Design for a sign printing.
+
+Are there any other details you'd like to share?
+storefront window lettering
+In what location do you need the service?
+95062
+Alejandra M
+Nueva seccion de Yelp que no hemos visto todavia
+Refer a friend and earn 25 dollars of ad credit
+Loyalty tier: Gold
+`,
+  gmailThreadId: 'gt7',
+  receivedAt: null,
+});
+check('terminator: zip answer is not polluted by unknown footer text', novelFooter.survey.at(-1)?.answers, ['95062']);
+check('terminator: service zip still parsed', novelFooter.serviceZip, '95062');
+check(
+  'terminator: unknown footer text never becomes an answer',
+  novelFooter.survey.flatMap((p) => p.answers),
+  ['storefront window lettering', '95062'],
+);
+check(
+  'terminator: service location line is only the zip',
+  (novelFooter.projectDescription ?? '').includes('Service location: 95062\n'),
+  true,
+);
+
+// A blank line ends an answer run too, so a footer with no name echo cannot leak in.
+const blankLineTerminated = parseYelpLeadEmail({
+  subject: yelpSubject('Nadia B.'),
+  from: yelpFrom('aa22bb33cc44dd55ee66ff7788990011'),
+  body: `Nadia requested a quote from Be Seen Print Sign and Design for a signmaking.
+
+In what location do you need the service?
+94089
+
+Totally new trailing block Yelp added this morning
+`,
+  gmailThreadId: 'gt8',
+  receivedAt: null,
+});
+check('terminator: blank line ends the answer run', blankLineTerminated.survey.at(-1)?.answers, ['94089']);
+
+// A question whose answer legitimately wraps onto a second contiguous line keeps both.
+const wrapped = parseYelpLeadEmail({
+  subject: yelpSubject('Owen P.'),
+  from: yelpFrom('bb33cc44dd55ee66ff778899001122aa'),
+  body: `Owen requested a quote from Be Seen Print Sign and Design for a signmaking.
+
+Are there any other details you'd like to share?
+two 4x8 panels for the front
+and one small window decal
+`,
+  gmailThreadId: 'gt9',
+  receivedAt: null,
+});
+check('terminator: contiguous multi-line answer kept', wrapped.survey[0]?.answers, [
+  'two 4x8 panels for the front',
+  'and one small window decal',
+]);
 
 // ---- the other observed job types, plus one Yelp has not sent yet
 const jobTypeCases: [string, string, string][] = [
@@ -582,6 +674,25 @@ const dryRun = summarizeYelpScan([
 check('counts: dry run reports 9 rejected, not 11 "skipped"', dryRun.rejectedNotLeads, 9);
 check('counts: dry run creates nothing', dryRun.ticketsCreated, 0);
 check('counts: dry run new leads are the importable ones', dryRun.newLeadsFound, 11);
+
+// ---- scan limits: a backfill must not stop at the routine default
+const routine = resolveYelpScanLimits({});
+check('limits: routine scan window', routine.lookbackDays, 14);
+check('limits: routine scan max', routine.maxMessages, 50);
+check('limits: routine scan used a default max', routine.maxMessagesDefaulted, true);
+
+const backfill = resolveYelpScanLimits({ lookbackDays: 365 });
+check('limits: long window clamps to the day cap', backfill.lookbackDays, 180);
+check('limits: long window reads up to the message cap', backfill.maxMessages, 100);
+check('limits: requested days echoed unclamped', backfill.lookbackDaysRequested, 365);
+
+const explicit = resolveYelpScanLimits({ lookbackDays: 365, maxMessages: 500 });
+check('limits: explicit max still clamps to the cap', explicit.maxMessages, 100);
+check('limits: explicit max is not treated as a default', explicit.maxMessagesDefaulted, false);
+check('limits: floor of one message', resolveYelpScanLimits({ maxMessages: 0 }).maxMessages, 1);
+check('limits: floor of one day', resolveYelpScanLimits({ lookbackDays: 0 }).lookbackDays, 1);
+check('limits: 14 days stays on the routine default', defaultMaxMessagesForLookback(14), 50);
+check('limits: 15 days switches to the cap', defaultMaxMessagesForLookback(15), 100);
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);
