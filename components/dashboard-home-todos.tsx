@@ -5,6 +5,7 @@ import { todoListTimeZone } from '@/lib/todo/timezone';
 type Props = {
   module: DashboardTodosModule;
   assigneeOptions: string[];
+  className?: string;
 };
 
 function formatDue(d: Date | null, timeZone: string) {
@@ -17,12 +18,12 @@ function formatDue(d: Date | null, timeZone: string) {
   });
 }
 
-export function DashboardHomeTodos({ module: m, assigneeOptions }: Props) {
+export function DashboardHomeTodos({ module: m, assigneeOptions, className }: Props) {
   const tz = todoListTimeZone();
   const now = new Date();
 
   return (
-    <section className="card border rounded-3 p-4 mb-4 bg-body">
+    <section className={['card border rounded-3 p-4 bg-body', className ?? 'mb-4'].filter(Boolean).join(' ')}>
       <div className="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
         <div>
           <h2 className="h6 fw-semibold mb-1 d-flex align-items-center gap-2">

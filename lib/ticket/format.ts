@@ -25,6 +25,11 @@ export function fmtDetailDate(d: Date | null) {
   }).format(d);
 }
 
+export function fmtShortDate(d: Date | null) {
+  if (!d) return '—';
+  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(d);
+}
+
 export function fmtPlanHours(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return '—';
   return `${n} h`;

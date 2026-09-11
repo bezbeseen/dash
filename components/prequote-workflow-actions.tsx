@@ -77,7 +77,7 @@ export function PrequoteWorkflowActions({ jobId, archived }: Props) {
         <div className="actions actions-card actions-prequote">
           <button
             type="button"
-            className="btn btn-sm btn-primary job-card-action job-card-action-quoted"
+            className="btn btn-sm btn-outline-primary job-card-action job-card-action-quoted"
             disabled={busy}
             onClick={() => void markQuoted()}
             title="Quote was sent — move to the main Tickets board"
@@ -86,7 +86,7 @@ export function PrequoteWorkflowActions({ jobId, archived }: Props) {
           </button>
           <button
             type="button"
-            className="btn btn-sm btn-info job-card-action job-card-action-start"
+            className="btn btn-sm btn-outline-info job-card-action job-card-action-start"
             disabled={busy}
             onClick={() => void startWork()}
             title="Skip quote lane and start production"

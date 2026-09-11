@@ -16,7 +16,7 @@ export function YelpSyncButton({ returnTo, disabled = false, disabledReason }: P
     >
       <input type="hidden" name="return_to" value={returnTo} />
       <button
-        className="btn btn-yelp"
+        className="btn btn-sm btn-yelp"
         type="submit"
         disabled={disabled}
         title={

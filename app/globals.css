@@ -1064,10 +1064,12 @@ body {
   width: 100%;
 }
 
-.actions-prequote .btn {
+.actions-prequote .btn,
+.actions-card .btn {
   font-size: 11px;
-  padding: 0.28rem 0.45rem;
+  padding: 0.22rem 0.45rem;
   line-height: 1.25;
+  font-weight: 500;
 }
 
 .prequote-column-select-all {
@@ -1679,21 +1681,69 @@ body {
 
 /* Product helpers on top of Bootstrap `.btn` / `.btn-*`. Do not set
    background/color on bare `.btn` — that washes out every variant. */
+.board-topbar-actions .btn,
+.ticket-detail-sync-row .btn {
+  font-size: 12px;
+  padding: 0.28rem 0.65rem;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+/* Outline hovers stay tinted instead of flipping to a solid fill. */
+.actions-card .btn-outline-primary:hover,
+.actions-card .btn-outline-primary:focus-visible,
+.board-topbar-actions .btn-outline-primary:hover,
+.ticket-detail-sync-row .btn-outline-primary:hover {
+  background-color: var(--bs-primary-bg-subtle);
+  color: var(--bs-primary-text-emphasis);
+  border-color: var(--bs-primary-border-subtle);
+}
+
+.actions-card .btn-outline-warning:hover,
+.actions-card .btn-outline-warning:focus-visible {
+  background-color: var(--bs-warning-bg-subtle);
+  color: var(--bs-warning-text-emphasis);
+  border-color: var(--bs-warning-border-subtle);
+}
+
+.actions-card .btn-outline-info:hover,
+.actions-card .btn-outline-info:focus-visible {
+  background-color: var(--bs-info-bg-subtle);
+  color: var(--bs-info-text-emphasis);
+  border-color: var(--bs-info-border-subtle);
+}
+
+.actions-card .btn-outline-success:hover,
+.actions-card .btn-outline-success:focus-visible {
+  background-color: var(--bs-success-bg-subtle);
+  color: var(--bs-success-text-emphasis);
+  border-color: var(--bs-success-border-subtle);
+}
+
+.actions-card .btn-outline-danger:hover,
+.actions-card .btn-outline-danger:focus-visible {
+  background-color: var(--bs-danger-bg-subtle);
+  color: var(--bs-danger-text-emphasis);
+  border-color: var(--bs-danger-border-subtle);
+}
+
 .btn.btn-toolbar {
   --bs-btn-color: var(--bs-primary);
   --bs-btn-bg: var(--bs-body-bg);
-  --bs-btn-border-color: var(--bs-primary);
-  --bs-btn-hover-color: #fff;
-  --bs-btn-hover-bg: var(--bs-primary);
-  --bs-btn-hover-border-color: var(--bs-primary);
-  --bs-btn-active-color: #fff;
-  --bs-btn-active-bg: var(--bs-primary);
-  --bs-btn-active-border-color: var(--bs-primary);
+  --bs-btn-border-color: var(--bs-primary-border-subtle);
+  --bs-btn-hover-color: var(--bs-primary-text-emphasis);
+  --bs-btn-hover-bg: var(--bs-primary-bg-subtle);
+  --bs-btn-hover-border-color: var(--bs-primary-border-subtle);
+  --bs-btn-active-color: var(--bs-primary-text-emphasis);
+  --bs-btn-active-bg: var(--bs-primary-bg-subtle);
+  --bs-btn-active-border-color: var(--bs-primary-border-subtle);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
-  box-shadow: var(--bs-box-shadow-sm);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 0.28rem 0.65rem;
+  box-shadow: none;
 }
 
 .btn.btn-toolbar-muted {
@@ -1708,36 +1758,36 @@ body {
 }
 
 .btn-yelp {
-  --bs-btn-color: #fff;
-  --bs-btn-bg: #d32323;
-  --bs-btn-border-color: #d32323;
-  --bs-btn-hover-color: #fff;
-  --bs-btn-hover-bg: #b01d1d;
-  --bs-btn-hover-border-color: #b01d1d;
-  --bs-btn-active-color: #fff;
-  --bs-btn-active-bg: #961818;
-  --bs-btn-active-border-color: #961818;
-  --bs-btn-disabled-color: #fff;
-  --bs-btn-disabled-bg: #d32323;
-  --bs-btn-disabled-border-color: #d32323;
+  --bs-btn-color: #c41200;
+  --bs-btn-bg: var(--bs-body-bg);
+  --bs-btn-border-color: #e7b4ae;
+  --bs-btn-hover-color: #c41200;
+  --bs-btn-hover-bg: #fdecea;
+  --bs-btn-hover-border-color: #e7b4ae;
+  --bs-btn-active-color: #c41200;
+  --bs-btn-active-bg: #fdecea;
+  --bs-btn-active-border-color: #e7b4ae;
+  --bs-btn-disabled-color: #c41200;
+  --bs-btn-disabled-bg: var(--bs-body-bg);
+  --bs-btn-disabled-border-color: #e7b4ae;
 }
 
 .btn-done {
-  --bs-btn-color: #fff;
-  --bs-btn-bg: var(--bs-success);
-  --bs-btn-border-color: var(--bs-success);
-  --bs-btn-hover-color: #fff;
-  --bs-btn-hover-bg: var(--bs-success);
-  --bs-btn-hover-border-color: var(--bs-success);
+  --bs-btn-color: var(--bs-success-text-emphasis);
+  --bs-btn-bg: var(--bs-body-bg);
+  --bs-btn-border-color: var(--bs-success-border-subtle);
+  --bs-btn-hover-color: var(--bs-success-text-emphasis);
+  --bs-btn-hover-bg: var(--bs-success-bg-subtle);
+  --bs-btn-hover-border-color: var(--bs-success-border-subtle);
 }
 
 .btn-lost {
-  --bs-btn-color: var(--bs-danger);
+  --bs-btn-color: var(--bs-danger-text-emphasis);
   --bs-btn-bg: var(--bs-body-bg);
-  --bs-btn-border-color: var(--bs-danger);
-  --bs-btn-hover-color: #fff;
-  --bs-btn-hover-bg: var(--bs-danger);
-  --bs-btn-hover-border-color: var(--bs-danger);
+  --bs-btn-border-color: var(--bs-danger-border-subtle);
+  --bs-btn-hover-color: var(--bs-danger-text-emphasis);
+  --bs-btn-hover-bg: var(--bs-danger-bg-subtle);
+  --bs-btn-hover-border-color: var(--bs-danger-border-subtle);
 }
 
 .btn-ghost {

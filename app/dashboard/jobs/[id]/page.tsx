@@ -308,12 +308,12 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
           {qbToolbar.hasToken ? (
             <form action="/api/jobs/sync" method="post" className="d-inline">
               <input type="hidden" name="return_to" value={`/dashboard/jobs/${job.id}`} />
-              <button className="btn btn-primary" type="submit">
+              <button className="btn btn-sm btn-outline-primary" type="submit">
                 Sync from QuickBooks
               </button>
             </form>
           ) : (
-            <Link href="/dashboard/settings" className="btn btn-primary">
+            <Link href="/dashboard/settings" className="btn btn-sm btn-outline-primary">
               Connect QuickBooks
             </Link>
           )}

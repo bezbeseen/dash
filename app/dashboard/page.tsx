@@ -4,8 +4,10 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { DashboardHomeTodos } from '@/components/dashboard-home-todos';
 import { DashboardOverview } from '@/components/dashboard-overview';
+import { DashboardWorkList } from '@/components/dashboard-work-list';
 import { loadDashboardTodosModule } from '@/lib/domain/dashboard-home-todos';
 import { loadDashboardSummary } from '@/lib/domain/dashboard-summary';
+import { loadDashboardWorkList } from '@/lib/domain/dashboard-work-list';
 import { prisma } from '@/lib/db/prisma';
 import { loadTodoAssigneeOptions } from '@/lib/todo/assignee-options';
 import { todoFormErrorMessage } from '@/lib/todo/todo-form-errors';
@@ -89,11 +91,12 @@ export default async function DashboardHome({ searchParams }: DashboardHomeProps
     select: { realmId: true },
   });
 
-  const [summary, todosModule, assigneeOptions, dashboardPnl] = await Promise.all([
+  const [summary, todosModule, assigneeOptions, dashboardPnl, workList] = await Promise.all([
     loadDashboardSummary(),
     loadDashboardTodosModule(sessionEmail, { upcomingLimit: 8 }),
     loadTodoAssigneeOptions(prisma, sessionEmail),
     qbToken ? loadProfitAndLossForDateRange(qbToken.realmId, pnlStart, pnlEnd) : Promise.resolve(null),
+    loadDashboardWorkList(),
   ]);
 
   return (
@@ -102,11 +105,11 @@ export default async function DashboardHome({ searchParams }: DashboardHomeProps
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Dashboard</h1>
           <p className="board-topbar-sub">
-            Pipeline, money, ticket tasks, shop to-dos, and top customers. Open{' '}
+            Jobs, dates, and to-dos in one place. Open{' '}
             <Link href="/dashboard/tickets" className="text-decoration-underline">
               Tickets
             </Link>{' '}
-            for the full board; sync QuickBooks from Tickets or any ticket.
+            for the kanban board.
           </p>
         </div>
       </header>
@@ -120,15 +123,24 @@ export default async function DashboardHome({ searchParams }: DashboardHomeProps
             <div className="board-toast board-toast-error">{todoError}</div>
           </div>
         ) : null}
-        <DashboardOverview
-          summary={summary}
-          dashboardPnl={dashboardPnl}
-          pnlStart={pnlStart}
-          pnlEnd={pnlEnd}
-          dashboardMtdHref={dashboardMtdHref}
-        />
+        <div className="row g-3 pt-3">
+          <div className="col-12 col-xl-8">
+            <DashboardWorkList work={workList} leadCount={summary.leadCount} />
+          </div>
+          <div className="col-12 col-xl-4">
+            <DashboardHomeTodos module={todosModule} assigneeOptions={assigneeOptions} className="h-100 mb-0" />
+          </div>
+        </div>
 
-        <DashboardHomeTodos module={todosModule} assigneeOptions={assigneeOptions} />
+        <div className="mt-4">
+          <DashboardOverview
+            summary={summary}
+            dashboardPnl={dashboardPnl}
+            pnlStart={pnlStart}
+            pnlEnd={pnlEnd}
+            dashboardMtdHref={dashboardMtdHref}
+          />
+        </div>
 
         <h2 className="h6 text-body-secondary text-uppercase fw-semibold small mt-4 mb-3">Shortcuts</h2>
         <div className="dashboard-home-grid">
