@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { scanYelpLeadEmails, YelpMailboxNotReadyError } from '@/lib/gmail/scan-yelp-lead-emails';
+import { safeDashboardReturnPath } from '@/lib/http/safe-dashboard-return-path';
 import { resolveYelpLeadMailboxState } from '@/lib/yelp/lead-mailbox';
 import { parseDryRunQueryParam } from '@/lib/yelp/scan-query';
 
@@ -49,11 +50,28 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** Imports new Yelp lead emails as pre-quote tickets, then returns to Settings. */
+async function resolveScanReturnPath(req: NextRequest): Promise<string> {
+  const fromQuery = safeDashboardReturnPath(req.nextUrl.searchParams.get('return_to'));
+  if (fromQuery) return fromQuery;
+  const ct = req.headers.get('content-type') ?? '';
+  if (ct.includes('multipart/form-data') || ct.includes('application/x-www-form-urlencoded')) {
+    try {
+      const form = await req.formData();
+      const fromForm = safeDashboardReturnPath(form.get('return_to'));
+      if (fromForm) return fromForm;
+    } catch {
+      /* ignore malformed body */
+    }
+  }
+  return '/dashboard/settings';
+}
+
+/** Imports new Yelp lead emails as pre-quote tickets, then returns to Settings or `return_to`. */
 export async function POST(req: NextRequest) {
   const opts = readOptions(req);
-  const settings = (query: string) =>
-    NextResponse.redirect(new URL(`/dashboard/settings?${query}`, req.nextUrl.origin), 303);
+  const returnPath = await resolveScanReturnPath(req);
+  const back = (query: string) =>
+    NextResponse.redirect(new URL(`${returnPath}?${query}`, req.nextUrl.origin), 303);
 
   const wantsJson = (req.headers.get('accept') ?? '').includes('application/json');
 
@@ -70,7 +88,7 @@ export async function POST(req: NextRequest) {
       yelp_examined: String(result.counts.messagesExamined),
       yelp_truncated: result.truncated ? '1' : '0',
     });
-    return settings(q.toString());
+    return back(q.toString());
   } catch (e) {
     if (e instanceof YelpMailboxNotReadyError) {
       if (wantsJson) {
@@ -79,13 +97,13 @@ export async function POST(req: NextRequest) {
           { status: 409 },
         );
       }
-      return settings(new URLSearchParams({ yelp_scan_error: e.message.slice(0, 400) }).toString());
+      return back(new URLSearchParams({ yelp_scan_error: e.message.slice(0, 400) }).toString());
     }
     const message = e instanceof Error ? e.message : 'scan_failed';
     if (wantsJson) {
       return NextResponse.json({ ok: false, error: message }, { status: 502 });
     }
     const q = new URLSearchParams({ yelp_scan_error: message.slice(0, 400) });
-    return settings(q.toString());
+    return back(q.toString());
   }
 }

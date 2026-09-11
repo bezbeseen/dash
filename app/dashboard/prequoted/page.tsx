@@ -105,7 +105,7 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
           {qbToolbar.hasToken ? (
             <>
               <form action="/api/jobs/sync" method="post" className="d-inline">
-                <button className="btn btn-toolbar" type="submit">
+                <button className="btn btn-primary" type="submit">
                   Sync from QuickBooks
                 </button>
               </form>
@@ -126,13 +126,13 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
                   autoComplete="off"
                   aria-label="QuickBooks invoice number"
                 />
-                <button className="btn btn-toolbar btn-sm" type="submit">
+                <button className="btn btn-outline-primary btn-sm" type="submit">
                   Import
                 </button>
               </form>
             </>
           ) : (
-            <Link href="/dashboard/settings" className="btn btn-toolbar">
+            <Link href="/dashboard/settings" className="btn btn-primary">
               Connect QuickBooks
             </Link>
           )}
@@ -145,10 +145,10 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
                   ? 'Last sync: not yet (run Sync from QuickBooks once)'
                   : 'Last sync: connect QuickBooks first'}
           </span>
-          <Link href="/dashboard/tickets" className="btn btn-toolbar btn-toolbar-muted">
+          <Link href="/dashboard/tickets" className="btn btn-outline-secondary">
             Main board
           </Link>
-          <Link href="/dashboard/settings" className="btn btn-toolbar btn-toolbar-muted">
+          <Link href="/dashboard/settings" className="btn btn-outline-secondary">
             Settings
           </Link>
         </div>

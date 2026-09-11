@@ -43,7 +43,7 @@ export function TicketBoardDndProvider({ children }: { children: ReactNode }) {
     dragRef.current = { jobId, fromColumn };
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', jobId);
-    const card = e.currentTarget.closest('.card');
+    const card = e.currentTarget.closest('.job-card, .card');
     if (card instanceof HTMLElement) {
       e.dataTransfer.setDragImage(card, 20, 20);
     }

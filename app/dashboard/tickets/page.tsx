@@ -19,9 +19,12 @@ import {
 import {
   jobErrorFromQuery,
   syncToastFromQuery,
+  yelpScanToastFromQuery,
 } from '@/lib/domain/integration-query-toasts';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import { WorkflowTabsBar } from '@/components/workflow-tabs-bar';
+import { YelpSyncButton } from '@/components/yelp-sync-button';
+import { resolveYelpLeadMailboxState } from '@/lib/yelp/lead-mailbox';
 import { fmtDetailDate } from '@/lib/ticket/format';
 
 /** Always read fresh jobs from the DB (avoid any edge-case caching after CSV import / sync). */
@@ -33,11 +36,18 @@ type TicketsPageProps = {
     sync_error?: string;
     job_error?: string;
     cleared?: string;
+    yelp_scan?: string;
+    yelp_created?: string;
+    yelp_leads?: string;
+    yelp_existing?: string;
+    yelp_examined?: string;
+    yelp_truncated?: string;
+    yelp_scan_error?: string;
   }>;
 };
 
 export default async function TicketsPage({ searchParams }: TicketsPageProps) {
-  const [jobs, leadCount, qbToolbar] = await Promise.all([
+  const [jobs, leadCount, qbToolbar, yelpMailbox] = await Promise.all([
     prisma.job.findMany({
       where: { archivedAt: null, boardStatus: { not: BoardStatus.REQUESTED } },
       orderBy: [
@@ -49,11 +59,13 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
       where: { archivedAt: null, boardStatus: BoardStatus.REQUESTED },
     }),
     loadQbTicketsToolbar(),
+    resolveYelpLeadMailboxState(null),
   ]);
   const taskByJob = await taskCountsByJobId(jobs.map((j) => j.id));
   const lastTicketSyncAt = qbToolbar.lastTicketSyncAt;
   const q = await searchParams;
   const { synced, syncError } = syncToastFromQuery(q);
+  const { message: yelpScanMessage, error: yelpScanError } = yelpScanToastFromQuery(q);
   const jobError = jobErrorFromQuery(q);
   const cleared = q.cleared === '1';
 
@@ -100,7 +112,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
           {qbToolbar.hasToken ? (
             <>
               <form action="/api/jobs/sync" method="post" className="d-inline">
-                <button className="btn btn-toolbar" type="submit">
+                <button className="btn btn-primary" type="submit">
                   Sync from QuickBooks
                 </button>
               </form>
@@ -121,16 +133,21 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
                   autoComplete="off"
                   aria-label="QuickBooks invoice number"
                 />
-                <button className="btn btn-toolbar btn-sm" type="submit">
+                <button className="btn btn-outline-primary btn-sm" type="submit">
                   Import
                 </button>
               </form>
             </>
           ) : (
-            <Link href="/dashboard/settings" className="btn btn-toolbar">
+            <Link href="/dashboard/settings" className="btn btn-primary">
               Connect QuickBooks
             </Link>
           )}
+          <YelpSyncButton
+            returnTo="/dashboard/tickets"
+            disabled={!yelpMailbox.ready}
+            disabledReason={yelpMailbox.reason ?? undefined}
+          />
           <span className="small text-body-secondary text-md-end board-topbar-sync-meta">
             {qbToolbar.lastSyncUnknown
               ? 'Last sync: deploy DB migration (npx prisma migrate deploy), then reload'
@@ -140,13 +157,13 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
                   ? 'Last sync: not yet (run Sync from QuickBooks once)'
                   : 'Last sync: connect QuickBooks first'}
           </span>
-          <Link href="/dashboard/settings" className="btn btn-toolbar btn-toolbar-muted">
+          <Link href="/dashboard/settings" className="btn btn-outline-secondary">
             Settings
           </Link>
         </div>
       </header>
 
-      {(syncError || jobError || synced || cleared) && (
+      {(syncError || jobError || synced || cleared || yelpScanMessage || yelpScanError) && (
         <div className="board-toasts" role="status">
           {syncError ? (
             <div className="board-toast board-toast-error">QuickBooks sync error: {syncError}</div>
@@ -155,6 +172,8 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
           {synced ? (
             <div className="board-toast board-toast-ok">Synced latest estimates/invoices from QuickBooks.</div>
           ) : null}
+          {yelpScanError ? <div className="board-toast board-toast-error">{yelpScanError}</div> : null}
+          {yelpScanMessage ? <div className="board-toast board-toast-ok">{yelpScanMessage}</div> : null}
           {cleared ? (
             <div className="board-toast board-toast-ok">Local jobs cleared (dev).</div>
           ) : null}

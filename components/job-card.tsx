@@ -255,7 +255,7 @@ export function JobCard({
   return (
     <div
       className={[
-        'card',
+        'card job-card',
         prequoteDisplay ? 'job-card-prequote' : '',
         selectionSlot ? 'job-card-with-select' : '',
         boardColumn ? 'job-card-draggable' : '',

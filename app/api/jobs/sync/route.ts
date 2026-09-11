@@ -3,23 +3,13 @@ import { prisma } from '@/lib/db/prisma';
 import { upsertJobFromEstimate, upsertJobFromInvoice } from '@/lib/domain/sync';
 import { listRecentEstimates, listRecentInvoices } from '@/lib/quickbooks/client';
 import { getQuickBooksSyncMaxResults } from '@/lib/quickbooks/config';
+import { safeDashboardReturnPath } from '@/lib/http/safe-dashboard-return-path';
 
 export const dynamic = 'force-dynamic';
 /** Hobby Vercel caps at 10s; Pro can raise via vercel.json / plan. */
 export const maxDuration = 10;
 
 const baseUrl = () => process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-
-/** Same-origin path only; used to return to ticket view (or stay on Tickets). */
-function safeDashboardReturnPath(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  if (trimmed.length === 0 || trimmed.length > 512) return null;
-  if (!trimmed.startsWith('/dashboard/') || trimmed.startsWith('//')) return null;
-  if (trimmed.includes('://') || trimmed.includes('..')) return null;
-  const pathname = trimmed.split('?')[0] ?? '';
-  return pathname.length > 0 ? pathname : null;
-}
 
 /**
  * Syncs recent Estimates + Invoices from QuickBooks into local jobs.

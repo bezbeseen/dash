@@ -57,7 +57,7 @@ export function TicketActivityLogSection({ sectionId, logs }: Props) {
                       fmtDetailDate(log.createdAt)
                     )}
                   </span>
-                  <span className="badge">{activitySourceLabel(log)}</span>
+                  <span className="badge text-bg-light border">{activitySourceLabel(log)}</span>
                   <span className="activity-event">{log.eventName}</span>
                 </div>
                 <p className="activity-message">{log.message}</p>

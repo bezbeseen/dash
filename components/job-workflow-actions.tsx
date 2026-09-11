@@ -224,14 +224,14 @@ export function JobWorkflowActions({
       <div className="actions actions-card">
         <button
           type="button"
-          className="btn job-card-action job-card-action-start"
+          className="btn btn-sm btn-primary job-card-action job-card-action-start"
           data-bs-toggle="modal"
           data-bs-target={`#${startModalId}`}
         >
           Start work
         </button>
         <form className="job-card-action job-card-action-ready" action={`/api/jobs/${jobId}/ready`} method="post">
-          <button className="btn" type="submit">
+          <button className="btn btn-sm btn-warning" type="submit">
             Ready
           </button>
         </form>
@@ -240,20 +240,20 @@ export function JobWorkflowActions({
           action={`/api/jobs/${jobId}/delivered`}
           method="post"
         >
-          <button className="btn" type="submit" title="Mark delivered or installed on site">
+          <button className="btn btn-sm btn-info" type="submit" title="Mark delivered or installed on site">
             Delivered / installed
           </button>
         </form>
         {wrapUpRecorded ? (
           <form className="job-card-action job-card-action-done" action={`/api/jobs/${jobId}/done`} method="post">
-            <button className="btn btn-done" type="submit">
+            <button className="btn btn-sm btn-success" type="submit">
               Done
             </button>
           </form>
         ) : (
           <button
             type="button"
-            className="btn btn-done job-card-action job-card-action-done"
+            className="btn btn-sm btn-success job-card-action job-card-action-done"
             data-bs-toggle="modal"
             data-bs-target={`#${doneModalId}`}
           >
@@ -261,7 +261,7 @@ export function JobWorkflowActions({
           </button>
         )}
         <form className="job-card-action job-card-action-lost" action={`/api/jobs/${jobId}/lost`} method="post">
-          <button className="btn btn-lost" type="submit">
+          <button className="btn btn-sm btn-outline-danger" type="submit">
             Lost
           </button>
         </form>
@@ -448,7 +448,7 @@ export function JobWorkflowActions({
                   <button type="button" className="btn btn-outline-secondary" data-bs-dismiss="modal">
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-done" disabled={doneBusy}>
+                  <button type="submit" className="btn btn-success" disabled={doneBusy}>
                     {doneBusy ? 'Working…' : 'Mark done'}
                   </button>
                 </div>

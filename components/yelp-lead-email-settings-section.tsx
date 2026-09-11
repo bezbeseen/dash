@@ -66,7 +66,7 @@ export async function YelpLeadEmailSettingsSection() {
           action={`/api/integrations/yelp/scan-emails?days=${YELP_SCAN_DEFAULT_LOOKBACK_DAYS}`}
           method="post"
         >
-          <button className="btn btn-toolbar" type="submit" disabled={!mailbox.ready}>
+          <button className="btn btn-yelp" type="submit" disabled={!mailbox.ready}>
             Import Yelp leads
           </button>
         </form>
@@ -85,7 +85,7 @@ export async function YelpLeadEmailSettingsSection() {
           action={`/api/integrations/yelp/scan-emails?days=${YELP_SCAN_MAX_LOOKBACK_DAYS}`}
           method="post"
         >
-          <button className="btn btn-toolbar" type="submit" disabled={!mailbox.ready}>
+          <button className="btn btn-yelp" type="submit" disabled={!mailbox.ready}>
             Import last {YELP_SCAN_MAX_LOOKBACK_DAYS} days
           </button>
         </form>

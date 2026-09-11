@@ -65,7 +65,7 @@ export function TicketDetailHeader({
             {inboundLeadKindDetailLabel(inboundLeadKind)}
           </span>
         ) : null}
-        <span className="badge badge-lg">{boardStatusDisplayLabel(boardStatus)}</span>
+        <span className="badge badge-lg text-bg-primary">{boardStatusDisplayLabel(boardStatus)}</span>
       </div>
 
       <div className="meta-grid">

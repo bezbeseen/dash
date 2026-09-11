@@ -36,12 +36,12 @@ export function MaxtonTopHeader() {
                     {email}
                   </span>
                 ) : null}
-                <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => signOut()}>
+                <button className="btn btn-sm btn-outline-dark" type="button" onClick={() => signOut()}>
                   Sign out
                 </button>
               </div>
             ) : (
-              <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => signIn('google')}>
+              <button className="btn btn-sm btn-primary" type="button" onClick={() => signIn('google')}>
                 Sign in
               </button>
             )}

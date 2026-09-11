@@ -267,6 +267,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
 
   return (
     <div className="board-page board-page-detail">
+      <div className="ticket-detail-shell container-xl px-0">
       <WorkflowTabsBar />
       {qbImportedOk ||
       driveSaved ||
@@ -277,7 +278,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
       syncError ||
       restoredOk ||
       jobError ? (
-        <div className="board-toasts px-3 px-md-4 pt-3" role="status">
+        <div className="board-toasts pt-3" role="status">
           {jobError ? <div className="board-toast board-toast-error">{jobError}</div> : null}
           {restoredOk ? (
             <div className="board-toast board-toast-ok">Ticket restored to the board.</div>
@@ -307,12 +308,12 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
           {qbToolbar.hasToken ? (
             <form action="/api/jobs/sync" method="post" className="d-inline">
               <input type="hidden" name="return_to" value={`/dashboard/jobs/${job.id}`} />
-              <button className="btn btn-toolbar" type="submit">
+              <button className="btn btn-primary" type="submit">
                 Sync from QuickBooks
               </button>
             </form>
           ) : (
-            <Link href="/dashboard/settings" className="btn btn-toolbar">
+            <Link href="/dashboard/settings" className="btn btn-primary">
               Connect QuickBooks
             </Link>
           )}
@@ -488,6 +489,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
 
           <TicketDetailFooter sectionId="ticket-meta" jobId={job.id} />
         </div>
+      </div>
       </div>
     </div>
   );

@@ -77,7 +77,7 @@ export function PrequoteWorkflowActions({ jobId, archived }: Props) {
         <div className="actions actions-card actions-prequote">
           <button
             type="button"
-            className="btn job-card-action job-card-action-quoted"
+            className="btn btn-sm btn-primary job-card-action job-card-action-quoted"
             disabled={busy}
             onClick={() => void markQuoted()}
             title="Quote was sent — move to the main Tickets board"
@@ -86,7 +86,7 @@ export function PrequoteWorkflowActions({ jobId, archived }: Props) {
           </button>
           <button
             type="button"
-            className="btn job-card-action job-card-action-start"
+            className="btn btn-sm btn-info job-card-action job-card-action-start"
             disabled={busy}
             onClick={() => void startWork()}
             title="Skip quote lane and start production"
@@ -104,7 +104,7 @@ export function PrequoteWorkflowActions({ jobId, archived }: Props) {
             method="post"
           >
             <button
-              className="btn btn-outline-secondary"
+              className="btn btn-sm btn-outline-secondary"
               type="submit"
               title="Spam, wrong number, or noise — not a real lost deal"
             >
@@ -113,7 +113,7 @@ export function PrequoteWorkflowActions({ jobId, archived }: Props) {
           </form>
           <form className="job-card-action job-card-action-lost" action={`/api/jobs/${jobId}/lost`} method="post">
             <button
-              className="btn btn-lost"
+              className="btn btn-sm btn-outline-danger"
               type="submit"
               title="Real lead that will not convert"
             >

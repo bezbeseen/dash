@@ -35,7 +35,7 @@ export function LoginForm({ allowedDomain }: { allowedDomain: string }) {
         Allowed accounts: <strong>@{allowedDomain}</strong>
       </p>
       <button
-        className="btn btn-toolbar"
+        className="btn btn-primary"
         type="button"
         onClick={() => signIn('google', { callbackUrl: '/dashboard' })}
       >
