@@ -195,9 +195,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           <h2 className="h6 fw-semibold mb-2">Gmail</h2>
           <p className="small text-body-secondary mb-3">
             Up to three mailboxes (e.g. you, partner, contact@). Used when syncing threads on tickets. Connect also grants
-            Google Drive access so the app can move linked job folders when you set{' '}
-            <code className="small">GOOGLE_DRIVE_*_FOLDER_ID</code> in the server environment — reconnect here after
-            enabling those variables so the new scope is on your refresh token.
+            Google Drive access so Dash can create job folders from your template and move them between Active,
+            Completed, and Archive. Reconnect here after setting{' '}
+            <code className="small">GOOGLE_DRIVE_*_FOLDER_ID</code> so Drive scope is on the refresh token.
           </p>
           <GmailSidebarHint />
           <GmailRedirectUriHint />

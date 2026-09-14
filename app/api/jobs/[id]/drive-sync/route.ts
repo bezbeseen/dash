@@ -36,7 +36,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           postActionRedirect(
             req,
             id,
-            `/dashboard/jobs/${id}?drive_error=${encodeURIComponent('No job folder yet. Use Create job folder from template (needs GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID). See /api/integrations/env-check → googleDrive.')}`,
+            `/dashboard/jobs/${id}?drive_error=${encodeURIComponent('No job folder on this ticket yet. Use Create job folder from template.')}`,
           ),
         );
       }

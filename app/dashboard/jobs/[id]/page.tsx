@@ -318,22 +318,21 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
           {qbImportedOk ? <div className="board-toast board-toast-ok">Invoice imported from QuickBooks.</div> : null}
           {driveSaved ? <div className="board-toast board-toast-ok">Drive folder link saved.</div> : null}
           {driveCustomerSaved ? (
-            <div className="board-toast board-toast-ok">Customer folder linked. Add the invoice PDF next.</div>
+            <div className="board-toast board-toast-ok">Customer folder linked.</div>
           ) : null}
           {driveCreated ? (
-            <div className="board-toast board-toast-ok">Drive folder created from template and linked to this ticket.</div>
+            <div className="board-toast board-toast-ok">Job folder created from the template and linked to this ticket.</div>
           ) : null}
           {driveError ? <div className="board-toast board-toast-error">{driveError}</div> : null}
           {driveSyncOk === 'moved' ? (
-            <div className="board-toast board-toast-ok">Drive folder moved to match this ticket.</div>
+            <div className="board-toast board-toast-ok">Job folder moved to match this ticket.</div>
           ) : null}
           {driveSyncOk === 'already' ? (
-            <div className="board-toast board-toast-ok">Drive folder was already in the right place.</div>
+            <div className="board-toast board-toast-ok">Job folder was already in the right place.</div>
           ) : null}
           {driveSyncOk === 'pdfs' ? (
             <div className="board-toast board-toast-ok">
-              Invoice PDF saved to {driveFolderLabel ? <strong>{driveFolderLabel}</strong> : 'the customer folder'} in
-              Drive.
+              Invoice PDF saved to {driveFolderLabel ? <strong>{driveFolderLabel}</strong> : 'the job folder'} in Drive.
             </div>
           ) : null}
         </div>

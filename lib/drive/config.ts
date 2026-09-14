@@ -37,7 +37,9 @@ export function getGoogleDriveEnvSnapshot() {
       archive: stageSubfolderNameForBucket('ARCHIVE'),
     },
     note:
-      'Create copies GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID into Active (or Client Jobs / Customer / 01_ACTIVE). Use a folders/ URL or raw folder id, then reconnect Gmail for Drive scope.',
+      getClientJobsRootFolderId()
+        ? 'Create copies the job-folder template into Client Jobs / Customer / Active-stage. Reconnect Gmail after setting folder ids so the token includes Drive.'
+        : 'Create copies the job-folder template into the Active jobs folder. Reconnect Gmail after setting folder ids so the token includes Drive.',
   };
 }
 
