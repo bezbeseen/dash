@@ -1,6 +1,8 @@
+import { NextResponse } from 'next/server';
+
 /**
  * After a same-origin dashboard form POST (e.g. tasks), return the user to the submitting page.
- * Only allows `/dashboard`, `/dashboard/tasks`, `/dashboard/todos`, and `/dashboard/jobs/*` to avoid open redirects.
+ * Only allows `/dashboard`, `/dashboard/work`, `/dashboard/tasks`, `/dashboard/todos`, and `/dashboard/jobs/*` to avoid open redirects.
  */
 export function postDashboardFormRedirect(
   req: Request,
@@ -18,6 +20,7 @@ export function postDashboardFormRedirect(
         const path = u.pathname;
         const allowed =
           path === '/dashboard' ||
+          path === '/dashboard/work' ||
           path === '/dashboard/tasks' ||
           path === '/dashboard/todos' ||
           path.startsWith('/dashboard/todos/') ||
@@ -49,9 +52,30 @@ export function postActionRedirect(req: Request, jobId: string, fallbackPath = '
     if (ref.includes(`/dashboard/jobs/${jobId}`)) {
       return new URL(`/dashboard/jobs/${jobId}${tail}`, base);
     }
+    try {
+      const refUrl = new URL(ref);
+      if (
+        refUrl.host === incoming.host &&
+        (refUrl.pathname === '/dashboard' || refUrl.pathname === '/dashboard/work')
+      ) {
+        const dest = new URL(refUrl.pathname, base);
+        dest.search = refUrl.search;
+        fallback.searchParams.forEach((value, key) => {
+          dest.searchParams.set(key, value);
+        });
+        return dest;
+      }
+    } catch {
+      // ignore malformed Referer
+    }
     return fallback;
   } catch {
     const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     return new URL(fallbackPath, base);
   }
+}
+
+/** Form POST → GET so the browser does not re-POST the page it lands on. */
+export function redirectAfterJobAction(req: Request, jobId: string, fallbackPath = '/dashboard/tickets') {
+  return NextResponse.redirect(postActionRedirect(req, jobId, fallbackPath), 303);
 }

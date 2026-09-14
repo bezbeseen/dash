@@ -1,16 +1,8 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { DashboardHomeTodos } from '@/components/dashboard-home-todos';
 import { DashboardOverview } from '@/components/dashboard-overview';
-import { DashboardWorkList } from '@/components/dashboard-work-list';
-import { loadDashboardTodosModule } from '@/lib/domain/dashboard-home-todos';
 import { loadDashboardSummary } from '@/lib/domain/dashboard-summary';
-import { loadDashboardWorkList } from '@/lib/domain/dashboard-work-list';
 import { prisma } from '@/lib/db/prisma';
-import { loadTodoAssigneeOptions } from '@/lib/todo/assignee-options';
-import { todoFormErrorMessage } from '@/lib/todo/todo-form-errors';
 import {
   loadProfitAndLossForDateRange,
   monthToDateRangeYmd,
@@ -27,7 +19,7 @@ const SETTINGS_QUERY_KEYS = [
   'gmail_error',
 ] as const;
 
-const TICKETS_QUERY_KEYS = ['synced', 'sync_error', 'job_error', 'cleared'] as const;
+const TICKETS_QUERY_KEYS = ['synced', 'sync_error', 'cleared'] as const;
 
 export const dynamic = 'force-dynamic';
 
@@ -67,14 +59,6 @@ export default async function DashboardHome({ searchParams }: DashboardHomeProps
     redirect(`/dashboard/tickets?${ticketsFlat.toString()}`);
   }
 
-  const todoErrorRaw = q.todo_error;
-  const todoErrorCode =
-    typeof todoErrorRaw === 'string' ? todoErrorRaw : Array.isArray(todoErrorRaw) ? todoErrorRaw[0] : undefined;
-  const todoError = todoFormErrorMessage(todoErrorCode);
-
-  const session = await getServerSession(authOptions);
-  const sessionEmail = (session?.user?.email ?? '').toLowerCase() || null;
-
   const tz = quickBooksReportTimeZone();
   const defaultPnlRange = rollingLastDaysRangeYmd(30, new Date(), tz);
   const { start: pnlStart, end: pnlEnd } = normalizePnlDateRange(
@@ -91,12 +75,9 @@ export default async function DashboardHome({ searchParams }: DashboardHomeProps
     select: { realmId: true },
   });
 
-  const [summary, todosModule, assigneeOptions, dashboardPnl, workList] = await Promise.all([
+  const [summary, dashboardPnl] = await Promise.all([
     loadDashboardSummary(),
-    loadDashboardTodosModule(sessionEmail, { upcomingLimit: 8 }),
-    loadTodoAssigneeOptions(prisma, sessionEmail),
     qbToken ? loadProfitAndLossForDateRange(qbToken.realmId, pnlStart, pnlEnd) : Promise.resolve(null),
-    loadDashboardWorkList(),
   ]);
 
   return (
@@ -105,45 +86,37 @@ export default async function DashboardHome({ searchParams }: DashboardHomeProps
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Dashboard</h1>
           <p className="board-topbar-sub">
-            Jobs, dates, and to-dos in one place. Open{' '}
+            Snapshot of money and backlog.{' '}
+            <Link href="/dashboard/work" className="text-decoration-underline">
+              Work
+            </Link>{' '}
+            is the jobs list;{' '}
             <Link href="/dashboard/tickets" className="text-decoration-underline">
               Tickets
             </Link>{' '}
-            for the kanban board.
+            is the kanban board.
           </p>
         </div>
       </header>
 
-      <div
-        className="flex-grow-1 overflow-auto px-3 px-md-4 pb-4"
-        style={{ minHeight: 0 }}
-      >
-        {todoError ? (
-          <div className="pt-2 pb-1" role="alert">
-            <div className="board-toast board-toast-error">{todoError}</div>
-          </div>
-        ) : null}
-        <div className="row g-3 pt-3">
-          <div className="col-12 col-xl-8">
-            <DashboardWorkList work={workList} leadCount={summary.leadCount} />
-          </div>
-          <div className="col-12 col-xl-4">
-            <DashboardHomeTodos module={todosModule} assigneeOptions={assigneeOptions} className="h-100 mb-0" />
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <DashboardOverview
-            summary={summary}
-            dashboardPnl={dashboardPnl}
-            pnlStart={pnlStart}
-            pnlEnd={pnlEnd}
-            dashboardMtdHref={dashboardMtdHref}
-          />
-        </div>
+      <div className="dashboard-home-main">
+        <DashboardOverview
+          summary={summary}
+          dashboardPnl={dashboardPnl}
+          pnlStart={pnlStart}
+          pnlEnd={pnlEnd}
+          dashboardMtdHref={dashboardMtdHref}
+        />
 
         <h2 className="h6 text-body-secondary text-uppercase fw-semibold small mt-4 mb-3">Shortcuts</h2>
         <div className="dashboard-home-grid">
+          <Link href="/dashboard/work" className="dashboard-home-card">
+            <span className="dashboard-home-card-icon" aria-hidden>
+              <i className="material-icons-outlined">view_list</i>
+            </span>
+            <span className="dashboard-home-card-title">Work</span>
+            <span className="dashboard-home-card-desc">Jobs, dates, and shop to-dos</span>
+          </Link>
           <Link href="/dashboard/tickets" className="dashboard-home-card">
             <span className="dashboard-home-card-icon" aria-hidden>
               <i className="material-icons-outlined">confirmation_number</i>

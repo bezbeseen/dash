@@ -12,6 +12,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         postActionRedirect(req, id, `/dashboard/jobs/${id}?drive_error=${encodeURIComponent(result.error)}`),
       );
     }
+    if ('pdfsSaved' in result) {
+      return NextResponse.redirect(
+        postActionRedirect(
+          req,
+          id,
+          `/dashboard/jobs/${id}?drive_sync_ok=pdfs&drive_folder=${encodeURIComponent(result.folderName)}`,
+        ),
+      );
+    }
     if ('skipped' in result) {
       if (result.reason === 'not_configured') {
         return NextResponse.redirect(
@@ -27,7 +36,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           postActionRedirect(
             req,
             id,
-            `/dashboard/jobs/${id}?drive_error=${encodeURIComponent('Save a Drive folder on this ticket first.')}`,
+            `/dashboard/jobs/${id}?drive_error=${encodeURIComponent('No job folder linked and no matching customer folder in Drive.')}`,
           ),
         );
       }

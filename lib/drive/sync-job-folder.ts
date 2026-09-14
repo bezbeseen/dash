@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db/prisma';
 import { isGoogleDriveBucketSyncConfigured, driveParentIdForBucket } from '@/lib/drive/config';
 import { syncCustomerHubShortcut } from '@/lib/drive/customer-hub-shortcut';
 import {
+  assertDriveFolderAccessible,
   formatDriveUserError,
   getDriveFolderParents,
   moveDriveItemToParent,
@@ -9,12 +10,14 @@ import {
 } from '@/lib/drive/api';
 import { buildDriveJobFolderName } from '@/lib/drive/job-folder-name';
 import { syncQboPdfsToJobDriveFolder } from '@/lib/drive/sync-qbo-pdfs-to-drive';
+import { syncJobDriveDocuments } from '@/lib/drive/sync-job-documents';
 import { driveBucketForJob } from '@/lib/drive/resolve-bucket';
 import { getGmailOAuth2ClientForConnection, getGmailOAuth2ClientForApi } from '@/lib/gmail/tokens-db';
 
 export type SyncJobDriveFolderResult =
   | { ok: true; skipped: true; reason: 'not_configured' | 'no_folder' | 'already_placed' }
   | { ok: true; moved: true; bucket: string }
+  | { ok: true; pdfsSaved: true; folderName: string }
   | { ok: false; error: string };
 
 async function getAuthForDriveJob(job: { gmailConnectionId: string | null }) {
@@ -29,10 +32,6 @@ async function getAuthForDriveJob(job: { gmailConnectionId: string | null }) {
  * (job folder name includes client and project). Optional customer hub shortcuts stay separate.
  */
 export async function syncJobDriveFolder(jobId: string): Promise<SyncJobDriveFolderResult> {
-  if (!isGoogleDriveBucketSyncConfigured()) {
-    return { ok: true, skipped: true, reason: 'not_configured' };
-  }
-
   const job = await prisma.job.findUnique({
     where: { id: jobId },
     select: {
@@ -50,8 +49,26 @@ export async function syncJobDriveFolder(jobId: string): Promise<SyncJobDriveFol
     },
   });
 
-  if (!job?.googleDriveFolderId) {
-    return { ok: true, skipped: true, reason: 'no_folder' };
+  if (!job) {
+    return { ok: false, error: 'Job not found.' };
+  }
+
+  if (!job.googleDriveFolderId) {
+    const docs = await syncJobDriveDocuments(jobId);
+    if (docs.ok) {
+      return { ok: true, pdfsSaved: true, folderName: docs.folderName };
+    }
+    return { ok: false, error: docs.error };
+  }
+
+  if (!isGoogleDriveBucketSyncConfigured()) {
+    try {
+      const auth = await getAuthForDriveJob(job);
+      await syncQboPdfsToJobDriveFolder(auth, job);
+      return { ok: true, pdfsSaved: true, folderName: 'job folder' };
+    } catch (e) {
+      return { ok: false, error: formatDriveUserError(e) };
+    }
   }
 
   const bucket = driveBucketForJob(job);
@@ -62,6 +79,8 @@ export async function syncJobDriveFolder(jobId: string): Promise<SyncJobDriveFol
 
   try {
     const auth = await getAuthForDriveJob(job);
+    await assertDriveFolderAccessible(auth, job.googleDriveFolderId, 'This ticket’s Drive folder');
+    await assertDriveFolderAccessible(auth, bucketRoot, `${bucket} jobs folder`);
     const targetParent = bucketRoot;
     const parents = await getDriveFolderParents(auth, job.googleDriveFolderId);
     const alreadyThere = parents.includes(targetParent);

@@ -1,8 +1,23 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import Modal from 'bootstrap/js/dist/modal';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+
+function ActionModals({ children }: { children: ReactNode }) {
+  const [target, setTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setTarget(document.body);
+  }, []);
+  if (!target) return null;
+  return createPortal(children, target);
+}
+
+function hideBootstrapModal(el: HTMLElement) {
+  void import('bootstrap/js/dist/modal').then(({ default: Modal }) => {
+    Modal.getOrCreateInstance(el).hide();
+  });
+}
 
 type Props = {
   jobId: string;
@@ -13,6 +28,8 @@ type Props = {
   wrapUpRecorded: boolean;
   /** Hide Start work / Ready / … for inbound leads still on REQUESTED. */
   suppressProductionShortcuts?: boolean;
+  /** Table / work-list: buttons only, no wrap-up banner. */
+  compact?: boolean;
 };
 
 /** If no modal is open, strip orphan Bootstrap backdrops (e.g. refresh during hide). */
@@ -46,7 +63,7 @@ function hideModalThen(modalDomId: string, then: () => void) {
     finalize();
   };
   el.addEventListener('hidden.bs.modal', onHidden);
-  Modal.getOrCreateInstance(el).hide();
+  hideBootstrapModal(el);
 }
 
 export function JobWorkflowActions({
@@ -55,6 +72,7 @@ export function JobWorkflowActions({
   needsWrapUpReminder,
   wrapUpRecorded,
   suppressProductionShortcuts = false,
+  compact = false,
 }: Props) {
   const router = useRouter();
   const [startBusy, setStartBusy] = useState(false);
@@ -198,13 +216,17 @@ export function JobWorkflowActions({
       return;
     }
     hideModalThen(doneModalId, () => {
+      if (compact) {
+        refresh();
+        return;
+      }
       window.location.assign('/dashboard/tickets');
     });
   }
 
   return (
     <>
-      {needsWrapUpReminder && !wrapUpRecorded ? (
+      {needsWrapUpReminder && !wrapUpRecorded && !compact ? (
         <div className="alert alert-secondary small mb-3 d-flex flex-wrap align-items-center gap-2" role="status">
             <span>
             <strong>Paid in full</strong> — optional team notes (outcomes, issues, follow-ups). Save with an empty field to
@@ -221,14 +243,14 @@ export function JobWorkflowActions({
         </div>
       ) : null}
 
-      <div className="actions actions-card">
+      <div className={`actions actions-card${compact ? ' actions-compact' : ''}`}>
         <button
           type="button"
           className="btn btn-sm btn-outline-primary job-card-action job-card-action-start"
           data-bs-toggle="modal"
           data-bs-target={`#${startModalId}`}
         >
-          Start work
+          {compact ? 'Start' : 'Start work'}
         </button>
         <form className="job-card-action job-card-action-ready" action={`/api/jobs/${jobId}/ready`} method="post">
           <button className="btn btn-sm btn-outline-warning" type="submit">
@@ -241,7 +263,7 @@ export function JobWorkflowActions({
           method="post"
         >
           <button className="btn btn-sm btn-outline-info" type="submit" title="Mark delivered or installed on site">
-            Delivered / installed
+            {compact ? 'Delivered' : 'Delivered / installed'}
           </button>
         </form>
         {wrapUpRecorded ? (
@@ -265,8 +287,19 @@ export function JobWorkflowActions({
             Lost
           </button>
         </form>
+        {compact && needsWrapUpReminder && !wrapUpRecorded ? (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary job-card-action"
+            data-bs-toggle="modal"
+            data-bs-target={`#${wrapModalId}`}
+          >
+            Wrap
+          </button>
+        ) : null}
       </div>
 
+      <ActionModals>
       <div
         className="modal fade"
         id={startModalId}
@@ -457,6 +490,7 @@ export function JobWorkflowActions({
           </div>
         </div>
       ) : null}
+      </ActionModals>
     </>
   );
 }

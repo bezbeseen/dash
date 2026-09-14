@@ -35,9 +35,11 @@ function folderLooksLikeInvoicesQuotesFolder(name: string): boolean {
 export async function resolveQboPdfsParentFolder(
   auth: OAuth2Client,
   jobFolderId: string,
+  opts?: { createIfMissing?: boolean },
 ): Promise<string> {
   const preferred = getQboPdfsSubfolderNameOrDefault();
   const configuredOnly = process.env.GOOGLE_DRIVE_QBO_PDFS_SUBFOLDER_NAME?.trim();
+  const createIfMissing = opts?.createIfMissing !== false;
 
   const items = await listDriveFolderChildren(auth, jobFolderId, 100);
   const folders = items.filter((x) => x.mimeType === FOLDER_MIME);
@@ -65,6 +67,7 @@ export async function resolveQboPdfsParentFolder(
     return aliasMatches[0]!.id;
   }
 
+  if (!createIfMissing) return jobFolderId;
   return ensureFolderNamedUnderParent(auth, jobFolderId, preferred);
 }
 
@@ -107,19 +110,28 @@ export type JobForQboPdfsToDrive = {
 };
 
 /**
- * Ensures QuickBooks estimate and invoice PDFs exist under the job folder's invoices/quotes subfolder
- * (reuses template folders such as 06_Invoices Quotes when present).
+ * Ensures QuickBooks estimate and invoice PDFs exist under `destFolderId`
+ * (reuses an invoices/quotes subfolder when one already exists).
  */
-export async function syncQboPdfsToJobDriveFolder(auth: OAuth2Client, job: JobForQboPdfsToDrive): Promise<void> {
-  const folderId = job.googleDriveFolderId;
+export async function syncQboPdfsToDriveFolder(
+  auth: OAuth2Client,
+  job: JobForQboPdfsToDrive,
+  destFolderId: string,
+  opts?: { createInvoicesSubfolder?: boolean },
+): Promise<void> {
   const realmId = job.quickbooksCompanyId;
-  if (!folderId || !realmId) return;
+  if (!destFolderId || !realmId) return;
 
   const hasEstimate = Boolean(job.quickbooksEstimateId);
   const hasInvoice = Boolean(job.quickbooksInvoiceId);
   if (!hasEstimate && !hasInvoice) return;
 
-  const docsParent = await resolveQboPdfsParentFolder(auth, folderId);
+  const docsParent = await resolveQboPdfsParentFolder(auth, destFolderId, {
+    createIfMissing: opts?.createInvoicesSubfolder !== false,
+  });
+
+  let saved = 0;
+  let lastError: unknown;
 
   if (job.quickbooksEstimateId) {
     try {
@@ -127,7 +139,9 @@ export async function syncQboPdfsToJobDriveFolder(auth: OAuth2Client, job: JobFo
       const name = `Estimate-${safePdfBaseName(snap.docNumber, job.quickbooksEstimateId)}.pdf`;
       const pdfBytes = await fetchEstimatePdf(realmId, job.quickbooksEstimateId);
       await uploadOrReplacePdf(auth, docsParent, name, pdfBytes);
+      saved += 1;
     } catch (e) {
+      lastError = e;
       console.error('[drive] estimate PDF to folder', job.id, e);
     }
   }
@@ -138,8 +152,26 @@ export async function syncQboPdfsToJobDriveFolder(auth: OAuth2Client, job: JobFo
       const name = `Invoice-${safePdfBaseName(snap.docNumber, job.quickbooksInvoiceId)}.pdf`;
       const pdfBytes = await fetchInvoicePdf(realmId, job.quickbooksInvoiceId);
       await uploadOrReplacePdf(auth, docsParent, name, pdfBytes);
+      saved += 1;
     } catch (e) {
+      lastError = e;
       console.error('[drive] invoice PDF to folder', job.id, e);
     }
   }
+
+  if (saved === 0) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('Could not download the invoice or estimate PDF from QuickBooks.');
+  }
+}
+
+/**
+ * Ensures QuickBooks estimate and invoice PDFs exist under the job folder's invoices/quotes subfolder
+ * (reuses template folders such as 06_Invoices Quotes when present).
+ */
+export async function syncQboPdfsToJobDriveFolder(auth: OAuth2Client, job: JobForQboPdfsToDrive): Promise<void> {
+  const folderId = job.googleDriveFolderId;
+  if (!folderId) return;
+  await syncQboPdfsToDriveFolder(auth, job, folderId, { createInvoicesSubfolder: true });
 }

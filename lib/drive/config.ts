@@ -4,8 +4,7 @@ import { parseGoogleDriveFolderId } from '@/lib/drive/parse-folder-id';
 function envFolderId(raw: string | undefined): string | null {
   const t = raw?.trim();
   if (!t) return null;
-  const parsed = parseGoogleDriveFolderId(t);
-  return parsed ?? t;
+  return parseGoogleDriveFolderId(t);
 }
 
 export function driveParentIdForBucket(bucket: DriveBucket): string | null {

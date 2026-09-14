@@ -158,6 +158,11 @@ export async function GET(req: NextRequest) {
   hints.push(
     'Google Cloud → APIs & Services → Credentials → your OAuth2.0 Web client → Authorized redirect URIs must list EVERY callback below (exact string, including https and path).',
   );
+  if (requestHost.startsWith('localhost') || requestHost.startsWith('127.0.0.1')) {
+    hints.push(
+      `Local sign-in: add http://${requestHost} as a JavaScript origin and ${nextAuthCallbackFromRequest} as a redirect URI on the same Google OAuth Web client as Vercel. Keep production URLs. Then open http://${requestHost} — you do not need to deploy to preview.`,
+    );
+  }
   if (nextAuthHost && nextAuthHost !== requestHost) {
     hints.push(
       `NEXTAUTH_URL host is "${nextAuthHost}" but this request is "${requestHost}". Google sign-in sends redirect_uri ${nextAuthCallbackEffective} — register that exact URL in Google Cloud, or set NEXTAUTH_URL to https://${requestHost} and redeploy.`,

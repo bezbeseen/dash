@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { ArchiveReason } from '@prisma/client';
 import { z } from 'zod';
 import { archiveJob, saveJobWrapUp } from '@/lib/domain/sync';
-import { postActionRedirect } from '@/lib/http/post-action-redirect';
+import { redirectAfterJobAction } from '@/lib/http/post-action-redirect';
 import { wantsJsonResponse } from '@/lib/http/wants-json-response';
 
 const doneJsonSchema = z.object({
@@ -33,9 +33,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     await archiveJob(id, ArchiveReason.DONE, 'Marked Done — ticket removed from the board.');
   } catch {
     if (wantsJson) return NextResponse.json({ ok: false, error: 'archive_failed' }, { status: 400 });
-    return NextResponse.redirect(postActionRedirect(req, id, '/dashboard/tickets?job_error=archive'));
+    return redirectAfterJobAction(req, id, '/dashboard/tickets?job_error=archive');
   }
 
   if (wantsJson) return NextResponse.json({ ok: true });
-  return NextResponse.redirect(postActionRedirect(req, id, '/dashboard/tickets'));
+  return redirectAfterJobAction(req, id, '/dashboard/tickets');
 }

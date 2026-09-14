@@ -1,9 +1,16 @@
+import { headers } from 'next/headers';
 import { Suspense } from 'react';
 import { workspaceDomain } from '@/lib/workspace-domain';
 import { LoginForm } from './login-form';
 
-export default function LoginPage() {
+export default async function LoginPage() {
   const allowedDomain = workspaceDomain();
+  const h = await headers();
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000';
+  const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https');
+  const origin = `${proto}://${host}`.replace(/\/+$/, '');
+  const isLocal = host.startsWith('localhost') || host.startsWith('127.0.0.1');
+  const nextAuthOrigin = (process.env.NEXTAUTH_URL || '').trim().replace(/\/+$/, '');
   return (
     <div className="board-page">
       <header className="board-topbar">
@@ -21,7 +28,12 @@ export default function LoginPage() {
             </div>
           }
         >
-          <LoginForm allowedDomain={allowedDomain} />
+          <LoginForm
+            allowedDomain={allowedDomain}
+            localOrigin={isLocal ? origin : null}
+            authCallbackUrl={`${(nextAuthOrigin || origin)}/api/auth/callback/google`}
+            nextAuthOrigin={nextAuthOrigin || null}
+          />
         </Suspense>
       </div>
     </div>

@@ -1,9 +1,9 @@
-import { BoardStatus, TaskStatus } from '@prisma/client';
+import { BoardStatus, TaskStatus, type InvoiceStatus } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { boardStatusDisplayLabel } from '@/lib/domain/board-display';
 import { jobPrimaryHeading, jobSecondaryHeading } from '@/lib/domain/job-display';
 
-export const DASHBOARD_WORK_LIST_LIMIT = 30;
+export const DASHBOARD_WORK_LIST_LIMIT = 50;
 
 export type DashboardWorkRow = {
   id: string;
@@ -16,6 +16,11 @@ export type DashboardWorkRow = {
   openTasks: number;
   overdueTasks: number;
   nextDueAt: Date | null;
+  invoiceStatus: InvoiceStatus;
+  invoiceAmountCents: number;
+  amountPaidCents: number;
+  prodWrapUpNotes: string | null;
+  prodWrapUpAt: Date | null;
 };
 
 export type DashboardWorkList = {
@@ -78,6 +83,11 @@ export async function loadDashboardWorkList(now = new Date()): Promise<Dashboard
         qbOrderingAt: true,
         createdAt: true,
         updatedAt: true,
+        invoiceStatus: true,
+        invoiceAmountCents: true,
+        amountPaidCents: true,
+        prodWrapUpNotes: true,
+        prodWrapUpAt: true,
         tasks: {
           where: { status: TaskStatus.OPEN },
           select: { dueAt: true },
@@ -102,6 +112,11 @@ export async function loadDashboardWorkList(now = new Date()): Promise<Dashboard
       openTasks: job.tasks.length,
       overdueTasks: dueDates.filter((d) => d < now).length,
       nextDueAt: dueDates[0] ?? null,
+      invoiceStatus: job.invoiceStatus,
+      invoiceAmountCents: job.invoiceAmountCents,
+      amountPaidCents: job.amountPaidCents,
+      prodWrapUpNotes: job.prodWrapUpNotes,
+      prodWrapUpAt: job.prodWrapUpAt,
     };
   });
 

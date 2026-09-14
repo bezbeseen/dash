@@ -23,8 +23,8 @@ export function DashboardHomeTodos({ module: m, assigneeOptions, className }: Pr
   const now = new Date();
 
   return (
-    <section className={['card border rounded-3 p-4 bg-body', className ?? 'mb-4'].filter(Boolean).join(' ')}>
-      <div className="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+    <section className={['dash-module card border rounded-3 bg-body', className ?? 'mb-4'].filter(Boolean).join(' ')}>
+      <div className="dash-module-head d-flex flex-wrap align-items-start justify-content-between gap-2">
         <div>
           <h2 className="h6 fw-semibold mb-1 d-flex align-items-center gap-2">
             <i className="material-icons-outlined text-body-secondary" style={{ fontSize: 22 }}>
@@ -63,7 +63,7 @@ export function DashboardHomeTodos({ module: m, assigneeOptions, className }: Pr
       <form
         action="/api/todos"
         method="post"
-        className="d-flex flex-column flex-lg-row flex-wrap gap-2 align-items-stretch align-items-lg-end mb-4"
+        className="dash-module-tools d-flex flex-column flex-lg-row flex-wrap gap-2 align-items-stretch align-items-lg-end"
       >
         <div className="flex-grow-1" style={{ minWidth: '10rem' }}>
           <label className="form-label small mb-1" htmlFor="dashboard-todo-title">
@@ -109,9 +109,11 @@ export function DashboardHomeTodos({ module: m, assigneeOptions, className }: Pr
       </form>
 
       {m.upcoming.length === 0 ? (
-        <p className="text-body-secondary small mb-0">No open to-dos. Add one above or on the full list.</p>
+        <div className="dash-module-scroll">
+          <p className="text-body-secondary small px-3 pb-3 mb-0">No open to-dos. Add one above or on the full list.</p>
+        </div>
       ) : (
-        <ul className="list-group list-group-flush border rounded-2 overflow-hidden mb-0">
+        <ul className="dash-module-scroll list-group list-group-flush border-top mb-0">
           {m.upcoming.map((t) => {
             const dueLabel = formatDue(t.dueAt, tz);
             const overdue = t.dueAt != null && t.dueAt < now;
@@ -143,6 +145,16 @@ export function DashboardHomeTodos({ module: m, assigneeOptions, className }: Pr
           })}
         </ul>
       )}
+
+      {m.openTotal > m.upcoming.length ? (
+        <div className="dash-module-foot small text-body-secondary">
+          Showing {m.upcoming.length} of {m.openTotal}.{' '}
+          <Link href={'/dashboard/todos' as never} className="text-decoration-underline">
+            See all to-dos
+          </Link>
+          .
+        </div>
+      ) : null}
     </section>
   );
 }

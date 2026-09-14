@@ -34,6 +34,7 @@ const VENDOR_LINKS = [
 export function DashboardSidebarNav() {
   const pathname = usePathname() ?? '';
   const dashboardActive = pathname === '/dashboard';
+  const workActive = pathname === '/dashboard/work' || pathname.startsWith('/dashboard/work/');
   const activityActive = pathname === '/dashboard/activity' || pathname.startsWith('/dashboard/activity/');
   const accountingActive = pathname === '/dashboard/accounting' || pathname.startsWith('/dashboard/accounting/');
   const cashActive = pathname === '/dashboard/cash' || pathname.startsWith('/dashboard/cash/');
@@ -52,6 +53,14 @@ export function DashboardSidebarNav() {
             <i className="material-icons-outlined">dashboard</i>
           </div>
           <div className="menu-title">Dashboard</div>
+        </Link>
+      </li>
+      <li className={workActive ? 'mm-active' : ''}>
+        <Link href="/dashboard/work">
+          <div className="parent-icon">
+            <i className="material-icons-outlined">view_list</i>
+          </div>
+          <div className="menu-title">Work</div>
         </Link>
       </li>
       <li className={activityActive ? 'mm-active' : ''}>

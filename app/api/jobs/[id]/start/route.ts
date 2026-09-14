@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { ProductionStatus } from '@prisma/client';
 import { z } from 'zod';
 import { updateProductionStatus } from '@/lib/domain/sync';
-import { postActionRedirect } from '@/lib/http/post-action-redirect';
+import { redirectAfterJobAction } from '@/lib/http/post-action-redirect';
 import { wantsJsonResponse } from '@/lib/http/wants-json-response';
 
 const optionalNonNeg = z
@@ -50,9 +50,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     });
   } catch {
     if (wantsJson) return NextResponse.json({ ok: false, error: 'blocked' }, { status: 400 });
-    return NextResponse.redirect(postActionRedirect(req, id, '/dashboard/tickets?job_error=blocked'));
+    return redirectAfterJobAction(req, id, '/dashboard/tickets?job_error=blocked');
   }
 
   if (wantsJson) return NextResponse.json({ ok: true });
-  return NextResponse.redirect(postActionRedirect(req, id, '/dashboard/tickets'));
+  return redirectAfterJobAction(req, id, '/dashboard/tickets');
 }

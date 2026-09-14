@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma';
-import { formatDriveUserError } from '@/lib/drive/api';
+import { assertDriveFolderAccessible, formatDriveUserError } from '@/lib/drive/api';
 import { driveParentIdForBucket, getJobFolderTemplateId } from '@/lib/drive/config';
 import { duplicateDriveFolderTree } from '@/lib/drive/duplicate-template-folder';
 import { buildDriveJobFolderName } from '@/lib/drive/job-folder-name';
@@ -46,6 +46,28 @@ export async function createJobFolderFromTemplate(jobId: string): Promise<Create
   const auth = job.gmailConnectionId
     ? await getGmailOAuth2ClientForConnection(job.gmailConnectionId)
     : await getGmailOAuth2ClientForApi();
+
+  try {
+    await assertDriveFolderAccessible(
+      auth,
+      templateId,
+      'Job folder template (GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID)',
+    );
+    await assertDriveFolderAccessible(
+      auth,
+      activeParent,
+      'Active jobs folder (GOOGLE_DRIVE_ACTIVE_FOLDER_ID)',
+    );
+  } catch (e) {
+    const message = e instanceof Error ? e.message : formatDriveUserError(e);
+    await prisma.job
+      .update({
+        where: { id: jobId },
+        data: { googleDriveLastError: message },
+      })
+      .catch(() => {});
+    return { ok: false, error: message };
+  }
 
   const name = buildDriveJobFolderName({
     customerName: job.customerName,

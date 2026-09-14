@@ -34,6 +34,7 @@ import { parseStoredThreadSuggestions } from '@/lib/gmail/thread-match';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import { listJobDriveFolderPreview } from '@/lib/drive/list-for-job';
 import { canCreateDriveJobFolderFromTemplate } from '@/lib/drive/config';
+import { resolveCustomerDriveFolderForJob } from '@/lib/drive/resolve-customer-folder';
 import { fetchInvoiceById } from '@/lib/quickbooks/client';
 import {
   fetchEstimateActivityTimeline,
@@ -71,6 +72,7 @@ type PageProps = {
     drive_error?: string;
     drive_sync_ok?: string;
     drive_created?: string;
+    drive_folder?: string;
     synced?: string;
     sync_error?: string;
     restored?: string;
@@ -96,6 +98,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const gmailMatchError = sp.gmail_match_error?.trim() || gmailMatchToast.error;
   const qbImportedOk = sp.qb_imported === '1';
   const driveSaved = sp.drive_saved === '1';
+  const driveCustomerSaved = sp.drive_saved === 'customer';
   let driveError: string | null = null;
   if (sp.drive_error) {
     try {
@@ -104,8 +107,23 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
       driveError = sp.drive_error;
     }
   }
-  const driveSyncOk = sp.drive_sync_ok === 'moved' ? 'moved' : sp.drive_sync_ok === 'already' ? 'already' : null;
+  const driveSyncOk =
+    sp.drive_sync_ok === 'moved'
+      ? 'moved'
+      : sp.drive_sync_ok === 'already'
+        ? 'already'
+        : sp.drive_sync_ok === 'pdfs'
+          ? 'pdfs'
+          : null;
   const driveCreated = sp.drive_created === '1';
+  let driveFolderLabel: string | null = null;
+  if (sp.drive_folder) {
+    try {
+      driveFolderLabel = decodeURIComponent(sp.drive_folder);
+    } catch {
+      driveFolderLabel = sp.drive_folder;
+    }
+  }
 
   const { synced, syncError } = syncToastFromQuery(sp);
   const restoredOk = sp.restored === '1';
@@ -170,7 +188,17 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const hasLeadDetailsBody = Boolean(job.projectDescription?.trim());
   const needsWrapUpReminder = jobNeedsWrapUpReminder(job, qboInvoice);
   const wrapUpRecorded = jobWrapUpRecorded(job);
-  const { items: driveChildren, listError: driveListError } = await listJobDriveFolderPreview(id);
+  let customerFolder: { id: string; name: string } | null = null;
+  try {
+    const resolved = await resolveCustomerDriveFolderForJob(id);
+    if (resolved) customerFolder = { id: resolved.id, name: resolved.name };
+  } catch {
+    customerFolder = null;
+  }
+  const { items: driveChildren, listError: driveListError } = await listJobDriveFolderPreview(
+    id,
+    job.googleDriveFolderId ?? customerFolder?.id ?? null,
+  );
   const invoiceTotalDisplayCents = qboInvoice?.totalAmtCents ?? job.invoiceAmountCents;
   const paidDisplayCents = qboInvoice?.amountPaidCents ?? job.amountPaidCents;
 
@@ -271,6 +299,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
       <WorkflowTabsBar />
       {qbImportedOk ||
       driveSaved ||
+      driveCustomerSaved ||
       driveError ||
       driveSyncOk ||
       driveCreated ||
@@ -291,6 +320,9 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
           ) : null}
           {qbImportedOk ? <div className="board-toast board-toast-ok">Invoice imported from QuickBooks.</div> : null}
           {driveSaved ? <div className="board-toast board-toast-ok">Drive folder link saved.</div> : null}
+          {driveCustomerSaved ? (
+            <div className="board-toast board-toast-ok">Customer folder linked. Add the invoice PDF next.</div>
+          ) : null}
           {driveCreated ? (
             <div className="board-toast board-toast-ok">Drive folder created from template and linked to this ticket.</div>
           ) : null}
@@ -300,6 +332,12 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
           ) : null}
           {driveSyncOk === 'already' ? (
             <div className="board-toast board-toast-ok">Drive folder was already in the right place.</div>
+          ) : null}
+          {driveSyncOk === 'pdfs' ? (
+            <div className="board-toast board-toast-ok">
+              Invoice PDF saved to {driveFolderLabel ? <strong>{driveFolderLabel}</strong> : 'the customer folder'} in
+              Drive.
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -400,6 +438,8 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             driveChildren={driveChildren}
             driveListError={driveListError}
             canCreateFromTemplate={canCreateDriveJobFolderFromTemplate() && !job.googleDriveFolderId}
+            customerFolder={customerFolder}
+            hasQboDocs={Boolean(job.quickbooksInvoiceId || job.quickbooksEstimateId)}
           />
 
           {!isLeadFirst ? (
