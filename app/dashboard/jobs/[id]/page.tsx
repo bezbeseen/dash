@@ -195,10 +195,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   } catch {
     customerFolder = null;
   }
-  const { items: driveChildren, listError: driveListError } = await listJobDriveFolderPreview(
-    id,
-    job.googleDriveFolderId ?? customerFolder?.id ?? null,
-  );
+  const { items: driveChildren, listError: driveListError } = await listJobDriveFolderPreview(id);
   const invoiceTotalDisplayCents = qboInvoice?.totalAmtCents ?? job.invoiceAmountCents;
   const paidDisplayCents = qboInvoice?.amountPaidCents ?? job.amountPaidCents;
 

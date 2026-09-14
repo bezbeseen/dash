@@ -7,6 +7,40 @@ function envFolderId(raw: string | undefined): string | null {
   return parseGoogleDriveFolderId(t);
 }
 
+export function inspectDriveFolderEnvVar(raw: string | undefined): { set: boolean; parsed: boolean } {
+  const t = raw?.trim() ?? '';
+  if (!t) return { set: false, parsed: false };
+  return { set: true, parsed: Boolean(parseGoogleDriveFolderId(t)) };
+}
+
+/** Safe snapshot for env-check (no folder ids). */
+export function getGoogleDriveEnvSnapshot() {
+  const activeFolder = inspectDriveFolderEnvVar(process.env.GOOGLE_DRIVE_ACTIVE_FOLDER_ID);
+  const completedFolder = inspectDriveFolderEnvVar(process.env.GOOGLE_DRIVE_COMPLETED_FOLDER_ID);
+  const archiveFolder = inspectDriveFolderEnvVar(process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID);
+  const templateFolder = inspectDriveFolderEnvVar(process.env.GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID);
+  const clientJobsRoot = inspectDriveFolderEnvVar(process.env.GOOGLE_DRIVE_CLIENT_JOBS_ROOT_ID);
+  const customerHub = inspectDriveFolderEnvVar(process.env.GOOGLE_DRIVE_CUSTOMER_HUB_FOLDER_ID);
+  return {
+    activeFolder,
+    completedFolder,
+    archiveFolder,
+    templateFolder,
+    clientJobsRoot,
+    customerHub,
+    bucketSyncConfigured: isGoogleDriveBucketSyncConfigured(),
+    canCreateFromTemplate: canCreateDriveJobFolderFromTemplate(),
+    qboPdfsSubfolderName: getQboPdfsSubfolderNameOrDefault(),
+    stageFolderNames: {
+      active: stageSubfolderNameForBucket('ACTIVE'),
+      completed: stageSubfolderNameForBucket('COMPLETED'),
+      archive: stageSubfolderNameForBucket('ARCHIVE'),
+    },
+    note:
+      'Create copies GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID into Active (or Client Jobs / Customer / 01_ACTIVE). Use a folders/ URL or raw folder id, then reconnect Gmail for Drive scope.',
+  };
+}
+
 export function driveParentIdForBucket(bucket: DriveBucket): string | null {
   const v =
     bucket === 'ACTIVE'
@@ -63,11 +97,7 @@ export function getJobFolderTemplateId(): string | null {
 export function canCreateDriveJobFolderFromTemplate(): boolean {
   if (!getJobFolderTemplateId()) return false;
   if (getClientJobsRootFolderId()) return true;
-  return Boolean(
-    driveParentIdForBucket('ACTIVE') &&
-      driveParentIdForBucket('COMPLETED') &&
-      driveParentIdForBucket('ARCHIVE'),
-  );
+  return Boolean(driveParentIdForBucket('ACTIVE'));
 }
 
 /** Default subfolder for QBO PDF sync when your template does not already include one. */

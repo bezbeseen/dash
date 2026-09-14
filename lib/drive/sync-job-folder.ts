@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma';
-import { isGoogleDriveBucketSyncConfigured, driveParentIdForBucket } from '@/lib/drive/config';
+import { isGoogleDriveBucketSyncConfigured } from '@/lib/drive/config';
 import { syncCustomerHubShortcut } from '@/lib/drive/customer-hub-shortcut';
 import {
   assertDriveFolderAccessible,
@@ -9,8 +9,8 @@ import {
   renameDriveFileIfNeeded,
 } from '@/lib/drive/api';
 import { buildDriveJobFolderName } from '@/lib/drive/job-folder-name';
+import { resolveDriveJobParentFolder } from '@/lib/drive/resolve-job-parent';
 import { syncQboPdfsToJobDriveFolder } from '@/lib/drive/sync-qbo-pdfs-to-drive';
-import { syncJobDriveDocuments } from '@/lib/drive/sync-job-documents';
 import { driveBucketForJob } from '@/lib/drive/resolve-bucket';
 import { getGmailOAuth2ClientForConnection, getGmailOAuth2ClientForApi } from '@/lib/gmail/tokens-db';
 
@@ -54,11 +54,7 @@ export async function syncJobDriveFolder(jobId: string): Promise<SyncJobDriveFol
   }
 
   if (!job.googleDriveFolderId) {
-    const docs = await syncJobDriveDocuments(jobId);
-    if (docs.ok) {
-      return { ok: true, pdfsSaved: true, folderName: docs.folderName };
-    }
-    return { ok: false, error: docs.error };
+    return { ok: true, skipped: true, reason: 'no_folder' };
   }
 
   if (!isGoogleDriveBucketSyncConfigured()) {
@@ -72,16 +68,12 @@ export async function syncJobDriveFolder(jobId: string): Promise<SyncJobDriveFol
   }
 
   const bucket = driveBucketForJob(job);
-  const bucketRoot = driveParentIdForBucket(bucket);
-  if (!bucketRoot) {
-    return { ok: false, error: 'Drive bucket folder id missing from environment.' };
-  }
 
   try {
     const auth = await getAuthForDriveJob(job);
+    const dest = await resolveDriveJobParentFolder(auth, job, bucket, { createMissing: true });
     await assertDriveFolderAccessible(auth, job.googleDriveFolderId, 'This ticket’s Drive folder');
-    await assertDriveFolderAccessible(auth, bucketRoot, `${bucket} jobs folder`);
-    const targetParent = bucketRoot;
+    const targetParent = dest.id;
     const parents = await getDriveFolderParents(auth, job.googleDriveFolderId);
     const alreadyThere = parents.includes(targetParent);
     if (!alreadyThere) {

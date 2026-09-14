@@ -35,6 +35,7 @@ import {
   reviewRequestEmailFeatureEnabled,
   reviewRequestGmailMailboxConnected,
 } from '@/lib/email/review-request-after-done';
+import { getGoogleDriveEnvSnapshot } from '@/lib/drive/config';
 
 /**
  * Safe config snapshot (no secrets). For debugging OAuth on production.
@@ -190,6 +191,30 @@ export async function GET(req: NextRequest) {
   if (nextPublicHost && nextPublicHost !== requestHost) {
     hints.push(
       `NEXT_PUBLIC_APP_URL host "${nextPublicHost}" does not match "${requestHost}". Fix for correct Gmail/Slack links and optional redirect fallbacks.`,
+    );
+  }
+  const googleDrive = getGoogleDriveEnvSnapshot();
+  if (googleDrive.templateFolder.set && !googleDrive.templateFolder.parsed) {
+    hints.push(
+      'GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID is set but is not a Drive folder id or …/folders/… URL, so Create job folder from template is off. Paste the template folder link (not an open?id= file link).',
+    );
+  } else if (!googleDrive.templateFolder.parsed) {
+    hints.push(
+      'GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID is unset. Tickets cannot create a new job folder from the New Job Folder Template. Add that folder’s id or URL in Vercel env (see .env.example).',
+    );
+  }
+  if (googleDrive.activeFolder.set && !googleDrive.activeFolder.parsed) {
+    hints.push(
+      'GOOGLE_DRIVE_ACTIVE_FOLDER_ID is set but did not parse as a folder id/URL. Create/move will fail until it is a folders/ link or raw id.',
+    );
+  }
+  if (
+    googleDrive.templateFolder.parsed &&
+    !googleDrive.activeFolder.parsed &&
+    !googleDrive.clientJobsRoot.parsed
+  ) {
+    hints.push(
+      'Template is set, but neither GOOGLE_DRIVE_ACTIVE_FOLDER_ID nor GOOGLE_DRIVE_CLIENT_JOBS_ROOT_ID parsed. Dash has nowhere to put the new job folder.',
     );
   }
   if (getClarityProjectId() && !getClarityApiToken()) {
@@ -468,12 +493,7 @@ export async function GET(req: NextRequest) {
         `${origin}/api/webhooks/yelp-leads`,
       ],
     },
-    googleDrive: {
-      activeFolderConfigured: Boolean(process.env.GOOGLE_DRIVE_ACTIVE_FOLDER_ID?.trim()),
-      completedFolderConfigured: Boolean(process.env.GOOGLE_DRIVE_COMPLETED_FOLDER_ID?.trim()),
-      archiveFolderConfigured: Boolean(process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID?.trim()),
-      note: 'Drive moves need GOOGLE_DRIVE_* env vars and a Gmail reconnect for Drive scope.',
-    },
+    googleDrive,
     openAi: {
       apiKeySet: Boolean(process.env.OPENAI_API_KEY?.trim()),
     },

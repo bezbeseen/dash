@@ -1,8 +1,9 @@
 import { prisma } from '@/lib/db/prisma';
 import { assertDriveFolderAccessible, formatDriveUserError } from '@/lib/drive/api';
-import { driveParentIdForBucket, getJobFolderTemplateId } from '@/lib/drive/config';
+import { getJobFolderTemplateId } from '@/lib/drive/config';
 import { duplicateDriveFolderTree } from '@/lib/drive/duplicate-template-folder';
 import { buildDriveJobFolderName } from '@/lib/drive/job-folder-name';
+import { resolveDriveJobParentFolder } from '@/lib/drive/resolve-job-parent';
 import { syncJobDriveFolder } from '@/lib/drive/sync-job-folder';
 import { getGmailOAuth2ClientForConnection, getGmailOAuth2ClientForApi } from '@/lib/gmail/tokens-db';
 
@@ -13,12 +14,11 @@ export type CreateJobFolderFromTemplateResult =
 export async function createJobFolderFromTemplate(jobId: string): Promise<CreateJobFolderFromTemplateResult> {
   const templateId = getJobFolderTemplateId();
   if (!templateId) {
-    return { ok: false, error: 'Set GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID to your template folder id.' };
-  }
-
-  const activeParent = driveParentIdForBucket('ACTIVE');
-  if (!activeParent) {
-    return { ok: false, error: 'GOOGLE_DRIVE_ACTIVE_FOLDER_ID is not set.' };
+    return {
+      ok: false,
+      error:
+        'Set GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID to your New Job Folder Template (folder id or Drive folders URL). Open /api/integrations/env-check → googleDrive.',
+    };
   }
 
   const job = await prisma.job.findUnique({
@@ -53,31 +53,31 @@ export async function createJobFolderFromTemplate(jobId: string): Promise<Create
       templateId,
       'Job folder template (GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID)',
     );
-    await assertDriveFolderAccessible(
-      auth,
-      activeParent,
-      'Active jobs folder (GOOGLE_DRIVE_ACTIVE_FOLDER_ID)',
-    );
-  } catch (e) {
-    const message = e instanceof Error ? e.message : formatDriveUserError(e);
-    await prisma.job
-      .update({
-        where: { id: jobId },
-        data: { googleDriveLastError: message },
-      })
-      .catch(() => {});
-    return { ok: false, error: message };
-  }
+    const dest = await resolveDriveJobParentFolder(auth, job, 'ACTIVE', { createMissing: true });
+    const name = buildDriveJobFolderName({
+      customerName: job.customerName,
+      projectName: job.projectName,
+      createdAt: job.createdAt,
+    });
+    const newFolderId = await duplicateDriveFolderTree(auth, templateId, dest.id, name);
 
-  const name = buildDriveJobFolderName({
-    customerName: job.customerName,
-    projectName: job.projectName,
-    createdAt: job.createdAt,
-  });
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        googleDriveFolderId: newFolderId,
+        googleDriveLastError: null,
+      },
+    });
 
-  let newFolderId: string;
-  try {
-    newFolderId = await duplicateDriveFolderTree(auth, templateId, activeParent, name);
+    const syncResult = await syncJobDriveFolder(jobId);
+    if (!syncResult.ok) {
+      return {
+        ok: false,
+        error: `Folder was created in ${dest.label} but placement failed: ${syncResult.error}. Use "Move folder now" after fixing access.`,
+      };
+    }
+
+    return { ok: true, folderId: newFolderId };
   } catch (e) {
     const message = formatDriveUserError(e);
     await prisma.job
@@ -88,22 +88,4 @@ export async function createJobFolderFromTemplate(jobId: string): Promise<Create
       .catch(() => {});
     return { ok: false, error: message };
   }
-
-  await prisma.job.update({
-    where: { id: jobId },
-    data: {
-      googleDriveFolderId: newFolderId,
-      googleDriveLastError: null,
-    },
-  });
-
-  const syncResult = await syncJobDriveFolder(jobId);
-  if (!syncResult.ok) {
-    return {
-      ok: false,
-      error: `Folder was created but placement failed: ${syncResult.error}. Use "Move folder now" after fixing access.`,
-    };
-  }
-
-  return { ok: true, folderId: newFolderId };
 }

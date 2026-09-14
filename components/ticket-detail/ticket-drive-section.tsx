@@ -52,28 +52,23 @@ export function TicketDriveSection({
   const customerHref = customerFolder
     ? `https://drive.google.com/drive/folders/${customerFolder.id}`
     : null;
-  const showStaleJobFolderError =
-    Boolean(googleDriveLastError) &&
-    !(
-      !googleDriveFolderId &&
-      customerFolder &&
-      /not found|template/i.test(googleDriveLastError ?? '')
-    );
-  const previewFolderHref = folderHref ?? customerHref;
 
   return (
     <section id={sectionId} className="ticket-detail-panel">
       <h2 className="detail-section-title">Google Drive</h2>
       <p className="small text-body-secondary mb-3">
-        Invoice and estimate PDFs go in this customer’s existing Drive folder (into an invoices/quotes subfolder when
-        one already exists). Creating a separate job folder is optional.
+        Creates a new job folder from your template in Active (or under this customer’s 01_ACTIVE folder). Invoice and
+        estimate PDFs are copied into that job folder afterward.
       </p>
       {!bucketsOk ? (
         <p className="small text-warning-emphasis mb-3">
           Set <code className="small">GOOGLE_DRIVE_ACTIVE_FOLDER_ID</code>,{' '}
           <code className="small">GOOGLE_DRIVE_COMPLETED_FOLDER_ID</code>, and{' '}
-          <code className="small">GOOGLE_DRIVE_ARCHIVE_FOLDER_ID</code> in the server environment to enable job-folder
-          moves.
+          <code className="small">GOOGLE_DRIVE_ARCHIVE_FOLDER_ID</code> (or{' '}
+          <code className="small">GOOGLE_DRIVE_CLIENT_JOBS_ROOT_ID</code>) to move folders with the ticket.{' '}
+          <a href="/api/integrations/env-check" target="_blank" rel="noreferrer">
+            Open env-check
+          </a>
         </p>
       ) : null}
       <dl className="detail-kv mb-3">
@@ -86,44 +81,50 @@ export function TicketDriveSection({
               {customerFolder.name}
             </a>
           ) : (
-            'Not found yet — use Add invoice to search, or paste the folder link below'
+            'Not required — new job folders go in Active unless Client Jobs root is set'
           )}
         </dd>
         <dt>Last folder sync</dt>
         <dd>{fmtDetailDate(googleDriveSyncedAt)}</dd>
       </dl>
-      {showStaleJobFolderError ? (
+      {googleDriveLastError ? (
         <div className="board-toast board-toast-error mb-3" role="status">
           {googleDriveLastError}
-          {!googleDriveFolderId ? (
-            <p className="small mb-0 mt-2">
-              Dash looks for a Drive folder named like this customer. If the name does not match, rename the folder or
-              paste its link below.
-            </p>
-          ) : null}
+          <p className="small mb-0 mt-2">
+            Check{' '}
+            <a href="/api/integrations/env-check" target="_blank" rel="noreferrer">
+              env-check → googleDrive
+            </a>{' '}
+            for template and Active folder ids.
+          </p>
         </div>
       ) : null}
-      {hasQboDocs && !googleDriveFolderId ? (
-        <form action={`/api/jobs/${jobId}/drive-sync`} method="post" className="mb-3">
+      {canCreateFromTemplate ? (
+        <form action={`/api/jobs/${jobId}/drive-create-from-template`} method="post" className="mb-3">
           <button type="submit" className="btn btn-primary btn-sm">
-            Add invoice to customer folder
+            Create job folder from template
           </button>
           <p className="small text-body-secondary mt-2 mb-0">
-            {customerFolder
-              ? `Writes the QuickBooks invoice/estimate PDF into ${customerFolder.name}.`
-              : 'Looks up a Drive folder named after this customer, then adds the invoice PDF there.'}
+            Copies the New Job Folder Template into {bucketLabel(bucket)}.
+            {hasQboDocs ? ' QuickBooks invoice/estimate PDFs are added after the folder exists.' : ''}
+            {customerFolder ? ` Existing customer folder: ${customerFolder.name}.` : ''}
           </p>
         </form>
       ) : null}
-      {!hasQboDocs && !googleDriveFolderId ? (
-        <p className="small text-body-secondary mb-3">
-          Sync from QuickBooks first so this ticket has an invoice or estimate to file.
+      {!googleDriveFolderId && !getJobFolderTemplateId() ? (
+        <p className="small text-warning-emphasis mb-3" role="status">
+          <strong>Create folder from template</strong> is off until{' '}
+          <code className="small">GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID</code> is set to your template folder id or
+          folders URL.{' '}
+          <a href="/api/integrations/env-check" target="_blank" rel="noreferrer">
+            Open env-check
+          </a>
         </p>
       ) : null}
       {!googleDriveFolderId ? (
         <form action={`/api/jobs/${jobId}/drive-customer-folder`} method="post" className="mb-3">
           <label className="form-label small fw-semibold" htmlFor={`drive-customer-folder-${jobId}`}>
-            Or paste this customer’s folder URL
+            Optional: paste this customer’s folder URL
           </label>
           <input
             id={`drive-customer-folder-${jobId}`}
@@ -138,30 +139,13 @@ export function TicketDriveSection({
             Save customer folder
           </button>
           <p className="small text-body-secondary mt-2 mb-0">
-            Remembers the folder for this customer. Does not move it or create a new job folder.
-          </p>
-        </form>
-      ) : null}
-      {bucketsOk && !googleDriveFolderId && !getJobFolderTemplateId() ? (
-        <p className="small text-warning-emphasis mb-3" role="status">
-          <strong>Create folder from template</strong> is off until{' '}
-          <code className="small">GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID</code> is set. You can still use the customer
-          folder above or paste a folder link.
-        </p>
-      ) : null}
-      {canCreateFromTemplate ? (
-        <form action={`/api/jobs/${jobId}/drive-create-from-template`} method="post" className="mb-3">
-          <button type="submit" className="btn btn-outline-secondary btn-sm">
-            Create job folder from template
-          </button>
-          <p className="small text-body-secondary mt-2 mb-0">
-            Only if you need a new job folder. Existing customer folders do not need this.
+            Remembers the customer folder. The new job folder is still created from the template.
           </p>
         </form>
       ) : null}
       <form action={`/api/jobs/${jobId}/drive-folder`} method="post" className="mb-3">
         <label className="form-label small fw-semibold" htmlFor={`drive-folder-${jobId}`}>
-          {googleDriveFolderId ? 'Job folder URL or ID' : 'Optional: link a job folder URL or ID'}
+          {googleDriveFolderId ? 'Job folder URL or ID' : 'Or paste an existing job folder URL or ID'}
         </label>
         <input
           id={`drive-folder-${jobId}`}
@@ -176,17 +160,13 @@ export function TicketDriveSection({
           <button type="submit" className="btn btn-toolbar btn-sm">
             Save
           </button>
-          {previewFolderHref ? (
-            <a className="btn btn-toolbar btn-sm" href={previewFolderHref} target="_blank" rel="noreferrer">
+          {folderHref ? (
+            <a className="btn btn-toolbar btn-sm" href={folderHref} target="_blank" rel="noreferrer">
               Open in Drive
             </a>
           ) : null}
         </div>
-        <p className="small text-body-secondary mt-2 mb-0">
-          {googleDriveFolderId
-            ? 'Leave empty and save to clear the job-folder link.'
-            : 'Only for a per-job folder that should move with the ticket. Do not paste the customer folder here.'}
-        </p>
+        <p className="small text-body-secondary mt-2 mb-0">Leave empty and save to clear the job-folder link.</p>
       </form>
       {googleDriveFolderId && bucketsOk ? (
         <form action={`/api/jobs/${jobId}/drive-sync`} method="post" className="mb-3">
@@ -195,14 +175,12 @@ export function TicketDriveSection({
           </button>
         </form>
       ) : null}
-      {(googleDriveFolderId || customerFolder) && driveListError ? (
+      {googleDriveFolderId && driveListError ? (
         <p className="small text-danger mb-2">Could not list files: {driveListError}</p>
       ) : null}
-      {(googleDriveFolderId || customerFolder) && driveChildren.length > 0 ? (
+      {googleDriveFolderId && driveChildren.length > 0 ? (
         <>
-          <h3 className="h6 fw-semibold mt-3 mb-2">
-            {googleDriveFolderId ? 'Job folder contents (preview)' : 'Customer folder contents (preview)'}
-          </h3>
+          <h3 className="h6 fw-semibold mt-3 mb-2">Job folder contents (preview)</h3>
           <ul className="list-unstyled small mb-0" style={{ maxHeight: '14rem', overflow: 'auto' }}>
             {driveChildren.map((f) => (
               <li key={f.id} className="py-1 border-bottom border-secondary-subtle">
