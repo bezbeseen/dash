@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
+import { formatDriveUserError } from '@/lib/drive/api';
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
@@ -53,14 +54,18 @@ export async function duplicateDriveFolderTree(
 
   const children = await listDirectChildren(auth, sourceFolderId);
   for (const c of children) {
-    if (c.mimeType === FOLDER_MIME) {
-      await duplicateDriveFolderTree(auth, c.id, newRootId, c.name);
-    } else {
-      await drive.files.copy({
-        fileId: c.id,
-        requestBody: { name: c.name, parents: [newRootId] },
-        supportsAllDrives: true,
-      });
+    try {
+      if (c.mimeType === FOLDER_MIME) {
+        await duplicateDriveFolderTree(auth, c.id, newRootId, c.name);
+      } else {
+        await drive.files.copy({
+          fileId: c.id,
+          requestBody: { name: c.name, parents: [newRootId] },
+          supportsAllDrives: true,
+        });
+      }
+    } catch (e) {
+      console.error('[drive] skip template item', c.name, formatDriveUserError(e));
     }
   }
 

@@ -47,7 +47,7 @@ function mapInvoiceStatus(value: InvoiceSnapshot['status']): InvoiceStatus {
 
 export async function upsertJobFromEstimate(
   snapshot: EstimateSnapshot,
-  opts?: { realmId?: string },
+  opts?: { realmId?: string; syncDrive?: boolean },
 ) {
   const estimateStatus = mapEstimateStatus(snapshot.status);
   const realmId = opts?.realmId;
@@ -124,13 +124,15 @@ export async function upsertJobFromEstimate(
 
     return updated;
   });
-  scheduleSyncJobDriveFolder(updated.id);
+  if (opts?.syncDrive !== false) {
+    scheduleSyncJobDriveFolder(updated.id);
+  }
   return updated;
 }
 
 export async function upsertJobFromInvoice(
   snapshot: InvoiceSnapshot,
-  opts?: { realmId?: string },
+  opts?: { realmId?: string; syncDrive?: boolean },
 ) {
   const realmId = opts?.realmId;
 
@@ -247,7 +249,9 @@ export async function upsertJobFromInvoice(
     return updated;
   });
 
-  scheduleSyncJobDriveFolder(updated.id);
+  if (opts?.syncDrive !== false) {
+    scheduleSyncJobDriveFolder(updated.id);
+  }
   return updated;
 }
 

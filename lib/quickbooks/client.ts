@@ -391,16 +391,15 @@ export async function listRecentEstimates(realmId: string, maxResults = 100): Pr
     body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(fallback)}`);
     const stubs = qboQueryEntities<QboEstimate>(body as { QueryResponse?: Record<string, unknown> }, 'Estimate');
     const ids = [...new Set(stubs.map((s) => s.Id).filter((id): id is string => Boolean(id)))];
-    const results = await Promise.all(
-      ids.map(async (id) => {
-        try {
-          return await fetchEstimateById(realmId, id);
-        } catch (e) {
-          console.warn('[quickbooks] listRecentEstimates: GET estimate failed, skipping id', id, e);
-          return null;
-        }
-      }),
-    );
+    const hydrateCap = Math.min(ids.length, 8);
+    const results = await mapInBatches(ids.slice(0, hydrateCap), 3, async (id) => {
+      try {
+        return await fetchEstimateById(realmId, id);
+      } catch (e) {
+        console.warn('[quickbooks] listRecentEstimates: GET estimate failed, skipping id', id, e);
+        return null;
+      }
+    });
     return results.filter((x): x is EstimateSnapshot => x != null);
   }
   const estimates = qboQueryEntities<QboEstimate>(body as { QueryResponse?: Record<string, unknown> }, 'Estimate');

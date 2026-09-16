@@ -1,4 +1,5 @@
 import type { OAuth2Client } from 'google-auth-library';
+import { prisma } from '@/lib/db/prisma';
 import { assertDriveFolderAccessible } from '@/lib/drive/api';
 import {
   driveParentIdForBucket,
@@ -19,9 +20,30 @@ export type DriveJobParentFolder = {
  * Client-jobs layout (guides): Client Jobs / Customer / 01_ACTIVE|02_COMPLETED|03_ARCHIVE / job.
  * Legacy layout: job sits directly in the Active / Completed / Archive bucket.
  */
+async function savedCustomerFolderId(job: {
+  quickbooksCompanyId?: string | null;
+  quickbooksCustomerId?: string | null;
+}): Promise<string | null> {
+  if (!job.quickbooksCompanyId || !job.quickbooksCustomerId) return null;
+  const saved = await prisma.customerDriveFolder.findUnique({
+    where: {
+      quickbooksCompanyId_quickbooksCustomerId: {
+        quickbooksCompanyId: job.quickbooksCompanyId,
+        quickbooksCustomerId: job.quickbooksCustomerId,
+      },
+    },
+    select: { googleDriveFolderId: true },
+  });
+  return saved?.googleDriveFolderId ?? null;
+}
+
 export async function resolveDriveJobParentFolder(
   auth: OAuth2Client,
-  job: { customerName: string },
+  job: {
+    customerName: string;
+    quickbooksCompanyId?: string | null;
+    quickbooksCustomerId?: string | null;
+  },
   bucket: DriveBucket,
   opts?: { createMissing?: boolean },
 ): Promise<DriveJobParentFolder> {
@@ -32,7 +54,19 @@ export async function resolveDriveJobParentFolder(
     if (!createMissing) {
       throw new Error('Client jobs parent lookup without create is not used.');
     }
-    const customerId = await ensureFolderNamedUnderParent(auth, clientJobsRoot, job.customerName.trim() || 'Customer');
+    let customerId: string | null = null;
+    const savedId = await savedCustomerFolderId(job);
+    if (savedId) {
+      try {
+        await assertDriveFolderAccessible(auth, savedId, 'Saved customer folder');
+        customerId = savedId;
+      } catch {
+        customerId = null;
+      }
+    }
+    if (!customerId) {
+      customerId = await ensureFolderNamedUnderParent(auth, clientJobsRoot, job.customerName.trim() || 'Customer');
+    }
     const stageName = stageSubfolderNameForBucket(bucket);
     const stageId = await ensureFolderNamedUnderParent(auth, customerId, stageName);
     await assertDriveFolderAccessible(auth, stageId, `${stageName} folder`);

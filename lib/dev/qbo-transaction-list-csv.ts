@@ -223,7 +223,7 @@ export async function importTransactionListCsv(text: string): Promise<{
       txnDate: est.date?.toISOString(),
       acceptedAt: hasInvoice ? est.date?.toISOString() : undefined,
     };
-    await upsertJobFromEstimate(snap, {});
+    await upsertJobFromEstimate(snap, { syncDrive: false });
   }
 
   for (const inum of invNums) {
@@ -248,7 +248,7 @@ export async function importTransactionListCsv(text: string): Promise<{
       docNumber: inum,
       txnDate: inv.date?.toISOString(),
     };
-    await upsertJobFromInvoice(snap, {});
+    await upsertJobFromInvoice(snap, { syncDrive: false });
   }
 
   return {

@@ -14,6 +14,8 @@ const baseUrl = () => process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 /**
  * Syncs recent Estimates + Invoices from QuickBooks into local jobs.
  * Requires a successful Connect QuickBooks (QuickBooksToken row).
+ * Drive folder/PDF work is skipped here on purpose: Vercel Hobby dies at ~10s, and Drive + QBO PDF
+ * downloads on every upsert caused 504s. Ticket actions and the Intuit webhook still update Drive.
  */
 export async function POST(req: Request) {
   let returnPath = '/dashboard/tickets';
@@ -50,8 +52,8 @@ export async function POST(req: Request) {
       }
     };
 
-    await upsertBatch(estimates, (est) => upsertJobFromEstimate(est, { realmId }));
-    await upsertBatch(invoices, (inv) => upsertJobFromInvoice(inv, { realmId }));
+    await upsertBatch(estimates, (est) => upsertJobFromEstimate(est, { realmId, syncDrive: false }));
+    await upsertBatch(invoices, (inv) => upsertJobFromInvoice(inv, { realmId, syncDrive: false }));
 
     try {
       await prisma.quickBooksToken.update({

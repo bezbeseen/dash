@@ -1,4 +1,4 @@
-import type { BoardStatus } from '@prisma/client';
+import type { BoardStatus, ProductionStatus } from '@prisma/client';
 import type { DriveFolderListItem } from '@/lib/drive/api';
 import {
   getClientJobsRootFolderId,
@@ -25,6 +25,7 @@ type Props = {
   jobId: string;
   archivedAt: Date | null;
   boardStatus: BoardStatus;
+  productionStatus: ProductionStatus;
   googleDriveFolderId: string | null;
   googleDriveSyncedAt: Date | null;
   googleDriveLastError: string | null;
@@ -40,6 +41,7 @@ export function TicketDriveSection({
   jobId,
   archivedAt,
   boardStatus,
+  productionStatus,
   googleDriveFolderId,
   googleDriveSyncedAt,
   googleDriveLastError,
@@ -52,7 +54,7 @@ export function TicketDriveSection({
   const bucketsOk = isGoogleDriveBucketSyncConfigured();
   const clientJobsLayout = Boolean(getClientJobsRootFolderId());
   const hubConfigured = Boolean(getCustomerHubFolderId());
-  const bucket = driveBucketForJob({ archivedAt, boardStatus });
+  const bucket = driveBucketForJob({ archivedAt, boardStatus, productionStatus });
   const folderHref = googleDriveFolderId
     ? `https://drive.google.com/drive/folders/${googleDriveFolderId}`
     : null;
@@ -65,8 +67,8 @@ export function TicketDriveSection({
       <h2 className="detail-section-title">Google Drive</h2>
       <p className="small text-body-secondary mb-3">
         {clientJobsLayout
-          ? 'Creates a new job folder from your template under this customer’s Active stage folder. Invoice and estimate PDFs go in that job folder.'
-          : 'Creates a new job folder from your template in the Active jobs folder. Invoice and estimate PDFs go in that job folder (invoices/quotes subfolder when the template has one). The folder later moves to Completed or Archive with the ticket.'}
+          ? `Creates a new job folder from your template under this customer’s ${bucketLabel(bucket)} stage folder. Invoice and estimate PDFs go in that job folder.`
+          : 'Creates a new job folder from your template in the Active jobs folder. Invoice and estimate PDFs go in that job folder (invoices/quotes subfolder when the template has one). Prepaid tickets stay in Active until the job is delivered; then the folder moves to Completed, or Archive when the ticket is Done.'}
       </p>
       {!bucketsOk ? (
         <p className="small text-warning-emphasis mb-3">

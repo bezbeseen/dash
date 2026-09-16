@@ -11,7 +11,7 @@ export async function POST() {
     totalAmtCents: 27500,
     status: 'SENT',
     txnDate: new Date().toISOString(),
-  });
+  }, { syncDrive: false });
 
   await upsertJobFromInvoice({
     id: `inv_${Date.now()}`,
@@ -22,7 +22,7 @@ export async function POST() {
     balanceCents: 0,
     amountPaidCents: 40000,
     status: 'PAID',
-  });
+  }, { syncDrive: false });
 
   return NextResponse.redirect(new URL('/dashboard/tickets', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'));
 }

@@ -2,25 +2,20 @@ import type { OAuth2Client } from 'google-auth-library';
 import { prisma } from '@/lib/db/prisma';
 import {
   assertDriveFolderAccessible,
-  findDriveFoldersByExactName,
   getDriveFileName,
-  getDriveFolderParents,
 } from '@/lib/drive/api';
 import {
-  driveParentIdForBucket,
   getClientJobsRootFolderId,
   getCustomerHubFolderId,
 } from '@/lib/drive/config';
-import { folderNameMatchesCustomer, looksLikeDriveJobFolderName } from '@/lib/drive/customer-folder-name';
 import { findFolderNamedUnderParent } from '@/lib/drive/ensure-customer-subfolder';
-import { sanitizeDriveFileFolderName } from '@/lib/drive/job-folder-name';
 import { parseGoogleDriveFolderId } from '@/lib/drive/parse-folder-id';
 import { getGmailOAuth2ClientForConnection, getGmailOAuth2ClientForApi } from '@/lib/gmail/tokens-db';
 
 export type ResolvedCustomerDriveFolder = {
   id: string;
   name: string;
-  source: 'saved' | 'hub' | 'client_jobs' | 'active' | 'completed' | 'archive' | 'sibling' | 'search';
+  source: 'saved' | 'hub' | 'client_jobs';
 };
 
 async function authForJob(job: { gmailConnectionId: string | null }): Promise<OAuth2Client> {
@@ -64,12 +59,6 @@ function configuredSearchRoots(): { id: string; source: ResolvedCustomerDriveFol
   if (hub) searchRoots.push({ id: hub, source: 'hub' });
   const clientJobs = getClientJobsRootFolderId();
   if (clientJobs) searchRoots.push({ id: clientJobs, source: 'client_jobs' });
-  const active = driveParentIdForBucket('ACTIVE');
-  if (active) searchRoots.push({ id: active, source: 'active' });
-  const completed = driveParentIdForBucket('COMPLETED');
-  if (completed) searchRoots.push({ id: completed, source: 'completed' });
-  const archive = driveParentIdForBucket('ARCHIVE');
-  if (archive) searchRoots.push({ id: archive, source: 'archive' });
   return searchRoots;
 }
 
@@ -132,31 +121,7 @@ async function resolveCustomerDriveFolder(job: JobForCustomerFolder): Promise<Re
     return { id: hit.id, name: hit.name, source: root.source };
   }
 
-  for (const root of searchRoots) {
-    try {
-      const parents = await getDriveFolderParents(auth, root.id);
-      for (const parentId of parents) {
-        if (seen.has(parentId)) continue;
-        seen.add(parentId);
-        const hit = await findFolderNamedUnderParent(auth, parentId, customerName);
-        if (!hit) continue;
-        await rememberCustomerFolder(job, hit.id);
-        return { id: hit.id, name: hit.name, source: 'sibling' };
-      }
-    } catch {
-      // Parent listing is best-effort; keep searching.
-    }
-  }
-
-  const sanitized = sanitizeDriveFileFolderName(customerName);
-  const hits = (await findDriveFoldersByExactName(auth, sanitized)).filter(
-    (h) => folderNameMatchesCustomer(h.name, customerName) && !looksLikeDriveJobFolderName(h.name),
-  );
-  if (hits.length === 0) return null;
-
-  const preferred = hits.find((h) => h.parents.some((p) => seen.has(p))) ?? hits[0]!;
-  await rememberCustomerFolder(job, preferred.id);
-  return { id: preferred.id, name: preferred.name, source: 'search' };
+  return null;
 }
 
 export async function linkCustomerDriveFolderForJob(

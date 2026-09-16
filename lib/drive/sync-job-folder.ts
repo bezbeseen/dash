@@ -41,10 +41,12 @@ export async function syncJobDriveFolder(jobId: string): Promise<SyncJobDriveFol
       customerName: true,
       projectName: true,
       createdAt: true,
+      productionStatus: true,
       googleDriveFolderId: true,
       gmailConnectionId: true,
       quickbooksInvoiceId: true,
       quickbooksCompanyId: true,
+      quickbooksCustomerId: true,
       quickbooksEstimateId: true,
     },
   });
@@ -63,7 +65,15 @@ export async function syncJobDriveFolder(jobId: string): Promise<SyncJobDriveFol
       await syncQboPdfsToJobDriveFolder(auth, job);
       return { ok: true, pdfsSaved: true, folderName: 'job folder' };
     } catch (e) {
-      return { ok: false, error: formatDriveUserError(e) };
+      const message = formatDriveUserError(e);
+      await prisma.job
+        .update({
+          where: { id: jobId },
+          data: { googleDriveLastError: message },
+        })
+        .catch(() => {});
+      console.error('[drive] QBO PDFs without bucket sync', jobId, e);
+      return { ok: true, skipped: true, reason: 'already_placed' };
     }
   }
 

@@ -33,7 +33,7 @@ import {
 import { parseStoredThreadSuggestions } from '@/lib/gmail/thread-match';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import { listJobDriveFolderPreview } from '@/lib/drive/list-for-job';
-import { canCreateDriveJobFolderFromTemplate } from '@/lib/drive/config';
+import { canCreateDriveJobFolderFromTemplate, getClientJobsRootFolderId, getCustomerHubFolderId } from '@/lib/drive/config';
 import { resolveCustomerDriveFolderForJob } from '@/lib/drive/resolve-customer-folder';
 import { fetchInvoiceById } from '@/lib/quickbooks/client';
 import {
@@ -189,11 +189,13 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const needsWrapUpReminder = jobNeedsWrapUpReminder(job, qboInvoice);
   const wrapUpRecorded = jobWrapUpRecorded(job);
   let customerFolder: { id: string; name: string } | null = null;
-  try {
-    const resolved = await resolveCustomerDriveFolderForJob(id);
-    if (resolved) customerFolder = { id: resolved.id, name: resolved.name };
-  } catch {
-    customerFolder = null;
+  if (getClientJobsRootFolderId() || getCustomerHubFolderId()) {
+    try {
+      const resolved = await resolveCustomerDriveFolderForJob(id);
+      if (resolved) customerFolder = { id: resolved.id, name: resolved.name };
+    } catch {
+      customerFolder = null;
+    }
   }
   const { items: driveChildren, listError: driveListError } = await listJobDriveFolderPreview(id);
   const invoiceTotalDisplayCents = qboInvoice?.totalAmtCents ?? job.invoiceAmountCents;
@@ -428,6 +430,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             jobId={job.id}
             archivedAt={job.archivedAt}
             boardStatus={job.boardStatus}
+            productionStatus={job.productionStatus}
             googleDriveFolderId={job.googleDriveFolderId}
             googleDriveSyncedAt={job.googleDriveSyncedAt}
             googleDriveLastError={job.googleDriveLastError}

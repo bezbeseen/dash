@@ -3,6 +3,7 @@ import { assertDriveFolderAccessible, formatDriveUserError } from '@/lib/drive/a
 import { getJobFolderTemplateId } from '@/lib/drive/config';
 import { duplicateDriveFolderTree } from '@/lib/drive/duplicate-template-folder';
 import { buildDriveJobFolderName } from '@/lib/drive/job-folder-name';
+import { driveBucketForJob } from '@/lib/drive/resolve-bucket';
 import { resolveDriveJobParentFolder } from '@/lib/drive/resolve-job-parent';
 import { syncJobDriveFolder } from '@/lib/drive/sync-job-folder';
 import { getGmailOAuth2ClientForConnection, getGmailOAuth2ClientForApi } from '@/lib/gmail/tokens-db';
@@ -28,8 +29,13 @@ export async function createJobFolderFromTemplate(jobId: string): Promise<Create
       customerName: true,
       projectName: true,
       createdAt: true,
+      archivedAt: true,
+      boardStatus: true,
+      productionStatus: true,
       googleDriveFolderId: true,
       gmailConnectionId: true,
+      quickbooksCompanyId: true,
+      quickbooksCustomerId: true,
     },
   });
 
@@ -53,7 +59,8 @@ export async function createJobFolderFromTemplate(jobId: string): Promise<Create
       templateId,
       'Job folder template (GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID)',
     );
-    const dest = await resolveDriveJobParentFolder(auth, job, 'ACTIVE', { createMissing: true });
+    const bucket = driveBucketForJob(job);
+    const dest = await resolveDriveJobParentFolder(auth, job, bucket, { createMissing: true });
     const name = buildDriveJobFolderName({
       customerName: job.customerName,
       projectName: job.projectName,
@@ -71,10 +78,14 @@ export async function createJobFolderFromTemplate(jobId: string): Promise<Create
 
     const syncResult = await syncJobDriveFolder(jobId);
     if (!syncResult.ok) {
-      return {
-        ok: false,
-        error: `Folder was created in ${dest.label} but placement failed: ${syncResult.error}. Use "Move folder now" after fixing access.`,
-      };
+      await prisma.job
+        .update({
+          where: { id: jobId },
+          data: {
+            googleDriveLastError: `Folder created in ${dest.label}. Could not finish PDFs or move: ${syncResult.error}`,
+          },
+        })
+        .catch(() => {});
     }
 
     return { ok: true, folderId: newFolderId };
