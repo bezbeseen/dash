@@ -43,6 +43,7 @@ export function DashboardSidebarNav() {
   const settingsActive = pathname === '/dashboard/settings' || pathname.startsWith('/dashboard/settings/');
   const workflowActive = isWorkflowRoute(pathname);
   const assistantActive = pathname === '/dashboard/assistant';
+  const calendarActive = pathname === '/dashboard/calendar' || pathname.startsWith('/dashboard/calendar/');
 
   return (
     <ul className="metismenu" id="sidenav">
@@ -85,6 +86,14 @@ export function DashboardSidebarNav() {
             <i className="material-icons-outlined">smart_toy</i>
           </div>
           <div className="menu-title">Dash Manager</div>
+        </Link>
+      </li>
+      <li className={calendarActive ? 'mm-active' : ''}>
+        <Link href="/dashboard/calendar">
+          <div className="parent-icon">
+            <i className="material-icons-outlined">calendar_month</i>
+          </div>
+          <div className="menu-title">Calendar</div>
         </Link>
       </li>
 

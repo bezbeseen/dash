@@ -29,13 +29,18 @@ export async function GmailSidebarHint() {
               </li>
             ))}
           </ul>
-          {canAdd ? (
-            <GmailConnectAnchor className="btn btn-toolbar gmail-sidebar-btn">+ Add mailbox</GmailConnectAnchor>
-          ) : (
-            <p className="meta" style={{ margin: '8px 0 0', fontSize: 11 }}>
-              All {MAX_MAILBOXES} slots used.
-            </p>
-          )}
+          <div className="d-flex flex-wrap gap-2 mt-2">
+            {canAdd ? (
+              <GmailConnectAnchor className="btn btn-toolbar gmail-sidebar-btn">+ Add mailbox</GmailConnectAnchor>
+            ) : (
+              <p className="meta mb-0" style={{ fontSize: 11 }}>
+                All {MAX_MAILBOXES} slots used.
+              </p>
+            )}
+            <GmailConnectAnchor className="btn btn-toolbar gmail-sidebar-btn">
+              Reconnect (Calendar + Drive)
+            </GmailConnectAnchor>
+          </div>
         </>
       )}
     </div>

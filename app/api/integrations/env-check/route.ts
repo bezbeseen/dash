@@ -7,6 +7,11 @@ import {
   quickBooksOAuthCredentialsConfigured,
 } from '@/lib/quickbooks/oauth';
 import { GMAIL_OAUTH_CALLBACK_PATH } from '@/lib/gmail/config';
+import { GOOGLE_CALENDAR_READONLY } from '@/lib/gmail/oauth';
+import {
+  GOOGLE_CALENDAR_API_LIBRARY,
+  probeGoogleCalendarAccess,
+} from '@/lib/calendar/google-calendar';
 import { resolveYelpLeadMailboxState, type YelpMailboxState } from '@/lib/yelp/lead-mailbox';
 import { YELP_LEADS_DENIED_MESSAGE } from '@/lib/yelp/lead-ids';
 import { GBP_OAUTH_CALLBACK_PATH } from '@/lib/google-business/config';
@@ -255,8 +260,13 @@ export async function GET(req: NextRequest) {
   let gmailConnectionCount = -1;
   let quickBooksConnectionCount = -1;
   let quickBooksRealmId: string | null = null;
+  let firstGmailMailbox: { id: string; googleEmail: string } | null = null;
   try {
     gmailConnectionCount = await prisma.gmailConnection.count();
+    firstGmailMailbox = await prisma.gmailConnection.findFirst({
+      orderBy: { googleEmail: 'asc' },
+      select: { id: true, googleEmail: true },
+    });
     quickBooksConnectionCount = await prisma.quickBooksToken.count();
     const qbRow = await prisma.quickBooksToken.findFirst({
       orderBy: { updatedAt: 'desc' },
@@ -345,6 +355,46 @@ export async function GET(req: NextRequest) {
     } catch (e) {
       gbpAccessProbe = gbpProbeUnavailable(e instanceof Error ? e.message.slice(0, 200) : 'probe_failed');
     }
+  }
+
+  let googleCalendarProbe: {
+    mailbox: string;
+    ok: boolean;
+    error?: string;
+    needsReconnect?: boolean;
+  } | null = null;
+  if (firstGmailMailbox) {
+    try {
+      const probed = await Promise.race([
+        probeGoogleCalendarAccess(firstGmailMailbox.id),
+        new Promise<{ ok: false; error: string; needsReconnect?: boolean }>((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                ok: false,
+                error: 'Google Calendar probe timed out after 4s.',
+              }),
+            4000,
+          ),
+        ),
+      ]);
+      googleCalendarProbe = { mailbox: firstGmailMailbox.googleEmail, ...probed };
+      if (!probed.ok) {
+        hints.push(
+          probed.needsReconnect
+            ? `Google Calendar needs a Gmail reconnect for ${firstGmailMailbox.googleEmail} (grant calendar.readonly). Use Settings → Reconnect (Calendar + Drive).`
+            : `Google Calendar probe failed for ${firstGmailMailbox.googleEmail}: ${probed.error ?? 'unknown'}. Enable Calendar API: ${GOOGLE_CALENDAR_API_LIBRARY}`,
+        );
+      }
+    } catch (e) {
+      googleCalendarProbe = {
+        mailbox: firstGmailMailbox.googleEmail,
+        ok: false,
+        error: e instanceof Error ? e.message.slice(0, 200) : 'probe_failed',
+      };
+    }
+  } else if (gmailConnectionCount === 0) {
+    hints.push('Connect Gmail in Settings to use /dashboard/calendar (same Google account).');
   }
 
   const slackUrl = process.env.SLACK_WEBHOOK_URL?.trim();
@@ -494,6 +544,13 @@ export async function GET(req: NextRequest) {
       ],
     },
     googleDrive,
+    googleCalendar: {
+      dashboardPath: '/dashboard/calendar',
+      apiLibrary: GOOGLE_CALENDAR_API_LIBRARY,
+      requiredScope: GOOGLE_CALENDAR_READONLY,
+      note: 'Uses the Gmail OAuth token. Enable Calendar API on that Cloud project, then reconnect Gmail so calendar.readonly is on the refresh token.',
+      accessProbe: googleCalendarProbe,
+    },
     openAi: {
       apiKeySet: Boolean(process.env.OPENAI_API_KEY?.trim()),
     },
