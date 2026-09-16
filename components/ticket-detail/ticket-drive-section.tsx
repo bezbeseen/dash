@@ -1,5 +1,5 @@
 import type { BoardStatus, ProductionStatus } from '@prisma/client';
-import type { DriveFolderListItem } from '@/lib/drive/api';
+import type { DrivePreviewFile, DrivePreviewGroup } from '@/lib/drive/list-for-job';
 import {
   getClientJobsRootFolderId,
   getCustomerHubFolderId,
@@ -8,6 +8,86 @@ import {
 } from '@/lib/drive/config';
 import { driveBucketForJob } from '@/lib/drive/resolve-bucket';
 import { fmtDetailDate } from '@/lib/ticket/format';
+
+function folderCountLabel(group: DrivePreviewGroup): string {
+  const n = group.files.length + group.extraCount;
+  if (n === 0) return 'Empty';
+  if (group.extraCount > 0) return `${group.files.length}+`;
+  return n === 1 ? '1 item' : `${n} items`;
+}
+
+function DriveFileTile({ jobId, file }: { jobId: string; file: DrivePreviewFile }) {
+  const href = file.webViewLink ?? `https://drive.google.com/file/d/${file.id}/view`;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="drive-file-thumb"
+      title={file.name}
+    >
+      {file.isFolder ? (
+        <span className="drive-file-thumb-ph">Folder</span>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={`/api/jobs/${jobId}/drive-preview/${file.id}`} alt="" />
+      )}
+      <span className="drive-file-thumb-name">{file.name}</span>
+    </a>
+  );
+}
+
+function DriveFolderPreview({ jobId, groups }: { jobId: string; groups: DrivePreviewGroup[] }) {
+  return (
+    <div className="drive-folder-preview">
+      <h3 className="h6 fw-semibold mt-3 mb-2">Job folder contents</h3>
+      <p className="small text-body-secondary mb-2">Click a file to open it in Drive.</p>
+      <div className="drive-folder-preview-list">
+        {groups.map((group) => {
+          const hasFiles = group.files.length > 0;
+          return (
+            <details key={group.id} className="drive-folder-group" open={hasFiles}>
+              <summary>
+                <span className="drive-folder-group-name">{group.name}</span>
+                <span className="drive-folder-group-count">{folderCountLabel(group)}</span>
+              </summary>
+              {hasFiles ? (
+                <div className="drive-file-thumbs">
+                  {group.files.map((file) => (
+                    <DriveFileTile key={file.id} jobId={jobId} file={file} />
+                  ))}
+                  {group.extraCount > 0 && group.webViewLink ? (
+                    <a
+                      href={group.webViewLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="drive-file-thumb drive-file-thumb-more"
+                    >
+                      <span className="drive-file-thumb-ph">+{group.extraCount}</span>
+                      <span className="drive-file-thumb-name">More in Drive</span>
+                    </a>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="small text-body-secondary mb-0 drive-folder-empty">
+                  Nothing in this folder yet
+                  {group.webViewLink ? (
+                    <>
+                      {' · '}
+                      <a href={group.webViewLink} target="_blank" rel="noreferrer">
+                        Open in Drive
+                      </a>
+                    </>
+                  ) : null}
+                </p>
+              )}
+            </details>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function bucketLabel(bucket: 'ACTIVE' | 'COMPLETED' | 'ARCHIVE'): string {
   switch (bucket) {
@@ -29,7 +109,7 @@ type Props = {
   googleDriveFolderId: string | null;
   googleDriveSyncedAt: Date | null;
   googleDriveLastError: string | null;
-  driveChildren: DriveFolderListItem[];
+  drivePreviewGroups: DrivePreviewGroup[];
   driveListError: string | null;
   canCreateFromTemplate: boolean;
   customerFolder: { id: string; name: string } | null;
@@ -45,7 +125,7 @@ export function TicketDriveSection({
   googleDriveFolderId,
   googleDriveSyncedAt,
   googleDriveLastError,
-  driveChildren,
+  drivePreviewGroups,
   driveListError,
   canCreateFromTemplate,
   customerFolder,
@@ -198,26 +278,8 @@ export function TicketDriveSection({
       {googleDriveFolderId && driveListError ? (
         <p className="small text-danger mb-2">Could not list files: {driveListError}</p>
       ) : null}
-      {googleDriveFolderId && driveChildren.length > 0 ? (
-        <>
-          <h3 className="h6 fw-semibold mt-3 mb-2">Job folder contents (preview)</h3>
-          <ul className="list-unstyled small mb-0" style={{ maxHeight: '14rem', overflow: 'auto' }}>
-            {driveChildren.map((f) => (
-              <li key={f.id} className="py-1 border-bottom border-secondary-subtle">
-                {f.webViewLink ? (
-                  <a href={f.webViewLink} target="_blank" rel="noreferrer" className="text-break">
-                    {f.name}
-                  </a>
-                ) : (
-                  <span className="text-break">{f.name}</span>
-                )}
-                {f.mimeType === 'application/vnd.google-apps.folder' ? (
-                  <span className="text-body-secondary ms-1">(folder)</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </>
+      {googleDriveFolderId && drivePreviewGroups.length > 0 ? (
+        <DriveFolderPreview jobId={jobId} groups={drivePreviewGroups} />
       ) : null}
     </section>
   );

@@ -1,11 +1,14 @@
 import { google } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
 
+export const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
+
 export type DriveFolderListItem = {
   id: string;
   name: string;
   mimeType: string;
   webViewLink: string | null;
+  hasThumbnail: boolean;
 };
 
 function driveV3(auth: OAuth2Client) {
@@ -51,7 +54,7 @@ export async function listDriveFolderChildren(
   const res = await drive.files.list({
     q: `'${folderId}' in parents and trashed = false`,
     pageSize: max,
-    fields: 'files(id, name, mimeType, webViewLink)',
+    fields: 'files(id, name, mimeType, webViewLink, thumbnailLink, hasThumbnail)',
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
     orderBy: 'folder desc, name_natural',
@@ -62,6 +65,7 @@ export async function listDriveFolderChildren(
     name: f.name ?? '(untitled)',
     mimeType: f.mimeType ?? 'application/octet-stream',
     webViewLink: f.webViewLink ?? null,
+    hasThumbnail: Boolean(f.hasThumbnail || f.thumbnailLink),
   }));
 }
 
@@ -78,8 +82,6 @@ export async function getDriveFileName(auth: OAuth2Client, fileId: string): Prom
   });
   return res.data.name ?? '';
 }
-
-const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
 function googleApiStatus(err: unknown): number | null {
   if (!err || typeof err !== 'object') return null;
@@ -113,7 +115,7 @@ export async function assertDriveFolderAccessible(
     if (res.data.trashed) {
       throw new Error(`${label} is in the trash. Restore it in Drive or update that folder id.`);
     }
-    if (res.data.mimeType && res.data.mimeType !== FOLDER_MIME) {
+    if (res.data.mimeType && res.data.mimeType !== DRIVE_FOLDER_MIME) {
       throw new Error(`${label} is a file, not a folder. Use a Drive folder link.`);
     }
   } catch (e) {
@@ -188,7 +190,7 @@ export async function findDriveFoldersByExactName(
   if (!trimmed) return [];
   const drive = driveV3(auth);
   const esc = escapeDriveQueryLiteral(trimmed);
-  const q = `mimeType = '${FOLDER_MIME}' and trashed = false and name = '${esc}'`;
+  const q = `mimeType = '${DRIVE_FOLDER_MIME}' and trashed = false and name = '${esc}'`;
   const params = {
     q,
     pageSize: max,

@@ -197,7 +197,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
       customerFolder = null;
     }
   }
-  const { items: driveChildren, listError: driveListError } = await listJobDriveFolderPreview(id);
+  const { groups: drivePreviewGroups, listError: driveListError } = await listJobDriveFolderPreview(id);
   const invoiceTotalDisplayCents = qboInvoice?.totalAmtCents ?? job.invoiceAmountCents;
   const paidDisplayCents = qboInvoice?.amountPaidCents ?? job.amountPaidCents;
 
@@ -434,7 +434,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             googleDriveFolderId={job.googleDriveFolderId}
             googleDriveSyncedAt={job.googleDriveSyncedAt}
             googleDriveLastError={job.googleDriveLastError}
-            driveChildren={driveChildren}
+            drivePreviewGroups={drivePreviewGroups}
             driveListError={driveListError}
             canCreateFromTemplate={canCreateDriveJobFolderFromTemplate() && !job.googleDriveFolderId}
             customerFolder={customerFolder}
