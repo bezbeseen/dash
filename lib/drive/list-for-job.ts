@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma';
-import { listDriveFolderChildren, type DriveFolderListItem } from '@/lib/drive/api';
+import { listDriveFolderChildren, formatDriveUserError, type DriveFolderListItem } from '@/lib/drive/api';
 import { getGmailOAuth2ClientForConnection, getGmailOAuth2ClientForApi } from '@/lib/gmail/tokens-db';
 
 export async function listJobDriveFolderPreview(
@@ -24,7 +24,6 @@ export async function listJobDriveFolderPreview(
     const items = await listDriveFolderChildren(auth, id, 40);
     return { items, listError: null };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { items: [], listError: msg };
+    return { items: [], listError: formatDriveUserError(e) };
   }
 }

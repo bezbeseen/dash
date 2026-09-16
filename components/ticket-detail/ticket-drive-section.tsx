@@ -103,6 +103,12 @@ export function TicketDriveSection({
       {googleDriveLastError ? (
         <div className="board-toast board-toast-error mb-3" role="status">
           {googleDriveLastError}
+          <p className="small mb-0 mt-2">
+            <a href="/api/integrations/env-check" target="_blank" rel="noreferrer">
+              Open env-check
+            </a>{' '}
+            and look at googleDrive.accessProbe to see which folder id Google cannot open.
+          </p>
         </div>
       ) : null}
       {canCreateFromTemplate ? (

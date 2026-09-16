@@ -131,9 +131,19 @@ export async function assertDriveFolderAccessible(
   }
 }
 
+const LABELED_DRIVE_ERROR =
+  /was not found|is in the trash|is a file, not a folder|GOOGLE_DRIVE_|is not set \(or is not a Drive/;
+
 export function formatDriveUserError(err: unknown): string {
   const status = googleApiStatus(err);
   const msg = googleApiMessage(err);
+  if (
+    LABELED_DRIVE_ERROR.test(msg) &&
+    !/^File not found:/i.test(msg) &&
+    !/^Requested entity was not found/i.test(msg)
+  ) {
+    return msg;
+  }
   if (/insufficient authentication scopes|accessNotConfigured|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(msg)) {
     return 'Google needs Drive permission; reconnect Gmail in Settings (includes Drive folder moves).';
   }
@@ -141,6 +151,10 @@ export function formatDriveUserError(err: unknown): string {
     return 'Drive returned forbidden. Check shared drive membership and folder access for this Google account.';
   }
   if (status === 404 || /not found|404/i.test(msg)) {
+    const fileId = msg.match(/File not found:\s*([a-zA-Z0-9_-]+)/i)?.[1];
+    if (fileId) {
+      return `Drive could not find folder ${fileId}. It may be deleted, or this Google account cannot see it. Check the template and Active (or Client Jobs root) ids in env-check → googleDrive.`;
+    }
     return 'Folder not found. Verify the folder ID still exists and is in a shared drive you can access.';
   }
   return msg.length > 200 ? `${msg.slice(0, 200)}...` : msg;

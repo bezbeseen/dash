@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { DashboardHomeTodos } from '@/components/dashboard-home-todos';
 import { DashboardWorkList } from '@/components/dashboard-work-list';
+import { WorkCalendarPeek } from '@/components/work-calendar-peek';
+import { loadWorkCalendarPeek } from '@/lib/calendar/work-peek';
 import { loadDashboardTodosModule } from '@/lib/domain/dashboard-home-todos';
 import { loadDashboardSummary } from '@/lib/domain/dashboard-summary';
 import { loadDashboardWorkList } from '@/lib/domain/dashboard-work-list';
@@ -12,6 +14,7 @@ import { loadTodoAssigneeOptions } from '@/lib/todo/assignee-options';
 import { todoFormErrorMessage } from '@/lib/todo/todo-form-errors';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 20;
 
 type WorkPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -30,15 +33,18 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
   const q = await searchParams;
   const todoError = todoFormErrorMessage(firstQueryString(q, 'todo_error'));
   const jobError = jobErrorFromQuery({ job_error: firstQueryString(q, 'job_error') });
+  const mailbox = firstQueryString(q, 'mailbox');
+  const day = firstQueryString(q, 'day');
 
   const session = await getServerSession(authOptions);
   const sessionEmail = (session?.user?.email ?? '').toLowerCase() || null;
 
-  const [summary, todosModule, assigneeOptions, workList] = await Promise.all([
+  const [summary, todosModule, assigneeOptions, workList, calendarPeek] = await Promise.all([
     loadDashboardSummary(),
     loadDashboardTodosModule(sessionEmail, { upcomingLimit: 40 }),
     loadTodoAssigneeOptions(prisma, sessionEmail),
     loadDashboardWorkList(),
+    loadWorkCalendarPeek({ sessionEmail, mailbox }),
   ]);
 
   return (
@@ -53,6 +59,9 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
             </Link>{' '}
             for the kanban board.
           </p>
+        </div>
+        <div className="board-topbar-actions">
+          <WorkCalendarPeek peek={calendarPeek} selectedYmd={day} defaultOpen={firstQueryString(q, 'cal') === '1'} />
         </div>
       </header>
 
@@ -74,3 +83,4 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
     </div>
   );
 }
+

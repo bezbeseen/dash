@@ -41,6 +41,7 @@ import {
   reviewRequestGmailMailboxConnected,
 } from '@/lib/email/review-request-after-done';
 import { getGoogleDriveEnvSnapshot } from '@/lib/drive/config';
+import { probeGoogleDriveFolderAccess, type GoogleDriveAccessProbe } from '@/lib/drive/probe';
 
 /**
  * Safe config snapshot (no secrets). For debugging OAuth on production.
@@ -397,6 +398,43 @@ export async function GET(req: NextRequest) {
     hints.push('Connect Gmail in Settings to use /dashboard/calendar (same Google account).');
   }
 
+  let googleDriveAccessProbe: GoogleDriveAccessProbe | null = null;
+  if (firstGmailMailbox) {
+    const driveMailbox = firstGmailMailbox.googleEmail;
+    try {
+      googleDriveAccessProbe = await Promise.race([
+        probeGoogleDriveFolderAccess(firstGmailMailbox.id, driveMailbox),
+        new Promise<GoogleDriveAccessProbe>((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                mailbox: driveMailbox,
+                timedOut: true,
+                folders: [],
+              }),
+            5000,
+          ),
+        ),
+      ]);
+      if (googleDriveAccessProbe.timedOut) {
+        hints.push('Google Drive folder probe timed out after 5s.');
+      }
+      for (const folder of googleDriveAccessProbe.folders) {
+        if (folder.set && !folder.ok && folder.error) {
+          hints.push(`Google Drive ${folder.envVar}: ${folder.error}`);
+        }
+      }
+    } catch (e) {
+      googleDriveAccessProbe = {
+        mailbox: driveMailbox,
+        folders: [],
+      };
+      hints.push(
+        `Google Drive folder probe failed: ${e instanceof Error ? e.message.slice(0, 200) : 'probe_failed'}`,
+      );
+    }
+  }
+
   const slackUrl = process.env.SLACK_WEBHOOK_URL?.trim();
   const slackEnabled = process.env.SLACK_NOTIFICATIONS_ENABLED?.trim();
   const slackEnvGate = process.env.SLACK_WEBHOOK_ENV?.trim();
@@ -543,7 +581,10 @@ export async function GET(req: NextRequest) {
         `${origin}/api/webhooks/yelp-leads`,
       ],
     },
-    googleDrive,
+    googleDrive: {
+      ...googleDrive,
+      accessProbe: googleDriveAccessProbe,
+    },
     googleCalendar: {
       dashboardPath: '/dashboard/calendar',
       apiLibrary: GOOGLE_CALENDAR_API_LIBRARY,

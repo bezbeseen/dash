@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { GmailConnectAnchor } from '@/components/gmail-connect-link';
-import type { GoogleCalendarEventItem } from '@/lib/calendar/google-calendar';
+import type { CalendarOverlayItem } from '@/lib/calendar/overlay';
+import { takeVisibleOverlay } from '@/lib/calendar/overlay';
 import type { MonthCell } from '@/lib/calendar/month-grid';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -17,17 +18,19 @@ type Props = {
   todayYmd: string;
   selectedYmd: string;
   cells: MonthCell[];
-  eventsByDay: Map<string, GoogleCalendarEventItem[]>;
+  itemsByDay: Map<string, CalendarOverlayItem[]>;
   mailboxes: Mailbox[];
   mailboxEmail: string;
   calendars: { id: string; summary: string }[];
   timeZone: string;
+  googleHint?: string | null;
+  googleNeedsReconnect?: boolean;
 };
 
 function hrefFor(opts: { ym: string; mailbox: string; day?: string }) {
   const u = new URLSearchParams();
   u.set('ym', opts.ym);
-  u.set('mailbox', opts.mailbox);
+  if (opts.mailbox) u.set('mailbox', opts.mailbox);
   if (opts.day) u.set('day', opts.day);
   return `/dashboard/calendar?${u.toString()}` as never;
 }
@@ -41,14 +44,16 @@ export function GoogleCalendarMonth({
   todayYmd,
   selectedYmd,
   cells,
-  eventsByDay,
+  itemsByDay,
   mailboxes,
   mailboxEmail,
   calendars,
   timeZone,
+  googleHint,
+  googleNeedsReconnect,
 }: Props) {
   const ym = `${year}-${String(month).padStart(2, '0')}`;
-  const selected = eventsByDay.get(selectedYmd) ?? [];
+  const selected = itemsByDay.get(selectedYmd) ?? [];
   const selectedLabel = new Date(`${selectedYmd}T17:00:00.000Z`).toLocaleDateString('en-US', {
     timeZone,
     weekday: 'long',
@@ -92,32 +97,51 @@ export function GoogleCalendarMonth({
               </Link>
             ))}
           </div>
-        ) : (
+        ) : mailboxEmail ? (
           <p className="small text-body-secondary mb-0">{mailboxEmail}</p>
-        )}
+        ) : null}
       </div>
 
       <p className="small text-body-secondary mb-3">
-        Showing calendars this Google account has selected:{' '}
-        {calendars.length === 0 ? 'none' : calendars.map((c) => c.summary).join(', ')}.
-        {' '}
+        Shop to-dos with due dates sit on this month
+        {calendars.length > 0 ? (
+          <>
+            , plus Google calendars {calendars.map((c) => c.summary).join(', ')}
+          </>
+        ) : null}
+        .{' '}
+        <Link href={'/dashboard/todos' as never} className="text-decoration-underline">
+          Open to-dos
+        </Link>
+        {' · '}
         <a href="https://calendar.google.com/calendar/u/0/r" target="_blank" rel="noreferrer">
           Open Google Calendar
         </a>
-        . After a first-time Calendar grant,{' '}
-        <GmailConnectAnchor className="text-decoration-underline">reconnect Gmail</GmailConnectAnchor>.
+        {googleHint ? (
+          <>
+            {' · '}
+            {googleHint}
+            {googleNeedsReconnect ? (
+              <>
+                {' '}
+                <GmailConnectAnchor className="text-decoration-underline">Reconnect Gmail</GmailConnectAnchor>
+              </>
+            ) : null}
+          </>
+        ) : null}
       </p>
 
       <div className="gcal-layout">
-        <div className="gcal-grid" role="grid" aria-label={`${monthLabel} Google Calendar`}>
+        <div className="gcal-grid" role="grid" aria-label={`${monthLabel} calendar`}>
           {WEEKDAYS.map((d) => (
             <div key={d} className="gcal-dow">
               {d}
             </div>
           ))}
           {cells.map((cell) => {
-            const events = eventsByDay.get(cell.ymd) ?? [];
-            const extra = Math.max(0, events.length - CHIP_LIMIT);
+            const items = itemsByDay.get(cell.ymd) ?? [];
+            const visible = takeVisibleOverlay(items, CHIP_LIMIT);
+            const extra = Math.max(0, items.length - visible.length);
             const isToday = cell.ymd === todayYmd;
             const isSelected = cell.ymd === selectedYmd;
             return (
@@ -130,10 +154,14 @@ export function GoogleCalendarMonth({
               >
                 <span className="gcal-cell-num">{cell.day}</span>
                 <ul className="gcal-chips">
-                  {events.slice(0, CHIP_LIMIT).map((ev) => (
-                    <li key={ev.id} className="gcal-chip" title={`${ev.startLabel} · ${ev.title}`}>
-                      <span className="gcal-chip-time">{ev.allDay ? 'All day' : ev.startLabel}</span>
-                      <span className="gcal-chip-title">{ev.title}</span>
+                  {visible.map((item) => (
+                    <li
+                      key={item.id}
+                      className={`gcal-chip${item.kind === 'todo' ? ' is-todo' : ''}${item.overdue ? ' is-overdue' : ''}`}
+                      title={`${item.startLabel} · ${item.title}`}
+                    >
+                      <span className="gcal-chip-time">{item.startLabel}</span>
+                      <span className="gcal-chip-title">{item.title}</span>
                     </li>
                   ))}
                 </ul>
@@ -143,24 +171,29 @@ export function GoogleCalendarMonth({
           })}
         </div>
 
-        <aside className="gcal-agenda" aria-label={`Events on ${selectedLabel}`}>
+        <aside className="gcal-agenda" aria-label={`On ${selectedLabel}`}>
           <h3 className="h6 fw-semibold mb-2">{selectedLabel}</h3>
           {selected.length === 0 ? (
-            <p className="small text-body-secondary mb-0">No Google Calendar events this day.</p>
+            <p className="small text-body-secondary mb-0">No Google events or shop to-dos this day.</p>
           ) : (
             <ul className="gcal-agenda-list">
-              {selected.map((ev) => (
-                <li key={ev.id}>
-                  <div className="small text-body-secondary">
-                    {ev.startLabel}
-                    {calendars.length > 1 ? ` · ${ev.calendarName}` : ''}
+              {selected.map((item) => (
+                <li key={item.id}>
+                  <div className={`small${item.overdue ? ' text-danger' : ' text-body-secondary'}`}>
+                    {item.startLabel}
+                    {item.extra ? ` · ${item.extra}` : ''}
                   </div>
-                  {ev.htmlLink ? (
-                    <a href={ev.htmlLink} target="_blank" rel="noreferrer" className="gcal-agenda-title">
-                      {ev.title}
+                  {item.href ? (
+                    <a
+                      href={item.href}
+                      target={item.kind === 'event' ? '_blank' : undefined}
+                      rel={item.kind === 'event' ? 'noreferrer' : undefined}
+                      className={`gcal-agenda-title${item.kind === 'todo' ? ' is-todo' : ''}`}
+                    >
+                      {item.title}
                     </a>
                   ) : (
-                    <div className="gcal-agenda-title">{ev.title}</div>
+                    <div className="gcal-agenda-title">{item.title}</div>
                   )}
                 </li>
               ))}

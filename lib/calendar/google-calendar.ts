@@ -148,8 +148,12 @@ export async function loadGoogleCalendarMonth(params: {
   timeMinIso: string;
   timeMaxIso: string;
   timeZone?: string;
+  maxCalendars?: number;
+  maxEventsPerCalendar?: number;
 }): Promise<GoogleCalendarLoadResult> {
   const timeZone = params.timeZone ?? todoListTimeZone();
+  const calendarCap = Math.min(Math.max(params.maxCalendars ?? MAX_CALENDARS, 1), MAX_CALENDARS);
+  const eventCap = Math.min(Math.max(params.maxEventsPerCalendar ?? MAX_EVENTS_PER_CALENDAR, 1), MAX_EVENTS_PER_CALENDAR);
   try {
     const auth = await getGmailOAuth2ClientForConnection(params.connectionId);
     const calendar = google.calendar({ version: 'v3', auth });
@@ -160,7 +164,7 @@ export async function loadGoogleCalendarMonth(params: {
     const listed = (listRes.data.items ?? []).filter((c): c is calendar_v3.Schema$CalendarListEntry & { id: string } =>
       Boolean(c.id),
     );
-    const preferred = listed.filter((c) => c.selected !== false).slice(0, MAX_CALENDARS);
+    const preferred = listed.filter((c) => c.selected !== false).slice(0, calendarCap);
     const calendars = (preferred.length > 0 ? preferred : listed.slice(0, 1)).map((c) => ({
       id: c.id,
       summary: (c.summary ?? c.id).trim() || c.id,
@@ -175,7 +179,7 @@ export async function loadGoogleCalendarMonth(params: {
             timeMax: params.timeMaxIso,
             singleEvents: true,
             orderBy: 'startTime',
-            maxResults: MAX_EVENTS_PER_CALENDAR,
+            maxResults: eventCap,
             timeZone,
           });
           return (ev.data.items ?? []).flatMap((item) => eventsFromGoogleItem(item, cal.id, cal.summary, timeZone));

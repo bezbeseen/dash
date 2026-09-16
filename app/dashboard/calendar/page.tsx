@@ -3,10 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { GoogleCalendarMonth } from '@/components/google-calendar-month';
 import { GmailConnectAnchor } from '@/components/gmail-connect-link';
-import {
-  loadGoogleCalendarMonth,
-  type GoogleCalendarEventItem,
-} from '@/lib/calendar/google-calendar';
+import { loadGoogleCalendarMonth } from '@/lib/calendar/google-calendar';
 import {
   addDaysYmd,
   buildMonthGrid,
@@ -15,6 +12,13 @@ import {
   parseYearMonthParam,
   shiftYearMonth,
 } from '@/lib/calendar/month-grid';
+import { pickCalendarMailbox } from '@/lib/calendar/mailbox';
+import {
+  groupOverlayByDay,
+  loadOpenTodoOverlay,
+  mergeOverlayItems,
+  overlayFromGoogleEvent,
+} from '@/lib/calendar/overlay';
 import { prisma } from '@/lib/db/prisma';
 import { calendarDateInTimeZone, todoListTimeZone } from '@/lib/todo/timezone';
 
@@ -34,49 +38,51 @@ export default async function GoogleCalendarPage({ searchParams }: PageProps) {
   const prev = shiftYearMonth(year, month, -1);
   const next = shiftYearMonth(year, month, 1);
   const cells = buildMonthGrid(year, month, timeZone);
+  const gridStart = cells[0]!.ymd;
+  const gridEnd = cells[cells.length - 1]!.ymd;
 
   const connections = await prisma.gmailConnection.findMany({
     orderBy: { googleEmail: 'asc' },
     select: { id: true, googleEmail: true },
   });
 
-  if (connections.length === 0) {
-    return (
-      <div className="board-page">
-        <header className="board-topbar">
-          <div className="board-topbar-titles">
-            <h1 className="board-topbar-title">Calendar</h1>
-            <p className="board-topbar-sub">Google Calendar for a connected mailbox.</p>
-          </div>
-        </header>
-        <div className="px-3 px-md-4 py-4">
-          <p className="mb-3">Connect Gmail in Settings first. Calendar uses that same Google account.</p>
-          <GmailConnectAnchor className="btn btn-primary btn-sm">Connect Gmail</GmailConnectAnchor>
-        </div>
-      </div>
-    );
-  }
-
   const session = await getServerSession(authOptions);
   const sessionEmail = (session?.user?.email ?? '').toLowerCase();
-  const requested = (q.mailbox ?? '').trim().toLowerCase();
-  const mailbox =
-    connections.find((c) => c.googleEmail.toLowerCase() === requested) ??
-    connections.find((c) => c.googleEmail.toLowerCase() === sessionEmail) ??
-    connections[0]!;
+  const mailbox = pickCalendarMailbox(connections, sessionEmail, q.mailbox);
 
-  const gridStart = cells[0]!.ymd;
-  const gridEnd = cells[cells.length - 1]!.ymd;
-  const timeMinIso = `${gridStart}T00:00:00-12:00`;
-  const timeMaxIso = `${addDaysYmd(gridEnd, 1)}T00:00:00+14:00`;
-
-  const loaded = await loadGoogleCalendarMonth({
-    connectionId: mailbox.id,
-    mailboxEmail: mailbox.googleEmail,
-    timeMinIso,
-    timeMaxIso,
+  const todosPromise = loadOpenTodoOverlay({
     timeZone,
+    todayYmd,
+    startYmd: gridStart,
+    endYmd: gridEnd,
   });
+
+  let googleHint: string | null = null;
+  let googleNeedsReconnect = false;
+  let calendars: { id: string; summary: string }[] = [];
+  let eventItems: ReturnType<typeof overlayFromGoogleEvent>[] = [];
+
+  if (!mailbox) {
+    googleHint = 'Connect Gmail to load Google Calendar events.';
+  } else {
+    const loaded = await loadGoogleCalendarMonth({
+      connectionId: mailbox.id,
+      mailboxEmail: mailbox.googleEmail,
+      timeMinIso: `${gridStart}T00:00:00-12:00`,
+      timeMaxIso: `${addDaysYmd(gridEnd, 1)}T00:00:00+14:00`,
+      timeZone,
+    });
+    if (!loaded.ok) {
+      googleHint = loaded.error;
+      googleNeedsReconnect = loaded.needsReconnect;
+    } else {
+      calendars = loaded.calendars;
+      eventItems = loaded.events.map(overlayFromGoogleEvent);
+    }
+  }
+
+  const todos = await todosPromise;
+  const itemsByDay = groupOverlayByDay(mergeOverlayItems(eventItems, todos));
 
   const selectedRaw = q.day?.trim();
   const selectedYmd =
@@ -92,12 +98,16 @@ export default async function GoogleCalendarPage({ searchParams }: PageProps) {
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Calendar</h1>
           <p className="board-topbar-sub">
-            Live Google Calendar for the connected mailbox. Enable Calendar API on the Gmail Cloud project, then
-            reconnect Gmail so Calendar is on the token.
+            Google Calendar plus shop to-dos with due dates. Overdue to-dos stay on today until they are checked off.
           </p>
         </div>
         <div className="board-topbar-actions">
-          <GmailConnectAnchor className="btn btn-toolbar">Reconnect Gmail</GmailConnectAnchor>
+          <Link href="/dashboard/todos" className="btn btn-toolbar">
+            To-dos
+          </Link>
+          {mailbox ? <GmailConnectAnchor className="btn btn-toolbar">Reconnect Gmail</GmailConnectAnchor> : (
+            <GmailConnectAnchor className="btn btn-toolbar">Connect Gmail</GmailConnectAnchor>
+          )}
           <a
             className="btn btn-toolbar"
             href="https://calendar.google.com/calendar/u/0/r"
@@ -106,48 +116,28 @@ export default async function GoogleCalendarPage({ searchParams }: PageProps) {
           >
             Open Google Calendar
           </a>
-          <Link href="/dashboard/settings" className="btn btn-toolbar btn-toolbar-muted">
-            Settings
-          </Link>
         </div>
       </header>
 
       <div className="flex-grow-1 overflow-auto px-3 px-md-4 pb-4" style={{ minHeight: 0 }}>
-        {!loaded.ok ? (
-          <div className="board-toast board-toast-error mt-3" role="status">
-            {loaded.error}{' '}
-            {loaded.needsReconnect ? (
-              <GmailConnectAnchor className="text-decoration-underline">Reconnect Gmail</GmailConnectAnchor>
-            ) : null}
-          </div>
-        ) : (
-          <GoogleCalendarMonth
-            year={year}
-            month={month}
-            monthLabel={monthTitle(year, month, timeZone)}
-            prevYm={formatYearMonth(prev.year, prev.month)}
-            nextYm={formatYearMonth(next.year, next.month)}
-            todayYmd={todayYmd}
-            selectedYmd={selectedYmd}
-            cells={cells}
-            eventsByDay={groupEvents(loaded.events)}
-            mailboxes={connections}
-            mailboxEmail={mailbox.googleEmail}
-            calendars={loaded.calendars}
-            timeZone={timeZone}
-          />
-        )}
+        <GoogleCalendarMonth
+          year={year}
+          month={month}
+          monthLabel={monthTitle(year, month, timeZone)}
+          prevYm={formatYearMonth(prev.year, prev.month)}
+          nextYm={formatYearMonth(next.year, next.month)}
+          todayYmd={todayYmd}
+          selectedYmd={selectedYmd}
+          cells={cells}
+          itemsByDay={itemsByDay}
+          mailboxes={connections}
+          mailboxEmail={mailbox?.googleEmail ?? ''}
+          calendars={calendars}
+          timeZone={timeZone}
+          googleHint={googleHint}
+          googleNeedsReconnect={googleNeedsReconnect}
+        />
       </div>
     </div>
   );
-}
-
-function groupEvents(events: GoogleCalendarEventItem[]): Map<string, GoogleCalendarEventItem[]> {
-  const map = new Map<string, GoogleCalendarEventItem[]>();
-  for (const ev of events) {
-    const list = map.get(ev.ymd) ?? [];
-    list.push(ev);
-    map.set(ev.ymd, list);
-  }
-  return map;
 }
