@@ -2367,15 +2367,22 @@ a.work-cal-chip:hover {
 .drive-file-thumb:hover {
   color: inherit;
 }
+.drive-file-thumb-media {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  border: var(--bs-border-width) solid var(--bs-border-color);
+  background-color: var(--bs-body-bg);
+  overflow: hidden;
+}
 .drive-file-thumb img,
 .drive-file-thumb-ph {
   display: block;
   width: 100%;
-  aspect-ratio: 4 / 3;
+  height: 100%;
   object-fit: cover;
-  border-radius: 10px;
-  border: var(--bs-border-width) solid var(--bs-border-color);
-  background-color: var(--bs-body-bg);
 }
 .drive-file-thumb-ph {
   display: flex;
@@ -2385,6 +2392,35 @@ a.work-cal-chip:hover {
   font-weight: 600;
   color: var(--bs-secondary-color);
 }
+.drive-file-thumb-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bs-body-bg) 78%, transparent);
+}
+.drive-file-thumb-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--bs-border-color);
+  border-top-color: var(--bs-body-color);
+  border-radius: 50%;
+  animation: drive-file-thumb-spin 0.7s linear infinite;
+}
+@keyframes drive-file-thumb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drive-file-thumb-spinner {
+    animation: none;
+    border-top-color: var(--bs-border-color);
+    opacity: 0.6;
+  }
+}
 .drive-file-thumb-name {
   font-size: 0.75rem;
   line-height: 1.3;
@@ -2393,9 +2429,6 @@ a.work-cal-chip:hover {
   -webkit-line-clamp: 2;
   line-clamp: 2;
   -webkit-box-orient: vertical;
-}
-.drive-file-thumb-more .drive-file-thumb-ph {
-  border-style: dashed;
 }
 
 /* Google Calendar month (/dashboard/calendar) */

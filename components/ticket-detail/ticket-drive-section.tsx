@@ -1,5 +1,6 @@
 import type { BoardStatus, ProductionStatus } from '@prisma/client';
-import type { DrivePreviewFile, DrivePreviewGroup } from '@/lib/drive/list-for-job';
+import type { DrivePreviewGroup } from '@/lib/drive/list-for-job';
+import { DriveFileThumb } from '@/components/ticket-detail/drive-file-thumb';
 import {
   getClientJobsRootFolderId,
   getCustomerHubFolderId,
@@ -14,27 +15,6 @@ function folderCountLabel(group: DrivePreviewGroup): string {
   if (n === 0) return 'Empty';
   if (group.extraCount > 0) return `${group.files.length}+`;
   return n === 1 ? '1 item' : `${n} items`;
-}
-
-function DriveFileTile({ jobId, file }: { jobId: string; file: DrivePreviewFile }) {
-  const href = file.webViewLink ?? `https://drive.google.com/file/d/${file.id}/view`;
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="drive-file-thumb"
-      title={file.name}
-    >
-      {file.isFolder ? (
-        <span className="drive-file-thumb-ph">Folder</span>
-      ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={`/api/jobs/${jobId}/drive-preview/${file.id}`} alt="" />
-      )}
-      <span className="drive-file-thumb-name">{file.name}</span>
-    </a>
-  );
 }
 
 function DriveFolderPreview({ jobId, groups }: { jobId: string; groups: DrivePreviewGroup[] }) {
@@ -54,18 +34,20 @@ function DriveFolderPreview({ jobId, groups }: { jobId: string; groups: DrivePre
               {hasFiles ? (
                 <div className="drive-file-thumbs">
                   {group.files.map((file) => (
-                    <DriveFileTile key={file.id} jobId={jobId} file={file} />
+                    <DriveFileThumb
+                      key={file.id}
+                      href={file.webViewLink ?? `https://drive.google.com/file/d/${file.id}/view`}
+                      name={file.name}
+                      src={file.isFolder ? undefined : `/api/jobs/${jobId}/drive-preview/${file.id}`}
+                      placeholder={file.isFolder ? 'Folder' : undefined}
+                    />
                   ))}
                   {group.extraCount > 0 && group.webViewLink ? (
-                    <a
+                    <DriveFileThumb
                       href={group.webViewLink}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="drive-file-thumb drive-file-thumb-more"
-                    >
-                      <span className="drive-file-thumb-ph">+{group.extraCount}</span>
-                      <span className="drive-file-thumb-name">More in Drive</span>
-                    </a>
+                      name="More in Drive"
+                      placeholder={`+${group.extraCount}`}
+                    />
                   ) : null}
                 </div>
               ) : (
