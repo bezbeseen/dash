@@ -12,20 +12,13 @@ import { buildDriveJobFolderName } from '@/lib/drive/job-folder-name';
 import { resolveDriveJobParentFolder } from '@/lib/drive/resolve-job-parent';
 import { syncQboPdfsToJobDriveFolder } from '@/lib/drive/sync-qbo-pdfs-to-drive';
 import { driveBucketForJob } from '@/lib/drive/resolve-bucket';
-import { getGmailOAuth2ClientForConnection, getGmailOAuth2ClientForApi } from '@/lib/gmail/tokens-db';
+import { getAuthForGoogleDrive } from '@/lib/drive/auth';
 
 export type SyncJobDriveFolderResult =
   | { ok: true; skipped: true; reason: 'not_configured' | 'no_folder' | 'already_placed' }
   | { ok: true; moved: true; bucket: string }
   | { ok: true; pdfsSaved: true; folderName: string }
   | { ok: false; error: string };
-
-async function getAuthForDriveJob(job: { gmailConnectionId: string | null }) {
-  if (job.gmailConnectionId) {
-    return getGmailOAuth2ClientForConnection(job.gmailConnectionId);
-  }
-  return getGmailOAuth2ClientForApi();
-}
 
 /**
  * Moves the job's linked Drive folder directly under the Active / Completed / Archive bucket
@@ -43,7 +36,6 @@ export async function syncJobDriveFolder(jobId: string): Promise<SyncJobDriveFol
       createdAt: true,
       productionStatus: true,
       googleDriveFolderId: true,
-      gmailConnectionId: true,
       quickbooksInvoiceId: true,
       quickbooksCompanyId: true,
       quickbooksCustomerId: true,
@@ -61,7 +53,7 @@ export async function syncJobDriveFolder(jobId: string): Promise<SyncJobDriveFol
 
   if (!isGoogleDriveBucketSyncConfigured()) {
     try {
-      const auth = await getAuthForDriveJob(job);
+      const { auth } = await getAuthForGoogleDrive();
       await syncQboPdfsToJobDriveFolder(auth, job);
       return { ok: true, pdfsSaved: true, folderName: 'job folder' };
     } catch (e) {
@@ -80,7 +72,10 @@ export async function syncJobDriveFolder(jobId: string): Promise<SyncJobDriveFol
   const bucket = driveBucketForJob(job);
 
   try {
-    const auth = await getAuthForDriveJob(job);
+    const { auth } = await getAuthForGoogleDrive({
+      probeFolderId: job.googleDriveFolderId,
+      probeLabel: 'This ticket’s Drive folder',
+    });
     const dest = await resolveDriveJobParentFolder(auth, job, bucket, { createMissing: true });
     await assertDriveFolderAccessible(auth, job.googleDriveFolderId, 'This ticket’s Drive folder');
     const targetParent = dest.id;

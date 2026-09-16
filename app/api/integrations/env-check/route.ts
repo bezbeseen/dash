@@ -403,7 +403,7 @@ export async function GET(req: NextRequest) {
     const driveMailbox = firstGmailMailbox.googleEmail;
     try {
       googleDriveAccessProbe = await Promise.race([
-        probeGoogleDriveFolderAccess(firstGmailMailbox.id, driveMailbox),
+        probeGoogleDriveFolderAccess(),
         new Promise<GoogleDriveAccessProbe>((resolve) =>
           setTimeout(
             () =>
@@ -412,12 +412,12 @@ export async function GET(req: NextRequest) {
                 timedOut: true,
                 folders: [],
               }),
-            5000,
+            8000,
           ),
         ),
       ]);
       if (googleDriveAccessProbe.timedOut) {
-        hints.push('Google Drive folder probe timed out after 5s.');
+        hints.push('Google Drive folder probe timed out after 8s.');
       }
       for (const folder of googleDriveAccessProbe.folders) {
         if (folder.set && !folder.ok && folder.error) {

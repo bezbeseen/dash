@@ -1,12 +1,12 @@
 import { prisma } from '@/lib/db/prisma';
-import { assertDriveFolderAccessible, formatDriveUserError } from '@/lib/drive/api';
+import { formatDriveUserError } from '@/lib/drive/api';
+import { getAuthForGoogleDrive } from '@/lib/drive/auth';
 import { getJobFolderTemplateId } from '@/lib/drive/config';
 import { duplicateDriveFolderTree } from '@/lib/drive/duplicate-template-folder';
 import { buildDriveJobFolderName } from '@/lib/drive/job-folder-name';
 import { driveBucketForJob } from '@/lib/drive/resolve-bucket';
 import { resolveDriveJobParentFolder } from '@/lib/drive/resolve-job-parent';
 import { syncJobDriveFolder } from '@/lib/drive/sync-job-folder';
-import { getGmailOAuth2ClientForConnection, getGmailOAuth2ClientForApi } from '@/lib/gmail/tokens-db';
 
 export type CreateJobFolderFromTemplateResult =
   | { ok: true; folderId: string }
@@ -33,7 +33,6 @@ export async function createJobFolderFromTemplate(jobId: string): Promise<Create
       boardStatus: true,
       productionStatus: true,
       googleDriveFolderId: true,
-      gmailConnectionId: true,
       quickbooksCompanyId: true,
       quickbooksCustomerId: true,
     },
@@ -49,16 +48,11 @@ export async function createJobFolderFromTemplate(jobId: string): Promise<Create
     };
   }
 
-  const auth = job.gmailConnectionId
-    ? await getGmailOAuth2ClientForConnection(job.gmailConnectionId)
-    : await getGmailOAuth2ClientForApi();
-
   try {
-    await assertDriveFolderAccessible(
-      auth,
-      templateId,
-      'Job folder template (GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID)',
-    );
+    const { auth } = await getAuthForGoogleDrive({
+      probeFolderId: templateId,
+      probeLabel: 'Job folder template (GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID)',
+    });
     const bucket = driveBucketForJob(job);
     const dest = await resolveDriveJobParentFolder(auth, job, bucket, { createMissing: true });
     const name = buildDriveJobFolderName({

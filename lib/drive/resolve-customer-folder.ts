@@ -1,4 +1,3 @@
-import type { OAuth2Client } from 'google-auth-library';
 import { prisma } from '@/lib/db/prisma';
 import {
   assertDriveFolderAccessible,
@@ -10,20 +9,13 @@ import {
 } from '@/lib/drive/config';
 import { findFolderNamedUnderParent } from '@/lib/drive/ensure-customer-subfolder';
 import { parseGoogleDriveFolderId } from '@/lib/drive/parse-folder-id';
-import { getGmailOAuth2ClientForConnection, getGmailOAuth2ClientForApi } from '@/lib/gmail/tokens-db';
+import { getAuthForGoogleDrive } from '@/lib/drive/auth';
 
 export type ResolvedCustomerDriveFolder = {
   id: string;
   name: string;
   source: 'saved' | 'hub' | 'client_jobs';
 };
-
-async function authForJob(job: { gmailConnectionId: string | null }): Promise<OAuth2Client> {
-  if (job.gmailConnectionId) {
-    return getGmailOAuth2ClientForConnection(job.gmailConnectionId);
-  }
-  return getGmailOAuth2ClientForApi();
-}
 
 async function rememberCustomerFolder(
   job: { quickbooksCompanyId: string | null; quickbooksCustomerId: string | null },
@@ -48,7 +40,6 @@ async function rememberCustomerFolder(
 
 type JobForCustomerFolder = {
   customerName: string;
-  gmailConnectionId: string | null;
   quickbooksCompanyId: string | null;
   quickbooksCustomerId: string | null;
 };
@@ -72,7 +63,6 @@ export async function resolveCustomerDriveFolderForJob(jobId: string): Promise<R
     where: { id: jobId },
     select: {
       customerName: true,
-      gmailConnectionId: true,
       quickbooksCompanyId: true,
       quickbooksCustomerId: true,
     },
@@ -85,7 +75,7 @@ async function resolveCustomerDriveFolder(job: JobForCustomerFolder): Promise<Re
   const customerName = job.customerName.trim();
   if (!customerName) return null;
 
-  const auth = await authForJob(job);
+  const { auth } = await getAuthForGoogleDrive();
 
   if (job.quickbooksCompanyId && job.quickbooksCustomerId) {
     const saved = await prisma.customerDriveFolder.findUnique({
@@ -132,7 +122,6 @@ export async function linkCustomerDriveFolderForJob(
   const job = await prisma.job.findUnique({
     where: { id: jobId },
     select: {
-      gmailConnectionId: true,
       quickbooksCompanyId: true,
       quickbooksCustomerId: true,
     },
@@ -161,7 +150,7 @@ export async function linkCustomerDriveFolderForJob(
   const folderId = parseGoogleDriveFolderId(raw);
   if (!folderId) return { ok: false, error: 'Invalid folder URL or ID.' };
 
-  const auth = await authForJob(job);
+  const { auth } = await getAuthForGoogleDrive();
   await assertDriveFolderAccessible(auth, folderId, 'Customer folder');
   const name = (await getDriveFileName(auth, folderId)) || 'Customer folder';
   await rememberCustomerFolder(job, folderId);

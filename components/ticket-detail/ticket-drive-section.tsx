@@ -107,7 +107,7 @@ export function TicketDriveSection({
             <a href="/api/integrations/env-check" target="_blank" rel="noreferrer">
               Open env-check
             </a>{' '}
-            and look at googleDrive.accessProbe to see which folder id Google cannot open.
+            and look at googleDrive.accessProbe. Create uses a mailbox that can see the shared drive, not the ticket’s Gmail thread.
           </p>
         </div>
       ) : null}

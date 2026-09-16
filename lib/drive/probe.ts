@@ -1,11 +1,11 @@
 import { assertDriveFolderAccessible } from '@/lib/drive/api';
+import { getAuthForGoogleDrive } from '@/lib/drive/auth';
 import {
   driveParentIdForBucket,
   getClientJobsRootFolderId,
   getCustomerHubFolderId,
   getJobFolderTemplateId,
 } from '@/lib/drive/config';
-import { getGmailOAuth2ClientForConnection } from '@/lib/gmail/tokens-db';
 
 export type DriveFolderAccessProbe = {
   key: string;
@@ -22,14 +22,11 @@ export type GoogleDriveAccessProbe = {
 };
 
 /**
- * Confirms each configured Drive folder id is visible to this Gmail token (shared-drive safe).
+ * Confirms each configured Drive folder id is visible to a mailbox that can open shop Drive.
  * Does not include folder ids in the result.
  */
-export async function probeGoogleDriveFolderAccess(
-  connectionId: string,
-  mailboxEmail: string,
-): Promise<GoogleDriveAccessProbe> {
-  const auth = await getGmailOAuth2ClientForConnection(connectionId);
+export async function probeGoogleDriveFolderAccess(): Promise<GoogleDriveAccessProbe> {
+  const { auth, mailbox: mailboxEmail } = await getAuthForGoogleDrive();
   const checks: { key: string; envVar: string; id: string | null }[] = [
     { key: 'template', envVar: 'GOOGLE_DRIVE_JOB_FOLDER_TEMPLATE_ID', id: getJobFolderTemplateId() },
     { key: 'active', envVar: 'GOOGLE_DRIVE_ACTIVE_FOLDER_ID', id: driveParentIdForBucket('ACTIVE') },

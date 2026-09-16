@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma';
 import { listDriveFolderChildren, formatDriveUserError, type DriveFolderListItem } from '@/lib/drive/api';
-import { getGmailOAuth2ClientForConnection, getGmailOAuth2ClientForApi } from '@/lib/gmail/tokens-db';
+import { getAuthForGoogleDrive } from '@/lib/drive/auth';
 
 export async function listJobDriveFolderPreview(
   jobId: string,
@@ -11,16 +11,17 @@ export async function listJobDriveFolderPreview(
 }> {
   const job = await prisma.job.findUnique({
     where: { id: jobId },
-    select: { googleDriveFolderId: true, gmailConnectionId: true },
+    select: { googleDriveFolderId: true },
   });
   const id = folderId ?? job?.googleDriveFolderId;
   if (!job || !id) {
     return { items: [], listError: null };
   }
   try {
-    const auth = job.gmailConnectionId
-      ? await getGmailOAuth2ClientForConnection(job.gmailConnectionId)
-      : await getGmailOAuth2ClientForApi();
+    const { auth } = await getAuthForGoogleDrive({
+      probeFolderId: id,
+      probeLabel: 'This ticket’s Drive folder',
+    });
     const items = await listDriveFolderChildren(auth, id, 40);
     return { items, listError: null };
   } catch (e) {

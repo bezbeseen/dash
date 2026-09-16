@@ -1,8 +1,8 @@
 import { prisma } from '@/lib/db/prisma';
 import { formatDriveUserError } from '@/lib/drive/api';
+import { getAuthForGoogleDrive } from '@/lib/drive/auth';
 import { resolveCustomerDriveFolderForJob } from '@/lib/drive/resolve-customer-folder';
 import { syncQboPdfsToDriveFolder } from '@/lib/drive/sync-qbo-pdfs-to-drive';
-import { getGmailOAuth2ClientForConnection, getGmailOAuth2ClientForApi } from '@/lib/gmail/tokens-db';
 
 export type SyncJobDriveDocumentsResult =
   | { ok: true; folderId: string; folderName: string; via: 'job' | 'customer' }
@@ -15,7 +15,6 @@ export async function syncJobDriveDocuments(jobId: string): Promise<SyncJobDrive
       id: true,
       customerName: true,
       googleDriveFolderId: true,
-      gmailConnectionId: true,
       quickbooksCompanyId: true,
       quickbooksEstimateId: true,
       quickbooksInvoiceId: true,
@@ -34,10 +33,6 @@ export async function syncJobDriveDocuments(jobId: string): Promise<SyncJobDrive
   }
 
   try {
-    const auth = job.gmailConnectionId
-      ? await getGmailOAuth2ClientForConnection(job.gmailConnectionId)
-      : await getGmailOAuth2ClientForApi();
-
     let destId = job.googleDriveFolderId;
     let via: 'job' | 'customer' = 'job';
     let folderName = 'job folder';
@@ -54,6 +49,11 @@ export async function syncJobDriveDocuments(jobId: string): Promise<SyncJobDrive
       via = 'customer';
       folderName = customer.name;
     }
+
+    const { auth } = await getAuthForGoogleDrive({
+      probeFolderId: destId,
+      probeLabel: 'Drive folder for QuickBooks PDFs',
+    });
 
     await syncQboPdfsToDriveFolder(auth, job, destId, { createInvoicesSubfolder: via === 'job' });
     await prisma.job.update({
