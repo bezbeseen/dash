@@ -30,22 +30,25 @@ export function deriveBoardStatus(job: JobLike): BoardStatus {
 
   const paidByAmount =
     invoiceAmount > 0 && amountPaid + BOARD_PAID_SLACK_CENTS >= invoiceAmount;
-
-  if (job.invoiceStatus === InvoiceStatus.PAID || paidByAmount) {
-    return BoardStatus.PAID;
-  }
+  const invoicePaid = job.invoiceStatus === InvoiceStatus.PAID || paidByAmount;
 
   if (job.productionStatus === ProductionStatus.DELIVERED) {
-    return BoardStatus.DELIVERED;
+    // Finished work + full payment lands in Paid (same as a typical close). Unpaid stays Delivered.
+    return invoicePaid ? BoardStatus.PAID : BoardStatus.DELIVERED;
   }
 
-  // Shop floor beats “has open invoice”: staff can be in Production/Ready while an invoice exists.
+  // Shop floor beats a prepaid invoice: payment up front should not park the ticket in Paid
+  // while it is still in Production or Ready.
   if (job.productionStatus === ProductionStatus.READY) {
     return BoardStatus.READY;
   }
 
   if (job.productionStatus === ProductionStatus.IN_PROGRESS) {
     return BoardStatus.PRODUCTION;
+  }
+
+  if (invoicePaid) {
+    return BoardStatus.PAID;
   }
 
   // Invoice exists but not yet in production / ready / delivered flow above

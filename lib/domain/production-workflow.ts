@@ -1,4 +1,4 @@
-import { InvoiceStatus } from '@prisma/client';
+import { InvoiceStatus, ProductionStatus } from '@prisma/client';
 import type { InvoiceSnapshot } from '@/lib/quickbooks/types';
 import {
   BOARD_PAID_SLACK_CENTS,
@@ -10,6 +10,7 @@ export type JobPaidLike = {
   invoiceStatus: InvoiceStatus;
   invoiceAmountCents: number;
   amountPaidCents: number;
+  productionStatus?: ProductionStatus;
   prodWrapUpNotes?: string | null;
   prodWrapUpAt?: Date | null;
 };
@@ -22,7 +23,7 @@ export function jobWrapUpRecorded(job: {
   return Boolean((job.prodWrapUpNotes ?? '').trim()) || job.prodWrapUpAt != null;
 }
 
-/** Same rule as the board Paid column — works on last-sync Job row only. */
+/** True when last-sync amounts/status say the invoice is paid in full (shop-floor column is separate). */
 export function jobStoredRowLooksPaid(job: JobPaidLike): boolean {
   if (job.archivedAt) return false;
   const inv = job.invoiceAmountCents ?? 0;
@@ -42,6 +43,12 @@ export function jobNeedsWrapUpReminder(
   if (ctx.archivedAt) return false;
   if (ctx.prodWrapUpAt != null) return false;
   if ((ctx.prodWrapUpNotes ?? '').trim()) return false;
+  if (
+    ctx.productionStatus === ProductionStatus.IN_PROGRESS ||
+    ctx.productionStatus === ProductionStatus.READY
+  ) {
+    return false;
+  }
   if (liveInvoice && invoiceSnapshotEffectivelyPaid(liveInvoice)) return true;
   return jobStoredRowLooksPaid(ctx);
 }

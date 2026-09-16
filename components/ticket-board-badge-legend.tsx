@@ -23,7 +23,7 @@ export function TicketBoardBadgeLegend() {
           <span className="badge rounded-pill bg-success-subtle text-success-emphasis border border-success-subtle small fw-semibold">
             Paid
           </span>
-          Invoice fully paid
+          Invoice fully paid (Prepaid jobs can still sit in Production)
         </li>
         <li className="d-flex align-items-center gap-2">
           <span className="badge rounded-pill bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle small fw-semibold d-inline-flex align-items-center gap-1">

@@ -1,4 +1,4 @@
-import { BoardStatus, TaskStatus, type InvoiceStatus } from '@prisma/client';
+import { BoardStatus, TaskStatus, type InvoiceStatus, type ProductionStatus } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { boardStatusDisplayLabel } from '@/lib/domain/board-display';
 import { jobPrimaryHeading, jobSecondaryHeading } from '@/lib/domain/job-display';
@@ -19,6 +19,7 @@ export type DashboardWorkRow = {
   invoiceStatus: InvoiceStatus;
   invoiceAmountCents: number;
   amountPaidCents: number;
+  productionStatus: ProductionStatus;
   prodWrapUpNotes: string | null;
   prodWrapUpAt: Date | null;
 };
@@ -86,6 +87,7 @@ export async function loadDashboardWorkList(now = new Date()): Promise<Dashboard
         invoiceStatus: true,
         invoiceAmountCents: true,
         amountPaidCents: true,
+        productionStatus: true,
         prodWrapUpNotes: true,
         prodWrapUpAt: true,
         tasks: {
@@ -115,6 +117,7 @@ export async function loadDashboardWorkList(now = new Date()): Promise<Dashboard
       invoiceStatus: job.invoiceStatus,
       invoiceAmountCents: job.invoiceAmountCents,
       amountPaidCents: job.amountPaidCents,
+      productionStatus: job.productionStatus,
       prodWrapUpNotes: job.prodWrapUpNotes,
       prodWrapUpAt: job.prodWrapUpAt,
     };

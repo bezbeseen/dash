@@ -156,7 +156,10 @@ export function JobCard({
             </span>
           ) : null}
           {invoicePaidInFull ? (
-            <span className="badge rounded-pill bg-success-subtle text-success-emphasis border border-success-subtle small fw-semibold">
+            <span
+              className="badge rounded-pill bg-success-subtle text-success-emphasis border border-success-subtle small fw-semibold"
+              title="Invoice is paid in full. Prepaid tickets can still move to Production."
+            >
               Paid
             </span>
           ) : null}
