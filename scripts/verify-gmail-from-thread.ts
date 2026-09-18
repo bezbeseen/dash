@@ -313,6 +313,16 @@ check(
   qboFaultLooksLikeMissingOrInactiveEstimate(new Error('QuickBooks API 504 for estimate/5845: gateway')),
   false,
 );
+check(
+  'qbo: HTTP 400 on estimate GET is unusable even without 610 in the body',
+  qboFaultLooksLikeMissingOrInactiveEstimate(new Error('QuickBooks API 400 for estimate/5845: {"Fault":{}}')),
+  true,
+);
+check(
+  'qbo: HTTP 404 on estimate GET is unusable',
+  qboFaultLooksLikeMissingOrInactiveEstimate(new Error('QuickBooks API 404 for estimate/5845: not found')),
+  true,
+);
 
 check(
   'customer create: PrimaryPhone',

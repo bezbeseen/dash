@@ -53,14 +53,15 @@ export function qboFaultLooksLikeDuplicateDocNumber(err: unknown): boolean {
   );
 }
 
-/** Deleted / inactive QBO estimate (Fault 610) or GET that returns no Estimate. */
+/** Deleted / inactive QBO estimate (Fault 610), HTTP 400/404 on GET estimate/{id}, or no Estimate object. */
 export function qboFaultLooksLikeMissingOrInactiveEstimate(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return (
     /\b610\b/.test(msg) ||
     /object not found/i.test(msg) ||
     /made inactive/i.test(msg) ||
-    /missing Estimate object/i.test(msg)
+    /missing Estimate object/i.test(msg) ||
+    /API 40[04] for estimate\//i.test(msg)
   );
 }
 

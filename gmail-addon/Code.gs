@@ -47,7 +47,7 @@ function onGmailMessageOpen(e) {
   );
   section.addWidget(
     CardService.newTextParagraph().setText(
-      'Creates a QuickBooks customer if needed and a saved (not sent) estimate. You stay in Gmail.',
+      'Creates a QuickBooks customer if needed and a saved (not sent) estimate. You stay in Gmail. If this thread is already a ticket, the next screen always has Create estimate anyway.',
     ),
   );
 
@@ -141,25 +141,31 @@ function createDashTicket(e) {
   }
 
   // Stay in Gmail: ignore body.openLink (and do not auto-open ticketUrl).
+  var estimateCreated = bodyFlag_(body, 'estimateCreated');
+  var existed = bodyFlag_(body, 'existed') || Boolean(body.existed);
+  var restored = bodyFlag_(body, 'restored') || Boolean(body.restored);
   var heading = 'Ticket created';
-  if (bodyFlag_(body, 'estimateCreated')) heading = 'New estimate created on this ticket';
-  else if (body.restored) heading = 'Ticket already on the board — restored';
-  else if (body.existed) heading = 'Ticket already on the board';
+  if (estimateCreated) heading = 'New estimate created on this ticket';
+  else if (restored) heading = 'Ticket already on the board — restored';
+  else if (existed) heading = 'Ticket already on the board';
 
   var resultLabel = bodyString_(body, 'ticketLabel') || ticketLabel;
+  var ticketUrl = bodyString_(body, 'ticketUrl');
+  // Exists / already / restored: always show Create estimate anyway. Never wait
+  // for needsEstimate or canForceEstimate — a leftover QBO id is not “healthy”.
+  var fromGmailExists = /[?&]from_gmail=exists(?:&|#|$)/i.test(ticketUrl);
+  var alreadyOnBoard = !estimateCreated && (existed || restored || fromGmailExists);
   var card = buildTicketResultCard_({
     heading: heading,
     customerName: bodyString_(body, 'customerName'),
     ticketLabel: resultLabel,
     estimateNumber: bodyString_(body, 'estimateNumber'),
-    ticketUrl: bodyString_(body, 'ticketUrl'),
+    ticketUrl: ticketUrl,
     qboError: bodyString_(body, 'qboError'),
-    needsEstimate: bodyFlag_(body, 'needsEstimate') && !bodyFlag_(body, 'estimateCreated'),
-    existed: Boolean(body.existed),
+    showAnyway: alreadyOnBoard,
     threadId: threadId,
     messageId: messageId,
     mailboxEmail: mailboxEmail,
-    canCallDash: props.ok,
   });
 
   return CardService.newActionResponseBuilder()
@@ -171,6 +177,33 @@ function createDashTicket(e) {
 function buildTicketResultCard_(opts) {
   var section = CardService.newCardSection();
   section.addWidget(CardService.newTextParagraph().setText('<b>' + opts.heading + '</b>'));
+
+  if (opts.showAnyway) {
+    var forceAction = CardService.newAction()
+      .setFunctionName('createDashTicket')
+      .setLoadIndicator(CardService.LoadIndicator.SPINNER)
+      .setParameters({
+        threadId: String(opts.threadId || ''),
+        messageId: String(opts.messageId || ''),
+        mailboxEmail: String(opts.mailboxEmail || ''),
+        ticketLabel: String(opts.ticketLabel || ''),
+        forceEstimate: 'true',
+      });
+    section.addWidget(
+      CardService.newButtonSet().addButton(
+        CardService.newTextButton()
+          .setText('Create estimate anyway')
+          .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+          .setOnClickAction(forceAction),
+      ),
+    );
+    section.addWidget(
+      CardService.newTextParagraph().setText(
+        'Saves a new numbered $0 estimate (not sent) on this same ticket. Use this if the old QuickBooks estimate was deleted.',
+      ),
+    );
+  }
+
   if (opts.customerName) {
     section.addWidget(
       CardService.newDecoratedText().setTopLabel('Customer').setText(opts.customerName).setWrapText(true),
@@ -185,34 +218,9 @@ function buildTicketResultCard_(opts) {
     section.addWidget(
       CardService.newDecoratedText().setTopLabel('Estimate').setText(opts.estimateNumber).setWrapText(true),
     );
-  } else if (opts.existed && !opts.needsEstimate) {
-    section.addWidget(CardService.newTextParagraph().setText('Estimate already exists on this ticket.'));
   }
   if (opts.qboError) {
     section.addWidget(CardService.newTextParagraph().setText('QuickBooks: ' + clip_(opts.qboError, 180)));
-  }
-  if (opts.needsEstimate && opts.canCallDash) {
-    section.addWidget(
-      CardService.newTextParagraph().setText(
-        'This ticket has no usable QuickBooks estimate. Create estimate anyway saves a new numbered $0 estimate (not sent) on this same ticket.',
-      ),
-    );
-    var forceAction = CardService.newAction()
-      .setFunctionName('createDashTicket')
-      .setLoadIndicator(CardService.LoadIndicator.SPINNER)
-      .setParameters({
-        threadId: String(opts.threadId || ''),
-        messageId: String(opts.messageId || ''),
-        mailboxEmail: String(opts.mailboxEmail || ''),
-        ticketLabel: String(opts.ticketLabel || ''),
-        forceEstimate: 'true',
-      });
-    section.addWidget(
-      CardService.newTextButton()
-        .setText('Create estimate anyway')
-        .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-        .setOnClickAction(forceAction),
-    );
   }
   if (opts.ticketUrl && /^https?:\/\//i.test(opts.ticketUrl)) {
     section.addWidget(

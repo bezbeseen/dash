@@ -39,7 +39,6 @@ import {
   createUnsentEstimateFromEmail,
   ensureQboCustomer,
   maybeSetMissingPrimaryPhone,
-  qboFaultLooksLikeMissingOrInactiveEstimate,
 } from '@/lib/quickbooks/write-from-email';
 
 export type CreateTicketFromGmailResult = {
@@ -58,8 +57,14 @@ export type CreateTicketFromGmailResult = {
   customerName?: string | null;
   ticketLabel?: string | null;
   estimateNumber?: string | null;
-  /** Matched job has no usable QBO estimate — add-on may offer Create estimate anyway. */
+  /** Matched job has no usable QBO estimate (probe GET 610/404/missing). */
   needsEstimate?: boolean;
+  /**
+   * Add-on should show Create estimate anyway. Always true for an existing ticket
+   * until a new estimate is minted — hiding it when the probe looks “healthy” leaves
+   * the shop stuck if the ticket page still 400s on a dead QBO id.
+   */
+  canForceEstimate?: boolean;
   /** forceEstimate created a new QBO estimate on the existing job (did not mint a second Job). */
   estimateCreated?: boolean;
 };
@@ -225,14 +230,10 @@ async function inspectJobQboEstimate(jobId: string): Promise<{
       usable: true,
       estimateNumber: snap.docNumber?.trim() || estimateNumberFromProjectName(job?.projectName) || null,
     };
-  } catch (e) {
-    if (qboFaultLooksLikeMissingOrInactiveEstimate(e)) {
-      return { usable: false, estimateNumber: null };
-    }
-    return {
-      usable: true,
-      estimateNumber: estimateNumberFromProjectName(job?.projectName),
-    };
+  } catch {
+    // Stale Dash id (deleted 5845 → GET 610/400/404) is not healthy. Fail closed
+    // on any GET error so we never hide Create estimate anyway / skip minting.
+    return { usable: false, estimateNumber: null };
   }
 }
 
@@ -319,23 +320,14 @@ async function finishExistingGmailJob(opts: {
   };
 
   if (opts.forceEstimate) {
-    if (health.usable) {
-      return {
-        ...base,
-        usedQuickBooks: false,
-        qboError: null,
-        needsEstimate: false,
-        estimateCreated: false,
-        estimateNumber: health.estimateNumber,
-      };
-    }
-
     if (!opts.threadOpened || !opts.customer) {
       return {
         ...base,
         usedQuickBooks: false,
         qboError: 'Could not open that conversation, so a new QuickBooks estimate was not created.',
-        needsEstimate: true,
+        needsEstimate: !health.usable,
+        canForceEstimate: true,
+        estimateNumber: health.usable ? health.estimateNumber : null,
       };
     }
 
@@ -351,6 +343,7 @@ async function finishExistingGmailJob(opts: {
         customerCreated: minted.customerCreated,
         qboError: null,
         needsEstimate: false,
+        canForceEstimate: false,
         estimateCreated: true,
         estimateNumber: minted.estimateNumber,
       };
@@ -360,6 +353,8 @@ async function finishExistingGmailJob(opts: {
         usedQuickBooks: false,
         qboError: e instanceof Error ? e.message : String(e),
         needsEstimate: true,
+        canForceEstimate: true,
+        estimateNumber: health.usable ? health.estimateNumber : null,
       };
     }
   }
@@ -369,6 +364,7 @@ async function finishExistingGmailJob(opts: {
     usedQuickBooks: false,
     qboError: null,
     needsEstimate: !health.usable,
+    canForceEstimate: true,
     estimateNumber: health.usable ? health.estimateNumber : null,
   };
 }

@@ -126,6 +126,7 @@ export async function POST(req: Request) {
       ticketLabel: result.ticketLabel ?? null,
       estimateNumber: result.estimateNumber ?? null,
       needsEstimate: Boolean(result.needsEstimate),
+      canForceEstimate: Boolean(result.canForceEstimate),
       estimateCreated: Boolean(result.estimateCreated),
     });
   } catch (e) {
