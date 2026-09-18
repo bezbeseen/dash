@@ -53,6 +53,17 @@ export function qboFaultLooksLikeDuplicateDocNumber(err: unknown): boolean {
   );
 }
 
+/** Deleted / inactive QBO estimate (Fault 610) or GET that returns no Estimate. */
+export function qboFaultLooksLikeMissingOrInactiveEstimate(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    /\b610\b/.test(msg) ||
+    /object not found/i.test(msg) ||
+    /made inactive/i.test(msg) ||
+    /missing Estimate object/i.test(msg)
+  );
+}
+
 const DEFAULT_FIRST_ESTIMATE_DOC_NUMBER = '1001';
 
 export function parseEstimateDocNumber(

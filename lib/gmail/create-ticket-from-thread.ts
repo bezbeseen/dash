@@ -9,7 +9,7 @@ import {
 } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { looksLikeQboDocProjectName, preferHumanProjectName } from '@/lib/domain/job-display';
-import { restoreJobToBoard, upsertJobFromEstimate } from '@/lib/domain/sync';
+import { replaceJobEstimateFromSnapshot, restoreJobToBoard, upsertJobFromEstimate } from '@/lib/domain/sync';
 import { applyThreadLink } from '@/lib/gmail/find-thread-for-job';
 import { openGmailThreadAcrossMailboxes } from '@/lib/gmail/open-thread';
 import {
@@ -32,11 +32,14 @@ import {
   type GmailThreadCustomer,
 } from '@/lib/gmail/thread-customer';
 import type { ScoredThreadCandidate } from '@/lib/gmail/thread-match';
+import { fetchEstimateById } from '@/lib/quickbooks/client';
+import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
 import { resolveRealmIdForJob } from '@/lib/quickbooks/realm';
 import {
   createUnsentEstimateFromEmail,
   ensureQboCustomer,
   maybeSetMissingPrimaryPhone,
+  qboFaultLooksLikeMissingOrInactiveEstimate,
 } from '@/lib/quickbooks/write-from-email';
 
 export type CreateTicketFromGmailResult = {
@@ -55,6 +58,10 @@ export type CreateTicketFromGmailResult = {
   customerName?: string | null;
   ticketLabel?: string | null;
   estimateNumber?: string | null;
+  /** Matched job has no usable QBO estimate — add-on may offer Create estimate anyway. */
+  needsEstimate?: boolean;
+  /** forceEstimate created a new QBO estimate on the existing job (did not mint a second Job). */
+  estimateCreated?: boolean;
 };
 
 /** Job page path after creating/linking from Gmail (paste form or add-on). */
@@ -102,11 +109,15 @@ async function attachGmailTicketCardFields(
   const typed = extras?.ticketLabel?.trim() || '';
   const ticketLabel =
     (fromJob && !looksLikeQboDocProjectName(fromJob) ? fromJob : '') || typed || fromJob || null;
+  const estimateNumber =
+    result.estimateNumber?.trim() ||
+    (result.needsEstimate ? null : estimateNumberFromProjectName(fromJob)) ||
+    null;
   return {
     ...result,
     customerName: job?.customerName?.trim() || result.customerName || null,
     ticketLabel,
-    estimateNumber: result.estimateNumber?.trim() || estimateNumberFromProjectName(fromJob) || null,
+    estimateNumber,
   };
 }
 
@@ -187,6 +198,179 @@ async function reopenExistingGmailJob(opts: {
   }
 
   return { restored };
+}
+
+async function inspectJobQboEstimate(jobId: string): Promise<{
+  usable: boolean;
+  estimateNumber: string | null;
+}> {
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { quickbooksEstimateId: true, quickbooksCompanyId: true, projectName: true },
+  });
+  const estimateId = job?.quickbooksEstimateId?.trim() || '';
+  if (!estimateId || isSyntheticQuickBooksId(estimateId)) {
+    return { usable: false, estimateNumber: null };
+  }
+
+  const realmId = await resolveRealmIdForJob(job?.quickbooksCompanyId);
+  if (!realmId) {
+    return { usable: false, estimateNumber: null };
+  }
+
+  try {
+    const snap = await fetchEstimateById(realmId, estimateId);
+    if (!snap.id) return { usable: false, estimateNumber: null };
+    return {
+      usable: true,
+      estimateNumber: snap.docNumber?.trim() || estimateNumberFromProjectName(job?.projectName) || null,
+    };
+  } catch (e) {
+    if (qboFaultLooksLikeMissingOrInactiveEstimate(e)) {
+      return { usable: false, estimateNumber: null };
+    }
+    return {
+      usable: true,
+      estimateNumber: estimateNumberFromProjectName(job?.projectName),
+    };
+  }
+}
+
+async function mintEstimateOnExistingJob(opts: {
+  jobId: string;
+  customer: GmailThreadCustomer;
+  ticketLabel: string;
+}): Promise<{ customerCreated: boolean; estimateNumber: string | null }> {
+  const job = await prisma.job.findUnique({ where: { id: opts.jobId } });
+  if (!job) throw new Error('Ticket not found.');
+
+  const realmId = await resolveRealmIdForJob(job.quickbooksCompanyId);
+  if (!realmId) throw new Error('QuickBooks is not connected.');
+
+  const email = opts.customer.email.trim().toLowerCase();
+  let customerCreated = false;
+  let customerId = job.quickbooksCustomerId?.trim() || '';
+  let displayName = job.customerName;
+
+  if (email) {
+    const qboCustomer = await ensureQboCustomer({
+      realmId,
+      email,
+      displayName: opts.customer.name || job.customerName,
+      phone: opts.customer.phone,
+    });
+    customerCreated = qboCustomer.created;
+    customerId = qboCustomer.id;
+    displayName = qboCustomer.displayName;
+  } else if (customerId) {
+    await maybeSetMissingPrimaryPhone(realmId, customerId, opts.customer.phone);
+  } else {
+    throw new Error(
+      'No customer email on that thread — QuickBooks skipped until the thread has an outside address.',
+    );
+  }
+
+  const subject = sanitizeGmailTicketLabel(opts.ticketLabel, job.projectName || 'Email lead');
+  const estimate = await createUnsentEstimateFromEmail({
+    realmId,
+    customerId,
+    email,
+    subject,
+    snippet: opts.customer.snippet || '',
+  });
+
+  await replaceJobEstimateFromSnapshot(
+    job.id,
+    {
+      ...estimate,
+      status: 'DRAFT',
+      customerName: displayName,
+      customerId,
+      projectName: subject,
+      projectDescription: email ? gmailLeadProjectDescription(opts.customer) : estimate.projectDescription,
+    },
+    { realmId, syncDrive: false },
+  );
+
+  return { customerCreated, estimateNumber: estimate.docNumber?.trim() || null };
+}
+
+async function finishExistingGmailJob(opts: {
+  jobId: string;
+  ticketLabel?: string;
+  customer?: GmailThreadCustomer | null;
+  forceEstimate: boolean;
+  threadOpened: boolean;
+}): Promise<CreateTicketFromGmailResult> {
+  const { restored } = await reopenExistingGmailJob({
+    jobId: opts.jobId,
+    ticketLabel: opts.ticketLabel,
+    customer: opts.customer,
+  });
+
+  const health = await inspectJobQboEstimate(opts.jobId);
+  const base = {
+    jobId: opts.jobId,
+    existed: true as const,
+    customerCreated: false,
+    syncError: null,
+    bookmarkOnly: false as const,
+    restored,
+  };
+
+  if (opts.forceEstimate) {
+    if (health.usable) {
+      return {
+        ...base,
+        usedQuickBooks: false,
+        qboError: null,
+        needsEstimate: false,
+        estimateCreated: false,
+        estimateNumber: health.estimateNumber,
+      };
+    }
+
+    if (!opts.threadOpened || !opts.customer) {
+      return {
+        ...base,
+        usedQuickBooks: false,
+        qboError: 'Could not open that conversation, so a new QuickBooks estimate was not created.',
+        needsEstimate: true,
+      };
+    }
+
+    try {
+      const minted = await mintEstimateOnExistingJob({
+        jobId: opts.jobId,
+        customer: opts.customer,
+        ticketLabel: opts.ticketLabel || '',
+      });
+      return {
+        ...base,
+        usedQuickBooks: true,
+        customerCreated: minted.customerCreated,
+        qboError: null,
+        needsEstimate: false,
+        estimateCreated: true,
+        estimateNumber: minted.estimateNumber,
+      };
+    } catch (e) {
+      return {
+        ...base,
+        usedQuickBooks: false,
+        qboError: e instanceof Error ? e.message : String(e),
+        needsEstimate: true,
+      };
+    }
+  }
+
+  return {
+    ...base,
+    usedQuickBooks: false,
+    qboError: null,
+    needsEstimate: !health.usable,
+    estimateNumber: health.usable ? health.estimateNumber : null,
+  };
 }
 
 function candidateFromThread(opts: {
@@ -350,6 +534,7 @@ export async function createTicketFromGmailAddon(opts: {
   messageId?: string;
   mailboxEmail?: string;
   ticketLabel?: string;
+  forceEstimate?: boolean;
 }): Promise<CreateTicketFromGmailResult> {
   const threadId = sanitizeGmailPaste(opts.threadId);
   const messageId = sanitizeGmailPaste(opts.messageId ?? '');
@@ -377,6 +562,7 @@ export async function createTicketFromGmailAddon(opts: {
       mailboxes,
       createdOrder,
       ticketLabel: opts.ticketLabel,
+      forceEstimate: Boolean(opts.forceEstimate),
     }),
     { ticketLabel: opts.ticketLabel },
   );
@@ -388,6 +574,7 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
   mailboxes: GmailMailboxRef[];
   createdOrder: GmailMailboxRef[];
   ticketLabel?: string;
+  forceEstimate?: boolean;
 }): Promise<CreateTicketFromGmailResult> {
   const { raw, preferred, mailboxes, createdOrder } = opts;
 
@@ -401,17 +588,13 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
   if (!opened.ok) {
     const existing = await findJobForThread(raw, raw, preferred.id);
     if (existing) {
-      const { restored } = await reopenExistingGmailJob({ jobId: existing.id });
-      return {
+      return finishExistingGmailJob({
         jobId: existing.id,
-        existed: true,
-        usedQuickBooks: false,
-        customerCreated: false,
-        qboError: null,
-        syncError: null,
-        bookmarkOnly: false,
-        restored,
-      };
+        ticketLabel: opts.ticketLabel,
+        customer: null,
+        forceEstimate: Boolean(opts.forceEstimate),
+        threadOpened: false,
+      });
     }
 
     const qboError = gmailBookmarkTicketExplanation(opened.triedEmails);
@@ -455,21 +638,13 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
 
   const existing = await findJobForThread(thread.resolvedThreadId, raw, mailbox.id);
   if (existing) {
-    const { restored } = await reopenExistingGmailJob({
+    return finishExistingGmailJob({
       jobId: existing.id,
       ticketLabel,
       customer,
+      forceEstimate: Boolean(opts.forceEstimate),
+      threadOpened: true,
     });
-    return {
-      jobId: existing.id,
-      existed: true,
-      usedQuickBooks: false,
-      customerCreated: false,
-      qboError: null,
-      syncError: null,
-      bookmarkOnly: false,
-      restored,
-    };
   }
 
   const candidate = candidateFromThread({

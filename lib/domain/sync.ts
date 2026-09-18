@@ -132,6 +132,93 @@ export async function upsertJobFromEstimate(
   return updated;
 }
 
+/**
+ * Point an existing Dash ticket at a newly created QBO estimate. Does not mint a second Job.
+ * Used when Gmail Create ticket matched a thread whose previous estimate is missing/inactive.
+ */
+export async function replaceJobEstimateFromSnapshot(
+  jobId: string,
+  snapshot: EstimateSnapshot,
+  opts?: { realmId?: string; syncDrive?: boolean },
+) {
+  const estimateStatus = mapEstimateStatus(snapshot.status);
+  const realmId = opts?.realmId;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const existing = await tx.job.findUnique({ where: { id: jobId } });
+    if (!existing) {
+      throw new Error('Ticket not found.');
+    }
+
+    const parsedEst = estimateCreatedAtFromSnapshot(snapshot);
+    const nextEstCreated = parsedEst ?? existing.estimateCreatedAtQbo ?? null;
+    const nextInvCreated = existing.invoiceCreatedAtQbo ?? null;
+    const qbOrderingAt = computeQbOrderingAt({
+      estimateCreatedAtQbo: nextEstCreated,
+      invoiceCreatedAtQbo: nextInvCreated,
+    });
+
+    const nextProjectName = preferHumanProjectName(existing.projectName, snapshot.projectName);
+    const incomingDesc = sanitizeJobProjectDescription(nextProjectName, snapshot.projectDescription);
+    const preservedDesc = sanitizeJobProjectDescription(nextProjectName, existing.projectDescription);
+    const previousEstimateId = existing.quickbooksEstimateId;
+
+    const job = await tx.job.update({
+      where: { id: jobId },
+      data: {
+        quickbooksEstimateId: snapshot.id,
+        quickbooksCustomerId: snapshot.customerId ?? existing.quickbooksCustomerId,
+        customerName: snapshot.customerName || existing.customerName,
+        projectName: nextProjectName,
+        projectDescription: incomingDesc ?? preservedDesc,
+        estimateStatus,
+        estimateAmountCents: snapshot.totalAmtCents,
+        estimateSentAt:
+          estimateStatus === EstimateStatus.SENT || estimateStatus === EstimateStatus.ACCEPTED
+            ? snapshot.txnDate
+              ? new Date(snapshot.txnDate)
+              : existing.estimateSentAt
+            : null,
+        estimateAcceptedAt:
+          estimateStatus === EstimateStatus.ACCEPTED
+            ? snapshot.acceptedAt
+              ? new Date(snapshot.acceptedAt)
+              : new Date()
+            : null,
+        estimateCreatedAtQbo: nextEstCreated,
+        qbOrderingAt,
+        ...(realmId ? { quickbooksCompanyId: realmId } : {}),
+      },
+    });
+
+    const boardStatus = deriveBoardStatus(job);
+    const next = await tx.job.update({ where: { id: job.id }, data: { boardStatus } });
+
+    await tx.activityLog.create({
+      data: {
+        jobId: next.id,
+        source: EventSource.APP,
+        eventName: 'estimate.gmail_replace',
+        message: previousEstimateId
+          ? `New QuickBooks estimate ${snapshot.docNumber?.trim() || snapshot.id} saved on this ticket (replaced ${previousEstimateId}).`
+          : `New QuickBooks estimate ${snapshot.docNumber?.trim() || snapshot.id} saved on this ticket.`,
+        metadata: {
+          previousEstimateId,
+          estimateId: snapshot.id,
+          docNumber: snapshot.docNumber ?? null,
+        },
+      },
+    });
+
+    return next;
+  });
+
+  if (opts?.syncDrive !== false) {
+    scheduleSyncJobDriveFolder(updated.id);
+  }
+  return updated;
+}
+
 export async function upsertJobFromInvoice(
   snapshot: InvoiceSnapshot,
   opts?: { realmId?: string; syncDrive?: boolean },

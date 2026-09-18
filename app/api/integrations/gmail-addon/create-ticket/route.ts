@@ -34,11 +34,20 @@ function pickStr(body: Record<string, unknown>, ...keys: string[]): string {
   return '';
 }
 
+function pickBool(body: Record<string, unknown>, ...keys: string[]): boolean {
+  for (const k of keys) {
+    const v = body[k];
+    if (v === true || v === 1) return true;
+    if (typeof v === 'string' && /^(true|1|yes)$/i.test(v.trim())) return true;
+  }
+  return false;
+}
+
 export async function GET() {
   return NextResponse.json({
     ok: true,
     message:
-      'Dash Gmail add-on. POST JSON { threadId, messageId, mailboxEmail, ticketLabel } with Authorization: Bearer <GMAIL_ADDON_SECRET> (Vercel). Apps Script property is DASH_ADDON_SECRET — do not create DASH_ADDON_SECRET on Vercel.',
+      'Dash Gmail add-on. POST JSON { threadId, messageId, mailboxEmail, ticketLabel, forceEstimate } with Authorization: Bearer <GMAIL_ADDON_SECRET> (Vercel). Apps Script property is DASH_ADDON_SECRET — do not create DASH_ADDON_SECRET on Vercel.',
   });
 }
 
@@ -87,13 +96,20 @@ export async function POST(req: Request) {
   const messageId = pickStr(body, 'messageId', 'message_id');
   const mailboxEmail = pickStr(body, 'mailboxEmail', 'mailbox_email', 'email');
   const ticketLabel = pickStr(body, 'ticketLabel', 'ticket_label', 'label');
+  const forceEstimate = pickBool(body, 'forceEstimate', 'force_estimate');
 
   if (!threadId && !messageId) {
     return NextResponse.json({ ok: false, error: 'missing_thread_id' }, { status: 400 });
   }
 
   try {
-    const result = await createTicketFromGmailAddon({ threadId, messageId, mailboxEmail, ticketLabel });
+    const result = await createTicketFromGmailAddon({
+      threadId,
+      messageId,
+      mailboxEmail,
+      ticketLabel,
+      forceEstimate,
+    });
     const ticketUrl = ticketUrlForGmailResult(originOf(req), result);
     return NextResponse.json({
       ok: true,
@@ -109,6 +125,8 @@ export async function POST(req: Request) {
       customerName: result.customerName ?? null,
       ticketLabel: result.ticketLabel ?? null,
       estimateNumber: result.estimateNumber ?? null,
+      needsEstimate: Boolean(result.needsEstimate),
+      estimateCreated: Boolean(result.estimateCreated),
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Could not create a ticket from this conversation.';

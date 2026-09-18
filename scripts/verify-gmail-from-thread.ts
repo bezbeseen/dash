@@ -36,6 +36,7 @@ import {
   nextEstimateDocNumber,
   qboFaultLooksLikeDuplicateDocNumber,
   qboFaultLooksLikeDuplicateName,
+  qboFaultLooksLikeMissingOrInactiveEstimate,
   qboPrimaryPhoneField,
   qboItemIsActiveSalesItem,
   sanitizeQboDisplayName,
@@ -285,6 +286,32 @@ check(
   'doc: duplicate fault 6140',
   qboFaultLooksLikeDuplicateDocNumber('QuickBooks Fault: {"Error":[{"code":"6140","Message":"Duplicate Document Number Error"}]}'),
   true,
+);
+check(
+  'qbo: 610 deleted estimate is unusable',
+  qboFaultLooksLikeMissingOrInactiveEstimate(
+    new Error(
+      'QuickBooks API 400 for estimate/5845: {"Fault":{"Error":[{"Message":"Object Not Found","Detail":"Object Not Found : Something you\'re trying to use has been made inactive. Check the fields with accounts.","code":"610"}]}}',
+    ),
+  ),
+  true,
+);
+check(
+  'qbo: missing Estimate object is unusable',
+  qboFaultLooksLikeMissingOrInactiveEstimate(new Error('QuickBooks response missing Estimate object')),
+  true,
+);
+check(
+  'qbo: duplicate doc number is not a missing estimate',
+  qboFaultLooksLikeMissingOrInactiveEstimate(
+    new Error('QuickBooks Fault: {"Error":[{"code":"6140","Message":"Duplicate Document Number Error"}]}'),
+  ),
+  false,
+);
+check(
+  'qbo: timeout is not a missing estimate',
+  qboFaultLooksLikeMissingOrInactiveEstimate(new Error('QuickBooks API 504 for estimate/5845: gateway')),
+  false,
 );
 
 check(

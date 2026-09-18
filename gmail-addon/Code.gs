@@ -82,7 +82,8 @@ function createDashTicket(e) {
   var threadId = String(params.threadId || '');
   var messageId = String(params.messageId || '');
   var mailboxEmail = String(params.mailboxEmail || activeMailboxEmail_());
-  var ticketLabel = formString_(e, 'ticketLabel');
+  var ticketLabel = formString_(e, 'ticketLabel') || String(params.ticketLabel || '');
+  var forceEstimate = String(params.forceEstimate || '') === 'true';
   var props = dashProps_();
 
   if (!props.ok) {
@@ -109,6 +110,7 @@ function createDashTicket(e) {
         messageId: messageId,
         mailboxEmail: mailboxEmail,
         ticketLabel: ticketLabel,
+        forceEstimate: forceEstimate,
         addonSecret: props.secret,
       }),
     });
@@ -140,16 +142,24 @@ function createDashTicket(e) {
 
   // Stay in Gmail: ignore body.openLink (and do not auto-open ticketUrl).
   var heading = 'Ticket created';
-  if (body.restored) heading = 'Ticket already on the board — restored';
+  if (bodyFlag_(body, 'estimateCreated')) heading = 'New estimate created on this ticket';
+  else if (body.restored) heading = 'Ticket already on the board — restored';
   else if (body.existed) heading = 'Ticket already on the board';
 
+  var resultLabel = bodyString_(body, 'ticketLabel') || ticketLabel;
   var card = buildTicketResultCard_({
     heading: heading,
     customerName: bodyString_(body, 'customerName'),
-    ticketLabel: bodyString_(body, 'ticketLabel') || ticketLabel,
+    ticketLabel: resultLabel,
     estimateNumber: bodyString_(body, 'estimateNumber'),
     ticketUrl: bodyString_(body, 'ticketUrl'),
     qboError: bodyString_(body, 'qboError'),
+    needsEstimate: bodyFlag_(body, 'needsEstimate') && !bodyFlag_(body, 'estimateCreated'),
+    existed: Boolean(body.existed),
+    threadId: threadId,
+    messageId: messageId,
+    mailboxEmail: mailboxEmail,
+    canCallDash: props.ok,
   });
 
   return CardService.newActionResponseBuilder()
@@ -175,9 +185,34 @@ function buildTicketResultCard_(opts) {
     section.addWidget(
       CardService.newDecoratedText().setTopLabel('Estimate').setText(opts.estimateNumber).setWrapText(true),
     );
+  } else if (opts.existed && !opts.needsEstimate) {
+    section.addWidget(CardService.newTextParagraph().setText('Estimate already exists on this ticket.'));
   }
   if (opts.qboError) {
     section.addWidget(CardService.newTextParagraph().setText('QuickBooks: ' + clip_(opts.qboError, 180)));
+  }
+  if (opts.needsEstimate && opts.canCallDash) {
+    section.addWidget(
+      CardService.newTextParagraph().setText(
+        'This ticket has no usable QuickBooks estimate. Create estimate anyway saves a new numbered $0 estimate (not sent) on this same ticket.',
+      ),
+    );
+    var forceAction = CardService.newAction()
+      .setFunctionName('createDashTicket')
+      .setLoadIndicator(CardService.LoadIndicator.SPINNER)
+      .setParameters({
+        threadId: String(opts.threadId || ''),
+        messageId: String(opts.messageId || ''),
+        mailboxEmail: String(opts.mailboxEmail || ''),
+        ticketLabel: String(opts.ticketLabel || ''),
+        forceEstimate: 'true',
+      });
+    section.addWidget(
+      CardService.newTextButton()
+        .setText('Create estimate anyway')
+        .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+        .setOnClickAction(forceAction),
+    );
   }
   if (opts.ticketUrl && /^https?:\/\//i.test(opts.ticketUrl)) {
     section.addWidget(
@@ -198,6 +233,13 @@ function buildTicketResultCard_(opts) {
 function bodyString_(body, key) {
   if (!body || body[key] == null) return '';
   return String(body[key]).replace(/\s+/g, ' ').trim();
+}
+
+function bodyFlag_(body, key) {
+  var v = body && body[key];
+  if (v === true || v === 1) return true;
+  if (typeof v === 'string' && /^(true|1|yes)$/i.test(v)) return true;
+  return false;
 }
 
 function buildSimpleCard_(body) {
