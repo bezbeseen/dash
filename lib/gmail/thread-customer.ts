@@ -1,5 +1,6 @@
 import { gmail_v1 } from 'googleapis';
-import { gmailHeader } from '@/lib/gmail/message-text';
+import { extractGmailMessageText, gmailHeader } from '@/lib/gmail/message-text';
+import { extractSignaturePhoneFromMessages } from '@/lib/gmail/signature-phone';
 import {
   buildCounterpartyFilter,
   classifyParticipant,
@@ -15,6 +16,8 @@ export type GmailThreadCustomer = {
   subject: string;
   snippet: string;
   participants: AddressEntry[];
+  /** Display-formatted US phone from the customer's signature, when one is found. */
+  phone?: string | null;
 };
 
 export type ThreadHeaderMessage = {
@@ -23,6 +26,7 @@ export type ThreadHeaderMessage = {
   cc?: string;
   subject?: string;
   snippet?: string;
+  body?: string;
 };
 
 export function threadMessagesFromGmail(thread: gmail_v1.Schema$Thread): ThreadHeaderMessage[] {
@@ -34,6 +38,7 @@ export function threadMessagesFromGmail(thread: gmail_v1.Schema$Thread): ThreadH
       cc: gmailHeader(headers, 'Cc'),
       subject: gmailHeader(headers, 'Subject'),
       snippet: (m.snippet ?? '').trim(),
+      body: extractGmailMessageText(m.payload),
     };
   });
 }
@@ -95,18 +100,32 @@ export function pickCustomerFromThreadMessages(
 
   if (!chosen) return null;
 
+  const phone = extractSignaturePhoneFromMessages(messages, mailboxEmails, chosen.address);
+
   return {
     email: chosen.address,
     name: displayNameFor(chosen),
     subject: subject || 'Email lead',
     snippet: snippet.slice(0, 500),
     participants,
+    phone,
   };
 }
 
 export function gmailLeadProjectDescription(customer: GmailThreadCustomer): string {
   const lines = [`Email: ${customer.email}`];
+  if (customer.phone) lines.push(`Phone: ${customer.phone}`);
   if (customer.subject) lines.push(`Subject: ${customer.subject}`);
   if (customer.snippet) lines.push('', customer.snippet);
   return lines.join('\n').slice(0, 2000);
+}
+
+const TICKET_LABEL_MAX = 400;
+
+/** Shop-typed Gmail ticket name. Empty input falls back to the email subject. */
+export function sanitizeGmailTicketLabel(raw: string | null | undefined, fallback: string): string {
+  const cleaned = (raw ?? '').replace(/\s+/g, ' ').trim().slice(0, TICKET_LABEL_MAX);
+  if (cleaned) return cleaned;
+  const fb = fallback.replace(/\s+/g, ' ').trim().slice(0, TICKET_LABEL_MAX);
+  return fb || 'Email lead';
 }

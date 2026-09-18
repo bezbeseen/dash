@@ -1,5 +1,7 @@
+import { formatPhoneDisplay, plausibleUsPhoneDigits } from '@/lib/domain/inbound-phone-rules';
 import {
   fetchEstimateById,
+  listRecentEstimates,
   qboQuerySqlStringLiteral,
   quickBooksCompanyJson,
   quickBooksCompanyJsonPost,
@@ -20,12 +22,16 @@ export type QboSalesItemRef = {
 };
 
 type QboEmailAddr = { Address?: string };
+type QboPhone = { FreeFormNumber?: string };
 type QboCustomer = {
   Id?: string;
+  SyncToken?: string;
   DisplayName?: string;
   PrimaryEmailAddr?: QboEmailAddr;
+  PrimaryPhone?: QboPhone;
 };
 type QboItem = { Id?: string; Name?: string; Type?: string; Active?: boolean };
+type QboEstimateStub = { Id?: string; DocNumber?: string };
 
 function qboQueryEntities<T>(qr: { QueryResponse?: Record<string, unknown> } | undefined, key: string): T[] {
   const raw = qr?.QueryResponse?.[key];
@@ -36,6 +42,91 @@ function qboQueryEntities<T>(qr: { QueryResponse?: Record<string, unknown> } | u
 export function qboFaultLooksLikeDuplicateName(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return /6240/.test(msg) || /duplicate name/i.test(msg);
+}
+
+export function qboFaultLooksLikeDuplicateDocNumber(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    /6140/.test(msg) ||
+    /duplicate document number/i.test(msg) ||
+    /duplicate.*doc(?:ument)?\s*number/i.test(msg)
+  );
+}
+
+const DEFAULT_FIRST_ESTIMATE_DOC_NUMBER = '1001';
+
+export function parseEstimateDocNumber(
+  raw: string | null | undefined,
+): { prefix: string; n: number; width: number } | null {
+  const s = (raw ?? '').trim();
+  if (!s) return null;
+  const m = /^(.*?)(\d+)$/.exec(s);
+  if (!m) return null;
+  const n = Number(m[2]);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return { prefix: m[1]!, n, width: m[2]!.length };
+}
+
+export function formatEstimateDocNumber(prefix: string, n: number, width: number): string {
+  return `${prefix}${String(n).padStart(width, '0')}`.slice(0, 21);
+}
+
+/** Next DocNumber from newest-first recent estimates (skip blanks; keep newest prefix). */
+export function nextEstimateDocNumber(recentNewestFirst: readonly string[]): string {
+  const parsed = recentNewestFirst
+    .map(parseEstimateDocNumber)
+    .filter((p): p is NonNullable<typeof p> => p != null);
+  if (parsed.length === 0) return DEFAULT_FIRST_ESTIMATE_DOC_NUMBER;
+  const style = parsed[0]!;
+  let maxN = style.n;
+  for (const p of parsed) {
+    if (p.prefix === style.prefix && p.n > maxN) maxN = p.n;
+  }
+  return formatEstimateDocNumber(style.prefix, maxN + 1, style.width);
+}
+
+export function incrementEstimateDocNumber(current: string): string {
+  const p = parseEstimateDocNumber(current);
+  if (!p) return nextEstimateDocNumber([current]);
+  return formatEstimateDocNumber(p.prefix, p.n + 1, p.width);
+}
+
+export function qboPrimaryPhoneField(
+  phone: string | null | undefined,
+): { FreeFormNumber: string } | undefined {
+  const digits = plausibleUsPhoneDigits(phone);
+  if (!digits) return undefined;
+  return { FreeFormNumber: formatPhoneDisplay(digits) };
+}
+
+/** Any existing QBO PrimaryPhone stays; we only fill a blank. */
+export function shouldWriteQboPrimaryPhone(
+  existingFreeForm: string | null | undefined,
+  foundPhone: string | null | undefined,
+): boolean {
+  if (!plausibleUsPhoneDigits(foundPhone)) return false;
+  if (existingFreeForm?.trim()) return false;
+  return true;
+}
+
+export function buildQboCustomerCreatePayload(opts: {
+  displayName: string;
+  email: string;
+  phone?: string | null;
+  notes?: string;
+}): Record<string, unknown> {
+  const displayName = sanitizeQboDisplayName(opts.displayName);
+  const names = splitPersonName(displayName);
+  const payload: Record<string, unknown> = {
+    DisplayName: displayName,
+    PrimaryEmailAddr: { Address: opts.email.trim().toLowerCase() },
+    Notes: opts.notes ?? 'Created from a Gmail thread in Dash.',
+  };
+  if (names.given) payload.GivenName = names.given;
+  if (names.family) payload.FamilyName = names.family;
+  const phone = qboPrimaryPhoneField(opts.phone);
+  if (phone) payload.PrimaryPhone = phone;
+  return payload;
 }
 
 /** QBO DisplayName cannot include `:`. */
@@ -101,24 +192,48 @@ async function findCustomerByDisplayName(realmId: string, displayName: string): 
   }
 }
 
+async function maybeSetMissingPrimaryPhone(
+  realmId: string,
+  customerId: string,
+  phone: string | null | undefined,
+): Promise<void> {
+  const field = qboPrimaryPhoneField(phone);
+  if (!field) return;
+  try {
+    const body = await quickBooksCompanyJson(realmId, `customer/${encodeURIComponent(customerId)}`);
+    const existing = (body as { Customer?: QboCustomer }).Customer;
+    if (!existing?.Id || existing.SyncToken == null || existing.SyncToken === '') return;
+    if (!shouldWriteQboPrimaryPhone(existing.PrimaryPhone?.FreeFormNumber, phone)) return;
+    await quickBooksCompanyJsonPost(realmId, 'customer', {
+      Id: existing.Id,
+      SyncToken: String(existing.SyncToken),
+      sparse: true,
+      PrimaryPhone: field,
+    });
+  } catch (e) {
+    console.warn('[quickbooks] could not set customer PrimaryPhone', e);
+  }
+}
+
 export async function ensureQboCustomer(opts: {
   realmId: string;
   email: string;
   displayName: string;
+  phone?: string | null;
 }): Promise<QboCustomerRef> {
   const email = opts.email.trim().toLowerCase();
   const byEmail = await findCustomerByPrimaryEmail(opts.realmId, email);
-  if (byEmail) return byEmail;
+  if (byEmail) {
+    await maybeSetMissingPrimaryPhone(opts.realmId, byEmail.id, opts.phone);
+    return byEmail;
+  }
 
   const displayName = sanitizeQboDisplayName(opts.displayName);
-  const names = splitPersonName(displayName);
-  const payload: Record<string, unknown> = {
-    DisplayName: displayName,
-    PrimaryEmailAddr: { Address: email },
-    Notes: 'Created from a Gmail thread in Dash.',
-  };
-  if (names.given) payload.GivenName = names.given;
-  if (names.family) payload.FamilyName = names.family;
+  const payload = buildQboCustomerCreatePayload({
+    displayName,
+    email,
+    phone: opts.phone,
+  });
 
   try {
     const body = await quickBooksCompanyJsonPost(opts.realmId, 'customer', payload);
@@ -135,7 +250,10 @@ export async function ensureQboCustomer(opts: {
     const existing =
       (await findCustomerByDisplayName(opts.realmId, displayName)) ||
       (await findCustomerByPrimaryEmail(opts.realmId, email));
-    if (existing) return existing;
+    if (existing) {
+      await maybeSetMissingPrimaryPhone(opts.realmId, existing.id, opts.phone);
+      return existing;
+    }
 
     const altName = sanitizeQboDisplayName(`${displayName} ${email}`);
     const retry = await quickBooksCompanyJsonPost(opts.realmId, 'customer', {
@@ -186,6 +304,7 @@ export function buildUnsentEstimatePayload(opts: {
   snippet: string;
   item: QboSalesItemRef | null;
   amount?: number;
+  docNumber?: string | null;
 }): Record<string, unknown> {
   const subject = clipQboMemo(opts.subject || 'Email lead', 1000);
   const snippet = clipQboMemo(opts.snippet, 1500);
@@ -224,7 +343,32 @@ export function buildUnsentEstimatePayload(opts: {
   if (opts.email.includes('@')) {
     payload.BillEmail = { Address: opts.email };
   }
+  const docNumber = opts.docNumber?.trim();
+  if (docNumber) payload.DocNumber = docNumber.slice(0, 21);
   return payload;
+}
+
+async function listRecentEstimateDocNumbers(realmId: string): Promise<string[] | null> {
+  const queries = [
+    `SELECT Id, DocNumber FROM Estimate ORDERBY MetaData.CreateTime DESC MAXRESULTS 50`,
+    `SELECT Id, DocNumber FROM Estimate ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 50`,
+  ];
+  for (const sql of queries) {
+    try {
+      const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
+      const rows = qboQueryEntities<QboEstimateStub>(body as { QueryResponse?: Record<string, unknown> }, 'Estimate');
+      return rows.map((r) => r.DocNumber?.trim() ?? '').filter(Boolean);
+    } catch (e) {
+      console.warn('[quickbooks] estimate DocNumber query failed', sql.slice(0, 80), e);
+    }
+  }
+  try {
+    const recent = await listRecentEstimates(realmId, 50);
+    return recent.map((e) => e.docNumber?.trim() ?? '').filter(Boolean);
+  } catch (e) {
+    console.warn('[quickbooks] listRecentEstimates fallback for DocNumber failed', e);
+    return null;
+  }
 }
 
 /**
@@ -246,29 +390,41 @@ export async function createUnsentEstimateFromEmail(opts: {
       ]
     : [{ item: null, amount: 0 }];
 
+  const recentDocs = await listRecentEstimateDocNumbers(opts.realmId);
+  let docNumber = recentDocs == null ? null : nextEstimateDocNumber(recentDocs);
+
   let lastErr: unknown = null;
   for (const attempt of attempts) {
-    const payload = buildUnsentEstimatePayload({
-      customerId: opts.customerId,
-      email: opts.email,
-      subject: opts.subject,
-      snippet: opts.snippet,
-      item: attempt.item,
-      amount: attempt.amount,
-    });
-    try {
-      const body = await quickBooksCompanyJsonPost(opts.realmId, 'estimate', payload);
-      const id = (body as { Estimate?: { Id?: string } }).Estimate?.Id;
-      if (!id) throw new Error('QuickBooks estimate create returned no Id.');
-      const snapshot = await fetchEstimateById(opts.realmId, id);
-      return { ...snapshot, status: 'DRAFT', totalAmtCents: snapshot.totalAmtCents };
-    } catch (e) {
-      lastErr = e;
-      console.warn('[quickbooks] unsent estimate create attempt failed', {
-        usedItem: attempt.item?.id ?? null,
+    for (let docTry = 0; docTry < 3; docTry++) {
+      const payload = buildUnsentEstimatePayload({
+        customerId: opts.customerId,
+        email: opts.email,
+        subject: opts.subject,
+        snippet: opts.snippet,
+        item: attempt.item,
         amount: attempt.amount,
-        e,
+        docNumber,
       });
+      try {
+        const body = await quickBooksCompanyJsonPost(opts.realmId, 'estimate', payload);
+        const id = (body as { Estimate?: { Id?: string } }).Estimate?.Id;
+        if (!id) throw new Error('QuickBooks estimate create returned no Id.');
+        const snapshot = await fetchEstimateById(opts.realmId, id);
+        return { ...snapshot, status: 'DRAFT', totalAmtCents: snapshot.totalAmtCents };
+      } catch (e) {
+        lastErr = e;
+        if (qboFaultLooksLikeDuplicateDocNumber(e) && docNumber && docTry < 2) {
+          docNumber = incrementEstimateDocNumber(docNumber);
+          continue;
+        }
+        console.warn('[quickbooks] unsent estimate create attempt failed', {
+          usedItem: attempt.item?.id ?? null,
+          amount: attempt.amount,
+          docNumber,
+          e,
+        });
+        break;
+      }
     }
   }
 

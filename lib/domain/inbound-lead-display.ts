@@ -160,7 +160,11 @@ export function leadPrequoteCardDisplay(
     title = inboundKindFallback(job.inboundLeadKind);
   }
 
-  let subtitle: string | null = snippet;
+  let subtitle: string | null = null;
+  if (name && !nameIsShop && !isGenericProjectLabel(job.projectName) && job.projectName.trim() !== title) {
+    subtitle = job.projectName.trim();
+  }
+  if (!subtitle) subtitle = snippet;
   if (subtitle && subtitle === title.replace(/^[^:]+:\s*/, '')) subtitle = null;
   if (!subtitle && nameIsShop && phoneDigits) {
     subtitle = `Listed as: ${name}`;

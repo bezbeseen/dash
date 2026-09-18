@@ -34,10 +34,17 @@ function onGmailMessageOpen(e) {
 
   var props = dashProps_();
   var section = CardService.newCardSection();
-  section.addWidget(CardService.newDecoratedText().setTopLabel('Subject').setText(subject).setWrapText(true));
   if (from) {
     section.addWidget(CardService.newDecoratedText().setTopLabel('From').setText(from).setWrapText(true));
   }
+  var labelDefault = subject === '(no subject)' ? '' : subject;
+  section.addWidget(
+    CardService.newTextInput()
+      .setFieldName('ticketLabel')
+      .setTitle('Ticket label')
+      .setValue(labelDefault)
+      .setHint('What this job is, e.g. memorial cards'),
+  );
   section.addWidget(
     CardService.newTextParagraph().setText(
       'Creates a QuickBooks customer if needed and a saved (not sent) estimate, then opens Dash.',
@@ -75,6 +82,7 @@ function createDashTicket(e) {
   var threadId = String(params.threadId || '');
   var messageId = String(params.messageId || '');
   var mailboxEmail = String(params.mailboxEmail || activeMailboxEmail_());
+  var ticketLabel = formString_(e, 'ticketLabel');
   var props = dashProps_();
 
   if (!props.ok) {
@@ -100,6 +108,7 @@ function createDashTicket(e) {
         threadId: threadId,
         messageId: messageId,
         mailboxEmail: mailboxEmail,
+        ticketLabel: ticketLabel,
         addonSecret: props.secret,
       }),
     });
@@ -154,6 +163,24 @@ function buildSimpleCard_(body) {
     .setHeader(CardService.newCardHeader().setTitle('Dash'))
     .addSection(CardService.newCardSection().addWidget(CardService.newTextParagraph().setText(body)))
     .build();
+}
+
+function formString_(e, fieldName) {
+  var formInput = (e && e.formInput) || {};
+  if (formInput[fieldName] != null && String(formInput[fieldName]).trim()) {
+    return String(formInput[fieldName]).trim();
+  }
+  var formInputs = (e && e.formInputs) || {};
+  var v = formInputs[fieldName];
+  if (Object.prototype.toString.call(v) === '[object Array]' && v.length) {
+    return String(v[0] || '').trim();
+  }
+  if (v != null && String(v).trim()) return String(v).trim();
+  var common = e && e.commonEventObject && e.commonEventObject.formInputs;
+  var entry = common && common[fieldName];
+  var vals = entry && entry.stringInputs && entry.stringInputs.value;
+  if (vals && vals.length) return String(vals[0] || '').trim();
+  return '';
 }
 
 function dashProps_() {

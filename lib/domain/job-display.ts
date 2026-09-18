@@ -12,6 +12,22 @@ function docRefFromProjectName(projectName: string): string | null {
   return null;
 }
 
+/** True when projectName is a QBO-style "Estimate #1263" / "Invoice #88" label. */
+export function looksLikeQboDocProjectName(projectName: string): boolean {
+  return docRefFromProjectName(projectName) != null;
+}
+
+/**
+ * Keep a human ticket label (e.g. "memorial cards") when a later QBO sync only has Estimate #N.
+ */
+export function preferHumanProjectName(existing: string | null | undefined, incoming: string): string {
+  const cur = existing?.trim();
+  if (cur && !looksLikeQboDocProjectName(cur) && looksLikeQboDocProjectName(incoming)) {
+    return cur;
+  }
+  return incoming;
+}
+
 /**
  * Returns null if `desc` is empty or only repeats the estimate/invoice doc (common QBO line defaults).
  */

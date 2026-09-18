@@ -21,6 +21,7 @@ import {
 import {
   gmailLeadProjectDescription,
   pickCustomerFromThreadMessages,
+  sanitizeGmailTicketLabel,
   threadMessagesFromGmail,
   type GmailThreadCustomer,
 } from '@/lib/gmail/thread-customer';
@@ -252,6 +253,7 @@ export async function createTicketFromGmailAddon(opts: {
   threadId: string;
   messageId?: string;
   mailboxEmail?: string;
+  ticketLabel?: string;
 }): Promise<CreateTicketFromGmailResult> {
   const threadId = sanitizeGmailPaste(opts.threadId);
   const messageId = sanitizeGmailPaste(opts.messageId ?? '');
@@ -277,6 +279,7 @@ export async function createTicketFromGmailAddon(opts: {
     preferred,
     mailboxes,
     createdOrder,
+    ticketLabel: opts.ticketLabel,
   });
 }
 
@@ -285,6 +288,7 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
   preferred: GmailMailboxRef;
   mailboxes: GmailMailboxRef[];
   createdOrder: GmailMailboxRef[];
+  ticketLabel?: string;
 }): Promise<CreateTicketFromGmailResult> {
   const { raw, preferred, mailboxes, createdOrder } = opts;
 
@@ -310,9 +314,10 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
     }
 
     const qboError = gmailBookmarkTicketExplanation(opened.triedEmails);
+    const bookmarkLabel = sanitizeGmailTicketLabel(opts.ticketLabel, 'Email conversation');
     const jobId = await createDashOnlyLead({
       customerName: 'Gmail lead',
-      projectName: 'Email conversation',
+      projectName: bookmarkLabel,
       projectDescription: qboError,
       qboError,
       gmail: { threadId: raw, connectionId: preferred.id },
@@ -345,11 +350,11 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
   }
 
   const shopEmails = mailboxes.map((m) => m.googleEmail);
-  const headers = threadMessagesFromGmail(thread.data);
-  const picked = pickCustomerFromThreadMessages(headers, shopEmails);
+  const messages = threadMessagesFromGmail(thread.data);
+  const picked = pickCustomerFromThreadMessages(messages, shopEmails);
   const fallbackSubject =
     picked?.subject ||
-    headers.find((m) => m.subject?.trim())?.subject?.trim() ||
+    messages.find((m) => m.subject?.trim())?.subject?.trim() ||
     'Email conversation';
   const customer: GmailThreadCustomer = picked ?? {
     email: '',
@@ -358,6 +363,7 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
     snippet: (thread.data.snippet ?? '').trim().slice(0, 500),
     participants: [],
   };
+  const ticketLabel = sanitizeGmailTicketLabel(opts.ticketLabel, customer.subject || fallbackSubject);
 
   const candidate = candidateFromThread({
     threadId: thread.resolvedThreadId,
@@ -384,13 +390,14 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
           realmId,
           email: customer.email,
           displayName: customer.name,
+          phone: customer.phone,
         });
         customerCreated = qboCustomer.created;
         const estimate = await createUnsentEstimateFromEmail({
           realmId,
           customerId: qboCustomer.id,
           email: customer.email,
-          subject: customer.subject,
+          subject: ticketLabel,
           snippet: customer.snippet,
         });
         const job = await upsertJobFromEstimate(
@@ -399,6 +406,7 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
             status: 'DRAFT',
             customerName: qboCustomer.displayName,
             customerId: qboCustomer.id,
+            projectName: ticketLabel,
             projectDescription: gmailLeadProjectDescription(customer),
           },
           { realmId, syncDrive: false },
@@ -421,7 +429,7 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
   if (!jobId) {
     jobId = await createDashOnlyLead({
       customerName: customer.name || 'Gmail lead',
-      projectName: customer.subject || 'Email lead',
+      projectName: ticketLabel,
       projectDescription: customer.email
         ? gmailLeadProjectDescription(customer)
         : (qboError ?? 'Pre-quote ticket from a pasted Gmail thread.'),

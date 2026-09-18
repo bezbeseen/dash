@@ -10,7 +10,7 @@ import {
 } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { deriveBoardStatus, invoiceSnapshotEffectivelyPaid } from '@/lib/domain/derive-board-status';
-import { sanitizeJobProjectDescription } from '@/lib/domain/job-display';
+import { preferHumanProjectName, sanitizeJobProjectDescription } from '@/lib/domain/job-display';
 import {
   computeQbOrderingAt,
   estimateCreatedAtFromSnapshot,
@@ -65,12 +65,14 @@ export async function upsertJobFromEstimate(
       invoiceCreatedAtQbo: nextInvCreated,
     });
 
+    const nextProjectName = preferHumanProjectName(existing?.projectName, snapshot.projectName);
+
     const updatePayload: Prisma.JobUncheckedUpdateInput = {
       quickbooksEstimateId: snapshot.id,
       quickbooksCustomerId: snapshot.customerId,
       customerName: snapshot.customerName,
-      projectName: snapshot.projectName,
-      projectDescription: sanitizeJobProjectDescription(snapshot.projectName, snapshot.projectDescription),
+      projectName: nextProjectName,
+      projectDescription: sanitizeJobProjectDescription(nextProjectName, snapshot.projectDescription),
       estimateStatus,
       estimateAmountCents: snapshot.totalAmtCents,
       estimateSentAt: snapshot.txnDate ? new Date(snapshot.txnDate) : undefined,
@@ -90,8 +92,8 @@ export async function upsertJobFromEstimate(
             quickbooksEstimateId: snapshot.id,
             quickbooksCustomerId: snapshot.customerId,
             customerName: snapshot.customerName,
-            projectName: snapshot.projectName,
-            projectDescription: sanitizeJobProjectDescription(snapshot.projectName, snapshot.projectDescription),
+            projectName: nextProjectName,
+            projectDescription: sanitizeJobProjectDescription(nextProjectName, snapshot.projectDescription),
             estimateStatus,
             estimateAmountCents: snapshot.totalAmtCents,
             estimateSentAt: snapshot.txnDate ? new Date(snapshot.txnDate) : undefined,

@@ -38,7 +38,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     message:
-      'Dash Gmail add-on. POST JSON { threadId, messageId, mailboxEmail } with Authorization: Bearer <GMAIL_ADDON_SECRET> (Vercel). Apps Script property is DASH_ADDON_SECRET — do not create DASH_ADDON_SECRET on Vercel.',
+      'Dash Gmail add-on. POST JSON { threadId, messageId, mailboxEmail, ticketLabel } with Authorization: Bearer <GMAIL_ADDON_SECRET> (Vercel). Apps Script property is DASH_ADDON_SECRET — do not create DASH_ADDON_SECRET on Vercel.',
   });
 }
 
@@ -86,13 +86,14 @@ export async function POST(req: Request) {
   const threadId = pickStr(body, 'threadId', 'thread_id');
   const messageId = pickStr(body, 'messageId', 'message_id');
   const mailboxEmail = pickStr(body, 'mailboxEmail', 'mailbox_email', 'email');
+  const ticketLabel = pickStr(body, 'ticketLabel', 'ticket_label', 'label');
 
   if (!threadId && !messageId) {
     return NextResponse.json({ ok: false, error: 'missing_thread_id' }, { status: 400 });
   }
 
   try {
-    const result = await createTicketFromGmailAddon({ threadId, messageId, mailboxEmail });
+    const result = await createTicketFromGmailAddon({ threadId, messageId, mailboxEmail, ticketLabel });
     const ticketUrl = ticketUrlForGmailResult(originOf(req), result);
     return NextResponse.json({
       ok: true,

@@ -58,6 +58,12 @@ export function normalizePhoneDigits(raw: string | null | undefined): string | n
   return d.length >= 7 ? d : null;
 }
 
+/** Ten-digit NANP after normalize — rejects short junk like local 7-digit fragments. */
+export function plausibleUsPhoneDigits(raw: string | null | undefined): string | null {
+  const d = normalizePhoneDigits(raw);
+  return d && d.length === 10 ? d : null;
+}
+
 export function formatPhoneDisplay(digits: string): string {
   const d = normalizePhoneDigits(digits);
   if (!d) return digits.trim();
