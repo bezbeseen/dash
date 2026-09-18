@@ -100,11 +100,15 @@ export async function POST(req: Request) {
       jobId: result.jobId,
       ticketUrl,
       existed: result.existed,
+      restored: Boolean(result.restored),
       usedQuickBooks: result.usedQuickBooks,
       customerCreated: result.customerCreated,
       qboError: result.qboError,
       syncError: result.syncError,
       bookmarkOnly: result.bookmarkOnly,
+      customerName: result.customerName ?? null,
+      ticketLabel: result.ticketLabel ?? null,
+      estimateNumber: result.estimateNumber ?? null,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Could not create a ticket from this conversation.';

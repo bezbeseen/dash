@@ -192,7 +192,7 @@ async function findCustomerByDisplayName(realmId: string, displayName: string): 
   }
 }
 
-async function maybeSetMissingPrimaryPhone(
+export async function maybeSetMissingPrimaryPhone(
   realmId: string,
   customerId: string,
   phone: string | null | undefined,
@@ -271,25 +271,44 @@ export async function ensureQboCustomer(opts: {
   }
 }
 
-export async function findActiveSalesItem(realmId: string): Promise<QboSalesItemRef | null> {
-  const sql = `SELECT Id, Name, Type FROM Item WHERE Active = true MAXRESULTS 50`;
-  const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
-  const rows = qboQueryEntities<QboItem>(body as { QueryResponse?: Record<string, unknown> }, 'Item').filter(
-    (i) => i.Id && i.Type && i.Type !== 'Category' && i.Type !== 'Group',
-  );
-  if (rows.length === 0) return null;
+/** $0 Gmail estimate lines must not reference inactive/category QBO items (Fault 610 on PDF/read). */
+export function qboItemIsActiveSalesItem(item: QboItem): boolean {
+  if (!item.Id) return false;
+  if (item.Active === false) return false;
+  const type = item.Type || '';
+  if (!type || type === 'Category' || type === 'Group' || type === 'Subtotal') return false;
+  return true;
+}
 
-  const score = (i: QboItem): number => {
-    const name = (i.Name || '').toLowerCase();
-    const type = i.Type || '';
-    if (type === 'Service' && /service/.test(name)) return 0;
-    if (type === 'Service') return 1;
-    if (type === 'NonInventory') return 2;
-    return 3;
-  };
-  rows.sort((a, b) => score(a) - score(b));
-  const best = rows[0]!;
-  return { id: best.Id!, name: best.Name?.trim() || 'Item', type: best.Type || '' };
+function scoreActiveSalesItem(item: QboItem): number {
+  const name = (item.Name || '').toLowerCase();
+  const type = item.Type || '';
+  if (type === 'Service' && /service/.test(name)) return 0;
+  if (type === 'Service') return 1;
+  if (type === 'NonInventory') return 2;
+  return 3;
+}
+
+export async function findActiveSalesItem(realmId: string): Promise<QboSalesItemRef | null> {
+  const queries = [
+    `SELECT Id, Name, Type, Active FROM Item WHERE Active = true AND Type = 'Service' MAXRESULTS 50`,
+    `SELECT Id, Name, Type, Active FROM Item WHERE Active = true MAXRESULTS 50`,
+  ];
+  for (const sql of queries) {
+    try {
+      const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
+      const rows = qboQueryEntities<QboItem>(body as { QueryResponse?: Record<string, unknown> }, 'Item')
+        .filter(qboItemIsActiveSalesItem)
+        .filter((i) => i.Active !== false);
+      if (rows.length === 0) continue;
+      rows.sort((a, b) => scoreActiveSalesItem(a) - scoreActiveSalesItem(b));
+      const best = rows[0]!;
+      return { id: best.Id!, name: best.Name?.trim() || 'Item', type: best.Type || '' };
+    } catch (e) {
+      console.warn('[quickbooks] active item query failed', sql.slice(0, 80), e);
+    }
+  }
+  return null;
 }
 
 export function clipQboMemo(raw: string, max: number): string {

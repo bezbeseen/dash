@@ -305,7 +305,7 @@ export async function archiveJob(jobId: string, reason: ArchiveReason, message: 
   return updated;
 }
 
-/** Put a Done/Lost ticket back on the board. Clears `reviewRequestEmailSentAt` so you can re-test the review email. */
+/** Put a Done/Lost/Dismissed ticket back on the board. Clears `reviewRequestEmailSentAt` so you can re-test the review email. */
 export async function restoreJobToBoard(jobId: string) {
   const current = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
   if (current.archivedAt == null) {
@@ -332,7 +332,7 @@ export async function restoreJobToBoard(jobId: string) {
       jobId,
       source: EventSource.APP,
       eventName: 'job.restored_to_board',
-      message: 'Ticket restored to the board from Done/Lost.',
+      message: 'Ticket restored to the board.',
     },
   });
 

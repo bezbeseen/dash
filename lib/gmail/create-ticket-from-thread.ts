@@ -8,16 +8,22 @@ import {
   ProductionStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
-import { upsertJobFromEstimate } from '@/lib/domain/sync';
+import { looksLikeQboDocProjectName, preferHumanProjectName } from '@/lib/domain/job-display';
+import { restoreJobToBoard, upsertJobFromEstimate } from '@/lib/domain/sync';
 import { applyThreadLink } from '@/lib/gmail/find-thread-for-job';
 import { openGmailThreadAcrossMailboxes } from '@/lib/gmail/open-thread';
 import {
   gmailBookmarkTicketExplanation,
   looksLikeGmailPaste,
-  parseGmailThreadId,
   sanitizeGmailPaste,
   type GmailMailboxRef,
 } from '@/lib/gmail/parse-thread-id';
+import {
+  gmailThreadIdCandidates,
+  jobRowMatchesGmailThread,
+  pickJobForGmailThread,
+  type GmailThreadJobHit,
+} from '@/lib/gmail/thread-job-match';
 import {
   gmailLeadProjectDescription,
   pickCustomerFromThreadMessages,
@@ -27,7 +33,11 @@ import {
 } from '@/lib/gmail/thread-customer';
 import type { ScoredThreadCandidate } from '@/lib/gmail/thread-match';
 import { resolveRealmIdForJob } from '@/lib/quickbooks/realm';
-import { createUnsentEstimateFromEmail, ensureQboCustomer } from '@/lib/quickbooks/write-from-email';
+import {
+  createUnsentEstimateFromEmail,
+  ensureQboCustomer,
+  maybeSetMissingPrimaryPhone,
+} from '@/lib/quickbooks/write-from-email';
 
 export type CreateTicketFromGmailResult = {
   jobId: string;
@@ -40,12 +50,20 @@ export type CreateTicketFromGmailResult = {
   syncError: string | null;
   /** Thread API open failed; ticket still created with the pasted URL saved. */
   bookmarkOnly: boolean;
+  /** Existing ticket was off the board (Dismissed/Lost/Done) and was restored. */
+  restored?: boolean;
+  customerName?: string | null;
+  ticketLabel?: string | null;
+  estimateNumber?: string | null;
 };
 
 /** Job page path after creating/linking from Gmail (paste form or add-on). */
 export function ticketUrlForGmailResult(origin: string, result: CreateTicketFromGmailResult): string {
   const base = origin.replace(/\/+$/, '') || 'http://localhost:3000';
   const u = new URL(`/dashboard/jobs/${result.jobId}`, base);
+  if (result.restored) {
+    u.searchParams.set('restored', '1');
+  }
   if (result.existed) {
     u.searchParams.set('from_gmail', 'exists');
   } else if (result.bookmarkOnly) {
@@ -66,33 +84,109 @@ export function ticketUrlForGmailResult(origin: string, result: CreateTicketFrom
   return u.toString();
 }
 
-async function findJobForThread(resolvedThreadId: string, raw: string): Promise<{ id: string } | null> {
-  const parsed = parseGmailThreadId(raw);
-  const ids = [...new Set([resolvedThreadId, raw, parsed].filter((v): v is string => Boolean(v)))];
-  const exact = await prisma.job.findFirst({
-    where: {
-      archivedAt: null,
-      OR: ids.map((gmailThreadId) => ({ gmailThreadId })),
-    },
-    select: { id: true },
-    orderBy: { updatedAt: 'desc' },
-  });
-  if (exact) return exact;
+function estimateNumberFromProjectName(projectName: string | null | undefined): string | null {
+  const m = (projectName ?? '').trim().match(/^Estimate\s+#?\s*(.+)$/i);
+  const n = m?.[1]?.trim();
+  return n || null;
+}
 
-  if (resolvedThreadId.length >= 10) {
-    const loose = await prisma.job.findFirst({
-      where: { archivedAt: null, gmailThreadId: { contains: resolvedThreadId } },
-      select: { id: true },
-      orderBy: { updatedAt: 'desc' },
-    });
-    if (loose) return loose;
+async function attachGmailTicketCardFields(
+  result: CreateTicketFromGmailResult,
+  extras?: { ticketLabel?: string },
+): Promise<CreateTicketFromGmailResult> {
+  const job = await prisma.job.findUnique({
+    where: { id: result.jobId },
+    select: { customerName: true, projectName: true },
+  });
+  const fromJob = job?.projectName?.trim() || '';
+  const typed = extras?.ticketLabel?.trim() || '';
+  const ticketLabel =
+    (fromJob && !looksLikeQboDocProjectName(fromJob) ? fromJob : '') || typed || fromJob || null;
+  return {
+    ...result,
+    customerName: job?.customerName?.trim() || result.customerName || null,
+    ticketLabel,
+    estimateNumber: result.estimateNumber?.trim() || estimateNumberFromProjectName(fromJob) || null,
+  };
+}
+
+async function findJobForThread(
+  resolvedThreadId: string,
+  raw: string,
+  preferredConnectionId?: string | null,
+): Promise<GmailThreadJobHit | null> {
+  const candidates = gmailThreadIdCandidates(resolvedThreadId, raw);
+  if (candidates.length === 0) return null;
+
+  const containsIds = candidates.filter((id) => id.length >= 10);
+  const rows = await prisma.job.findMany({
+    where: {
+      OR: [
+        { gmailThreadId: { in: candidates } },
+        ...containsIds.map((id) => ({ gmailThreadId: { contains: id } })),
+      ],
+    },
+    select: {
+      id: true,
+      archivedAt: true,
+      updatedAt: true,
+      gmailConnectionId: true,
+      gmailThreadId: true,
+    },
+  });
+
+  const matches = rows.filter((row) => jobRowMatchesGmailThread(row.gmailThreadId, candidates));
+  return pickJobForGmailThread(matches, { preferredConnectionId });
+}
+
+async function reopenExistingGmailJob(opts: {
+  jobId: string;
+  ticketLabel?: string;
+  customer?: GmailThreadCustomer | null;
+}): Promise<{ restored: boolean }> {
+  const job = await prisma.job.findUnique({ where: { id: opts.jobId } });
+  if (!job) return { restored: false };
+
+  let restored = false;
+  if (job.archivedAt != null) {
+    await restoreJobToBoard(job.id);
+    restored = true;
   }
 
-  return prisma.job.findFirst({
-    where: { OR: ids.map((gmailThreadId) => ({ gmailThreadId })) },
-    select: { id: true },
-    orderBy: { updatedAt: 'desc' },
-  });
+  const phone = opts.customer?.phone;
+  if (phone && job.quickbooksCustomerId) {
+    const realmId = await resolveRealmIdForJob(job.quickbooksCompanyId);
+    if (realmId) {
+      await maybeSetMissingPrimaryPhone(realmId, job.quickbooksCustomerId, phone);
+    }
+  }
+
+  const data: { projectName?: string; projectDescription?: string } = {};
+  const label = opts.ticketLabel?.trim();
+  if (label) {
+    const nextName = preferHumanProjectName(job.projectName, label);
+    const betterLabel =
+      looksLikeQboDocProjectName(job.projectName) && !looksLikeQboDocProjectName(label);
+    if (betterLabel && nextName !== job.projectName) {
+      data.projectName = nextName.slice(0, 512);
+    }
+  }
+  if (phone && !/^Phone:/m.test(job.projectDescription ?? '')) {
+    const line = `Phone: ${phone}`;
+    const desc = (job.projectDescription ?? '').trim();
+    data.projectDescription = (
+      !desc
+        ? gmailLeadProjectDescription(opts.customer!)
+        : /^Email:/m.test(desc)
+          ? desc.replace(/^(Email:[^\n]*)/m, `$1\n${line}`)
+          : `${desc}\n${line}`
+    ).slice(0, 2000);
+  }
+  if (Object.keys(data).length > 0) {
+    await prisma.job.update({ where: { id: job.id }, data });
+  }
+
+  return { restored };
 }
 
 function candidateFromThread(opts: {
@@ -237,12 +331,14 @@ export async function createTicketFromGmailThread(opts: {
     throw new Error('Choose which connected Gmail mailbox this thread lives in.');
   }
 
-  return createTicketFromGmailThreadWithMailbox({
-    raw,
-    preferred,
-    mailboxes,
-    createdOrder,
-  });
+  return attachGmailTicketCardFields(
+    await createTicketFromGmailThreadWithMailbox({
+      raw,
+      preferred,
+      mailboxes,
+      createdOrder,
+    }),
+  );
 }
 
 /**
@@ -274,13 +370,16 @@ export async function createTicketFromGmailAddon(opts: {
   const preferred =
     mailboxes.find((m) => m.googleEmail.trim().toLowerCase() === mailboxEmail) ?? mailboxes[0]!;
 
-  return createTicketFromGmailThreadWithMailbox({
-    raw,
-    preferred,
-    mailboxes,
-    createdOrder,
-    ticketLabel: opts.ticketLabel,
-  });
+  return attachGmailTicketCardFields(
+    await createTicketFromGmailThreadWithMailbox({
+      raw,
+      preferred,
+      mailboxes,
+      createdOrder,
+      ticketLabel: opts.ticketLabel,
+    }),
+    { ticketLabel: opts.ticketLabel },
+  );
 }
 
 async function createTicketFromGmailThreadWithMailbox(opts: {
@@ -300,8 +399,9 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
   });
 
   if (!opened.ok) {
-    const existing = await findJobForThread(raw, raw);
+    const existing = await findJobForThread(raw, raw, preferred.id);
     if (existing) {
+      const { restored } = await reopenExistingGmailJob({ jobId: existing.id });
       return {
         jobId: existing.id,
         existed: true,
@@ -310,6 +410,7 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
         qboError: null,
         syncError: null,
         bookmarkOnly: false,
+        restored,
       };
     }
 
@@ -336,19 +437,6 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
 
   const mailbox = opened.mailbox;
   const thread = opened.opened;
-  const existing = await findJobForThread(thread.resolvedThreadId, raw);
-  if (existing) {
-    return {
-      jobId: existing.id,
-      existed: true,
-      usedQuickBooks: false,
-      customerCreated: false,
-      qboError: null,
-      syncError: null,
-      bookmarkOnly: false,
-    };
-  }
-
   const shopEmails = mailboxes.map((m) => m.googleEmail);
   const messages = threadMessagesFromGmail(thread.data);
   const picked = pickCustomerFromThreadMessages(messages, shopEmails);
@@ -365,6 +453,25 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
   };
   const ticketLabel = sanitizeGmailTicketLabel(opts.ticketLabel, customer.subject || fallbackSubject);
 
+  const existing = await findJobForThread(thread.resolvedThreadId, raw, mailbox.id);
+  if (existing) {
+    const { restored } = await reopenExistingGmailJob({
+      jobId: existing.id,
+      ticketLabel,
+      customer,
+    });
+    return {
+      jobId: existing.id,
+      existed: true,
+      usedQuickBooks: false,
+      customerCreated: false,
+      qboError: null,
+      syncError: null,
+      bookmarkOnly: false,
+      restored,
+    };
+  }
+
   const candidate = candidateFromThread({
     threadId: thread.resolvedThreadId,
     gmailConnectionId: mailbox.id,
@@ -377,6 +484,7 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
   let usedQuickBooks = false;
   let customerCreated = false;
   let jobId: string | null = null;
+  let estimateNumber: string | null = null;
 
   if (!customer.email) {
     qboError = 'No customer email on that thread — QuickBooks skipped until the thread has an outside address.';
@@ -413,6 +521,7 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
         );
         jobId = job.id;
         usedQuickBooks = true;
+        estimateNumber = estimate.docNumber?.trim() || null;
         if (job.inboundLeadKind == null) {
           await prisma.job.update({
             where: { id: job.id },
@@ -447,5 +556,6 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
     qboError,
     syncError,
     bookmarkOnly: false,
+    estimateNumber,
   };
 }

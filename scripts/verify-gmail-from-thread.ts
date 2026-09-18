@@ -18,6 +18,11 @@ import {
   resolveGmailThreadInputForApi,
 } from '../lib/gmail/parse-thread-id';
 import {
+  gmailThreadIdCandidates,
+  jobRowMatchesGmailThread,
+  pickJobForGmailThread,
+} from '../lib/gmail/thread-job-match';
+import {
   pickCustomerFromThreadMessages,
   gmailLeadProjectDescription,
   sanitizeGmailTicketLabel,
@@ -32,6 +37,7 @@ import {
   qboFaultLooksLikeDuplicateDocNumber,
   qboFaultLooksLikeDuplicateName,
   qboPrimaryPhoneField,
+  qboItemIsActiveSalesItem,
   sanitizeQboDisplayName,
   shouldWriteQboPrimaryPhone,
   splitPersonName,
@@ -314,7 +320,51 @@ check(
   'DescriptionOnly',
 );
 
+check('item: active service ok', qboItemIsActiveSalesItem({ Id: '3', Name: 'Services', Type: 'Service', Active: true }), true);
+check('item: inactive rejected', qboItemIsActiveSalesItem({ Id: '3', Name: 'Services', Type: 'Service', Active: false }), false);
+check('item: category rejected', qboItemIsActiveSalesItem({ Id: '1', Name: 'Labor', Type: 'Category', Active: true }), false);
+check('item: missing id rejected', qboItemIsActiveSalesItem({ Name: 'Services', Type: 'Service', Active: true }), false);
+
 const hex = '18c4e2a1b2c3d4e5';
+check(
+  'dedupe: URL stored thread matches API hex',
+  jobRowMatchesGmailThread(`https://mail.google.com/mail/?th=${hex}`, gmailThreadIdCandidates(hex, hex)),
+  true,
+);
+check(
+  'dedupe: exact API id matches',
+  jobRowMatchesGmailThread(hex, gmailThreadIdCandidates(hex, `https://mail.google.com/mail/?th=${hex}`)),
+  true,
+);
+check('dedupe: unrelated thread skipped', jobRowMatchesGmailThread('aaaaaaaaaaaaaaaa', gmailThreadIdCandidates(hex, hex)), false);
+
+const dismissed = {
+  id: 'dismissed',
+  archivedAt: new Date('2026-09-18T19:58:00Z'),
+  updatedAt: new Date('2026-09-18T19:58:00Z'),
+  gmailConnectionId: 'bez',
+  gmailThreadId: hex,
+};
+const onBoard = {
+  id: 'live',
+  archivedAt: null,
+  updatedAt: new Date('2026-09-18T12:00:00Z'),
+  gmailConnectionId: 'contact',
+  gmailThreadId: hex,
+};
+check('dedupe: prefer on-board over dismissed', pickJobForGmailThread([dismissed, onBoard])?.id, 'live');
+check('dedupe: dismissed is still a hit', pickJobForGmailThread([dismissed])?.id, 'dismissed');
+check(
+  'dedupe: same mailbox beats other mailbox when both on board',
+  pickJobForGmailThread(
+    [
+      { ...onBoard, id: 'other', gmailConnectionId: 'contact' },
+      { ...onBoard, id: 'mine', gmailConnectionId: 'bez', updatedAt: new Date('2026-09-18T11:00:00Z') },
+    ],
+    { preferredConnectionId: 'bez' },
+  )?.id,
+  'mine',
+);
 const threadFDec = BigInt(`0x${hex}`).toString();
 
 check('parse: th= query', parseGmailThreadId(`https://mail.google.com/mail/u/0/?th=${hex}`), hex);

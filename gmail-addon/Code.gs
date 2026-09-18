@@ -47,7 +47,7 @@ function onGmailMessageOpen(e) {
   );
   section.addWidget(
     CardService.newTextParagraph().setText(
-      'Creates a QuickBooks customer if needed and a saved (not sent) estimate, then opens Dash.',
+      'Creates a QuickBooks customer if needed and a saved (not sent) estimate. You stay in Gmail.',
     ),
   );
 
@@ -138,24 +138,66 @@ function createDashTicket(e) {
     return notify_(String(body.error || 'Could not create a ticket from this conversation.').slice(0, 200));
   }
 
-  var ticketUrl = String(body.ticketUrl || '');
-  var text = 'Ticket created. Opening Dash.';
-  if (body.existed) text = 'This conversation is already a Dash ticket.';
-  else if (body.qboError) text = 'Ticket created. QuickBooks: ' + String(body.qboError).slice(0, 140);
-  else if (body.usedQuickBooks) text = 'Ticket created with a saved estimate. Opening Dash.';
+  // Stay in Gmail: ignore body.openLink (and do not auto-open ticketUrl).
+  var heading = 'Ticket created';
+  if (body.restored) heading = 'Ticket already on the board — restored';
+  else if (body.existed) heading = 'Ticket already on the board';
 
-  var builder = CardService.newActionResponseBuilder().setNotification(
-    CardService.newNotification().setText(text),
-  );
-  if (ticketUrl) {
-    builder.setOpenLink(
-      CardService.newOpenLink()
-        .setUrl(ticketUrl)
-        .setOpenAs(CardService.OpenAs.FULL_SIZE)
-        .setOnClose(CardService.OnClose.NOTHING),
+  var card = buildTicketResultCard_({
+    heading: heading,
+    customerName: bodyString_(body, 'customerName'),
+    ticketLabel: bodyString_(body, 'ticketLabel') || ticketLabel,
+    estimateNumber: bodyString_(body, 'estimateNumber'),
+    ticketUrl: bodyString_(body, 'ticketUrl'),
+    qboError: bodyString_(body, 'qboError'),
+  });
+
+  return CardService.newActionResponseBuilder()
+    .setNotification(CardService.newNotification().setText(heading.slice(0, 200)))
+    .setNavigation(CardService.newNavigation().updateCard(card))
+    .build();
+}
+
+function buildTicketResultCard_(opts) {
+  var section = CardService.newCardSection();
+  section.addWidget(CardService.newTextParagraph().setText('<b>' + opts.heading + '</b>'));
+  if (opts.customerName) {
+    section.addWidget(
+      CardService.newDecoratedText().setTopLabel('Customer').setText(opts.customerName).setWrapText(true),
     );
   }
-  return builder.build();
+  if (opts.ticketLabel) {
+    section.addWidget(
+      CardService.newDecoratedText().setTopLabel('Label').setText(opts.ticketLabel).setWrapText(true),
+    );
+  }
+  if (opts.estimateNumber) {
+    section.addWidget(
+      CardService.newDecoratedText().setTopLabel('Estimate').setText(opts.estimateNumber).setWrapText(true),
+    );
+  }
+  if (opts.qboError) {
+    section.addWidget(CardService.newTextParagraph().setText('QuickBooks: ' + clip_(opts.qboError, 180)));
+  }
+  if (opts.ticketUrl && /^https?:\/\//i.test(opts.ticketUrl)) {
+    section.addWidget(
+      CardService.newTextButton()
+        .setText('Open in Dash')
+        .setTextButtonStyle(CardService.TextButtonStyle.TEXT)
+        .setOpenLink(
+          CardService.newOpenLink()
+            .setUrl(opts.ticketUrl)
+            .setOpenAs(CardService.OpenAs.FULL_SIZE)
+            .setOnClose(CardService.OnClose.NOTHING),
+        ),
+    );
+  }
+  return CardService.newCardBuilder().setHeader(CardService.newCardHeader().setTitle('Dash')).addSection(section).build();
+}
+
+function bodyString_(body, key) {
+  if (!body || body[key] == null) return '';
+  return String(body[key]).replace(/\s+/g, ' ').trim();
 }
 
 function buildSimpleCard_(body) {
