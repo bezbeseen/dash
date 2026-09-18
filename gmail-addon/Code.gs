@@ -91,11 +91,16 @@ function createDashTicket(e) {
       method: 'post',
       contentType: 'application/json',
       muteHttpExceptions: true,
-      headers: { Authorization: 'Bearer ' + props.secret },
+      followRedirects: true,
+      headers: {
+        Authorization: 'Bearer ' + props.secret,
+        'X-Dash-Addon-Secret': props.secret,
+      },
       payload: JSON.stringify({
         threadId: threadId,
         messageId: messageId,
         mailboxEmail: mailboxEmail,
+        addonSecret: props.secret,
       }),
     });
   } catch (err) {
@@ -111,10 +116,14 @@ function createDashTicket(e) {
   }
 
   if (code === 401) {
-    return notify_('Dash rejected the add-on secret. Match DASH_ADDON_SECRET to GMAIL_ADDON_SECRET on Vercel.');
+    return notify_(
+      String(body.error || 'Dash rejected the add-on secret. Match Apps Script DASH_ADDON_SECRET to Vercel GMAIL_ADDON_SECRET (do not add DASH_ADDON_SECRET on Vercel).').slice(0, 200),
+    );
   }
   if (code === 503) {
-    return notify_('Set GMAIL_ADDON_SECRET on Vercel, then redeploy Dash.');
+    return notify_(
+      String(body.error || 'Set GMAIL_ADDON_SECRET on Vercel, then redeploy Dash. Do not create DASH_ADDON_SECRET on Vercel.').slice(0, 200),
+    );
   }
   if (!body.ok) {
     return notify_(String(body.error || 'Could not create a ticket from this conversation.').slice(0, 200));

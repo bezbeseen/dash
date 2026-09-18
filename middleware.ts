@@ -44,6 +44,7 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/api/:path*', '/'],
+  // Skip gmail-addon so NextAuth middleware cannot 401 it and so Authorization is not dropped.
+  matcher: ['/dashboard/:path*', '/api/((?!integrations/gmail-addon/).*)', '/'],
 };
 

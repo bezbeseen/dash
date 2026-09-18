@@ -38,7 +38,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     message:
-      'Dash Gmail add-on. POST JSON { threadId, messageId, mailboxEmail } with Authorization: Bearer <GMAIL_ADDON_SECRET>.',
+      'Dash Gmail add-on. POST JSON { threadId, messageId, mailboxEmail } with Authorization: Bearer <GMAIL_ADDON_SECRET> (Vercel). Apps Script property is DASH_ADDON_SECRET — do not create DASH_ADDON_SECRET on Vercel.',
   });
 }
 
@@ -49,17 +49,37 @@ export async function GET() {
 export async function POST(req: Request) {
   const secret = gmailAddonSecret();
   if (!secret) {
-    return NextResponse.json({ ok: false, error: 'gmail_addon_not_configured' }, { status: 503 });
-  }
-  if (!gmailAddonAuthorized(req, secret)) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          'GMAIL_ADDON_SECRET is not set on the server. Add that name on Vercel (Production), then Redeploy. Do not create DASH_ADDON_SECRET on Vercel — that name is only the Apps Script property.',
+      },
+      { status: 503 },
+    );
   }
 
   let body: Record<string, unknown> = {};
+  let jsonOk = false;
   try {
     const parsed = asRecord(await req.json());
     if (parsed) body = parsed;
+    jsonOk = true;
   } catch {
+    jsonOk = false;
+  }
+
+  if (!gmailAddonAuthorized(req, secret, body)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          'addon_secret_mismatch: Authorization Bearer / X-Dash-Addon-Secret / body addonSecret did not match GMAIL_ADDON_SECRET.',
+      },
+      { status: 401 },
+    );
+  }
+  if (!jsonOk) {
     return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400 });
   }
 

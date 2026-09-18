@@ -240,11 +240,37 @@ const addonOk = new Request('http://dash.local/api', {
 check('addon auth: bearer', gmailAddonAuthorized(addonOk, 'addon-secret'), true);
 check('addon auth: wrong secret', gmailAddonAuthorized(addonOk, 'other-secret'), false);
 check(
+  'addon auth: lowercase bearer',
+  gmailAddonAuthorized(
+    new Request('http://dash.local/api', { headers: { Authorization: 'bearer addon-secret' } }),
+    'addon-secret',
+  ),
+  true,
+);
+check(
+  'addon auth: raw authorization',
+  gmailAddonAuthorized(
+    new Request('http://dash.local/api', { headers: { Authorization: 'addon-secret' } }),
+    'addon-secret',
+  ),
+  true,
+);
+check(
   'addon auth: header',
   gmailAddonAuthorized(
     new Request('http://dash.local/api', { headers: { 'X-Dash-Addon-Secret': 'addon-secret' } }),
     'addon-secret',
   ),
+  true,
+);
+check(
+  'addon auth: body addonSecret',
+  gmailAddonAuthorized(new Request('http://dash.local/api'), 'addon-secret', { addonSecret: 'addon-secret' }),
+  true,
+);
+check(
+  'addon auth: trims expected',
+  gmailAddonAuthorized(addonOk, ' addon-secret\n'),
   true,
 );
 
