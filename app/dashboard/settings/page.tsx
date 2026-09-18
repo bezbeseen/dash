@@ -209,6 +209,26 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           </p>
           <GmailSidebarHint />
           <GmailRedirectUriHint />
+          <p className="small text-body-secondary mb-0 mt-3">
+            <strong>Gmail add-on.</strong> From an open conversation, the sidebar card titled <strong>Dash</strong> has{' '}
+            <strong>Create ticket</strong> — that uses Gmail’s real thread id (not a Copy-link token), so Dash can read
+            the mail, find or create the QuickBooks customer, and save a $0 estimate (not sent). Install{' '}
+            <code className="detail-mono">gmail-addon/</code> in Apps Script on bez@, contact@, and marc@:{' '}
+            <strong>Deploy → Test deployments → Install</strong>. Script properties:{' '}
+            <code className="detail-mono">DASH_BASE_URL</code>
+            {appOrigin ? (
+              <>
+                {' '}
+                (
+                <code className="detail-mono" style={{ wordBreak: 'break-all' }}>
+                  {appOrigin}
+                </code>
+                )
+              </>
+            ) : null}{' '}
+            and <code className="detail-mono">DASH_ADDON_SECRET</code> (same value as{' '}
+            <code className="detail-mono">GMAIL_ADDON_SECRET</code> on Vercel).
+          </p>
         </section>
 
         <GmailThreadMatchSettingsSection />

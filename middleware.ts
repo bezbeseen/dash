@@ -11,6 +11,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/integrations/gmail/callback',
   '/api/integrations/quickbooks/callback',
   '/api/integrations/google-business/callback',
+  '/api/integrations/gmail-addon/', // Gmail add-on Create ticket (Bearer GMAIL_ADDON_SECRET)
   '/api/integrations/quickbooks/webhook', // server-to-server
   '/api/webhooks/inbound-form-lead', // marketing form → pre-quote (Bearer secret)
   '/api/webhooks/inbound-conversation', // SMS/chat/conversation → pre-quote (Bearer secret)

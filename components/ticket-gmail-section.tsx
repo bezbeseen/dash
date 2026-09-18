@@ -73,9 +73,8 @@ export function TicketGmailSection({
 
       {threadError ? (
         <p className="board-toast board-toast-error" style={{ marginBottom: 12 }}>
-          Couldn&apos;t read that as a Gmail thread. Paste a proper Gmail conversation link (address bar or
-          ⋮ → Copy link), ideally a URL containing <code>&amp;th=</code> or <code>permmsgid=</code>, or paste a
-          Message-ID value from ⋮ → Show original (the <code>&lt;...@...&gt;</code> part).
+          Could not read that as a Gmail thread. Paste a conversation link from the address bar or
+          ⋮ → Copy link.
         </p>
       ) : null}
       {mailboxError ? (
@@ -128,8 +127,9 @@ export function TicketGmailSection({
         <div className="gmail-advanced-body">
           <p className="meta ticket-doc-note">
             Connect up to <strong>{MAX_MAILBOXES} Gmail accounts</strong>. <strong>Find email thread</strong> searches
-            them for correspondence with this customer and attaches the thread when there is exactly one clear match;
-            otherwise it lists what it found so you can pick. Pasting a conversation URL by hand still works below.
+            them for correspondence with this customer — QuickBooks Bill email and customer email first, then anything
+            on the ticket — and attaches the thread when there is exactly one clear match; otherwise it lists what it
+            found so you can pick. Pasting a conversation URL by hand still works below.
           </p>
           <p className="meta ticket-doc-note" style={{ marginTop: -6 }}>
             <strong>Not the same as &quot;Seed email&quot; below:</strong> seed is only a quick bookmark + note — it{' '}

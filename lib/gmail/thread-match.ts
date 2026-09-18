@@ -9,6 +9,7 @@ import { isYelpProxyEmailAddress } from '@/lib/yelp/lead-email';
 
 export type ThreadMatchSignal =
   | 'lead_email_address'
+  | 'customer_email_address'
   | 'ticket_email_address'
   | 'subject_doc_ref'
   | 'subject_project_name'
@@ -25,6 +26,7 @@ export const MAX_SUGGESTIONS = 5;
 
 const SIGNAL_SCORE: Record<ThreadMatchSignal, number> = {
   lead_email_address: 95,
+  customer_email_address: 90,
   ticket_email_address: 85,
   subject_doc_ref: 70,
   subject_project_name: 55,
@@ -33,6 +35,7 @@ const SIGNAL_SCORE: Record<ThreadMatchSignal, number> = {
 
 const SIGNAL_LABEL: Record<ThreadMatchSignal, string> = {
   lead_email_address: 'lead email address from the inbound webhook',
+  customer_email_address: 'customer email from QuickBooks',
   ticket_email_address: 'email address found on the ticket',
   subject_doc_ref: 'estimate / invoice number in the subject',
   subject_project_name: 'project name in the subject',
@@ -284,7 +287,9 @@ export type JobMatchProfile = {
   projectName: string;
   /** Seeded by the inbound webhooks — the strongest thing Dash knows about the customer. */
   leadAddresses: string[];
-  /** Addresses scraped from the rest of the ticket (notes, description, QuickBooks billing email). */
+  /** QuickBooks customer / invoice billing email — searched before subject and name. */
+  customerAddresses: string[];
+  /** Addresses scraped from the rest of the ticket (notes, description). */
   ticketAddresses: string[];
   docRef: string | null;
 };
@@ -300,8 +305,22 @@ export type JobMatchProfileInput = {
     linkUrl?: string | null;
     notes?: string | null;
   }[];
+  /** QuickBooks customer / invoice Bill email — searched and scored ahead of ticket notes and subject. */
   extraAddresses?: readonly string[];
 };
+
+function uniqueCounterparties(
+  raw: readonly string[],
+  filter: CounterpartyFilter,
+  skipKeys: Set<string>,
+): string[] {
+  return selectCounterparties(raw, filter).filter((a) => {
+    const key = emailComparisonKey(a);
+    if (skipKeys.has(key)) return false;
+    skipKeys.add(key);
+    return true;
+  });
+}
 
 export function buildJobMatchProfile(
   input: JobMatchProfileInput,
@@ -313,24 +332,29 @@ export function buildJobMatchProfile(
     leadRaw.push(...parseAddressList(link.toAddr));
   }
 
-  const secondaryRaw: string[] = [...(input.extraAddresses ?? [])];
+  const noteRaw: string[] = [];
   for (const link of input.linkedEmails ?? []) {
-    secondaryRaw.push(...extractEmailAddressesFromText(link.linkUrl));
-    secondaryRaw.push(...extractEmailAddressesFromText(link.notes));
+    noteRaw.push(...extractEmailAddressesFromText(link.linkUrl));
+    noteRaw.push(...extractEmailAddressesFromText(link.notes));
   }
-  secondaryRaw.push(...extractEmailAddressesFromText(input.projectDescription));
+  noteRaw.push(...extractEmailAddressesFromText(input.projectDescription));
 
-  const leadAddresses = selectCounterparties(leadRaw, filter);
-  const leadKeys = new Set(leadAddresses.map(emailComparisonKey));
-  const ticketAddresses = selectCounterparties(secondaryRaw, filter).filter(
-    (a) => !leadKeys.has(emailComparisonKey(a)),
-  );
+  const extraRaw: string[] = [];
+  for (const raw of input.extraAddresses ?? []) {
+    extraRaw.push(...parseAddressList(raw));
+  }
+
+  const seen = new Set<string>();
+  const leadAddresses = uniqueCounterparties(leadRaw, filter, seen);
+  const customerAddresses = uniqueCounterparties(extraRaw, filter, seen);
+  const ticketAddresses = uniqueCounterparties(noteRaw, filter, seen);
 
   return {
     jobId: input.jobId,
     customerName: input.customerName.trim(),
     projectName: input.projectName.trim(),
     leadAddresses,
+    customerAddresses,
     ticketAddresses,
     docRef: docRefFromProjectName(input.projectName),
   };
@@ -365,6 +389,13 @@ export function buildThreadSearchPlan(
       signal: 'lead_email_address',
       query: addressQuery(address, lookbackDays),
       label: `mail with ${address}`,
+    });
+  }
+  for (const address of profile.customerAddresses) {
+    steps.push({
+      signal: 'customer_email_address',
+      query: addressQuery(address, lookbackDays),
+      label: `mail with customer ${address}`,
     });
   }
   for (const address of profile.ticketAddresses) {
@@ -465,6 +496,12 @@ export function scoreThreadCandidate(
     reasons.push(`Thread includes the ticket's lead address ${leadHit}.`);
   }
 
+  const customerHit = profile.customerAddresses.find((a) => counterpartyKeys.has(emailComparisonKey(a)));
+  if (customerHit) {
+    signals.push('customer_email_address');
+    reasons.push(`Thread includes the customer email ${customerHit}.`);
+  }
+
   const ticketHit = profile.ticketAddresses.find((a) => counterpartyKeys.has(emailComparisonKey(a)));
   if (ticketHit) {
     signals.push('ticket_email_address');
@@ -536,6 +573,9 @@ function rank(candidates: readonly ScoredThreadCandidate[]): ScoredThreadCandida
   }
   return [...byThread.values()].sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
+    const aCustomer = a.signals.includes('customer_email_address') || a.signals.includes('lead_email_address') ? 1 : 0;
+    const bCustomer = b.signals.includes('customer_email_address') || b.signals.includes('lead_email_address') ? 1 : 0;
+    if (bCustomer !== aCustomer) return bCustomer - aCustomer;
     return (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? '');
   });
 }

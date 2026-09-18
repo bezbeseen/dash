@@ -2,6 +2,9 @@ import { EventSource, GmailLinkSource } from '@prisma/client';
 import { google, gmail_v1 } from 'googleapis';
 import { prisma } from '@/lib/db/prisma';
 import { gmailHeader } from '@/lib/gmail/message-text';
+import { fetchCustomerPrimaryEmail, fetchInvoiceById } from '@/lib/quickbooks/client';
+import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
+import { resolveRealmIdForJob } from '@/lib/quickbooks/realm';
 import { syncGmailThreadForJob } from '@/lib/gmail/sync-thread';
 import {
   buildCounterpartyFilter,
@@ -62,6 +65,9 @@ export type JobForMatching = {
   customerName: string;
   projectName: string;
   projectDescription: string | null;
+  quickbooksCompanyId: string | null;
+  quickbooksCustomerId: string | null;
+  quickbooksInvoiceId: string | null;
   gmailThreadId: string | null;
   gmailConnectionId: string | null;
   gmailLinkSource: GmailLinkSource | null;
@@ -85,6 +91,9 @@ export const JOB_MATCH_SELECT = {
   customerName: true,
   projectName: true,
   projectDescription: true,
+  quickbooksCompanyId: true,
+  quickbooksCustomerId: true,
+  quickbooksInvoiceId: true,
   gmailThreadId: true,
   gmailConnectionId: true,
   gmailLinkSource: true,
@@ -95,10 +104,53 @@ export const JOB_MATCH_SELECT = {
   },
 } as const;
 
+/** Invoice Bill email and QBO customer PrimaryEmailAddr — the addresses Find email thread should prefer. */
+async function loadQuickBooksCustomerEmails(
+  job: JobForMatching,
+): Promise<{ addresses: string[]; errors: string[] }> {
+  const addresses: string[] = [];
+  const errors: string[] = [];
+  const invoiceId = job.quickbooksInvoiceId?.trim() || null;
+  const customerId = job.quickbooksCustomerId?.trim() || null;
+  if (!invoiceId && !customerId) return { addresses, errors };
+
+  const realmId = await resolveRealmIdForJob(job.quickbooksCompanyId);
+  if (!realmId) return { addresses, errors };
+
+  const jobs: Promise<void>[] = [];
+
+  if (invoiceId && !isSyntheticQuickBooksId(invoiceId)) {
+    jobs.push(
+      fetchInvoiceById(realmId, invoiceId)
+        .then((inv) => {
+          if (inv.billEmail) addresses.push(inv.billEmail);
+          if (inv.billEmailCc) addresses.push(inv.billEmailCc);
+        })
+        .catch((e) => {
+          errors.push(`QuickBooks invoice email: ${e instanceof Error ? e.message : String(e)}`);
+        }),
+    );
+  }
+
+  if (customerId && !isSyntheticQuickBooksId(customerId)) {
+    jobs.push(
+      fetchCustomerPrimaryEmail(realmId, customerId)
+        .then((primary) => {
+          if (primary) addresses.push(primary);
+        })
+        .catch((e) => {
+          errors.push(`QuickBooks customer email: ${e instanceof Error ? e.message : String(e)}`);
+        }),
+    );
+  }
+
+  await Promise.all(jobs);
+  return { addresses, errors };
+}
+
 export async function loadGmailMailboxes(): Promise<GmailMailbox[]> {
   const rows = await prisma.gmailConnection.findMany({
     orderBy: { googleEmail: 'asc' },
-    take: 3,
     select: { id: true, googleEmail: true },
   });
   return rows;
@@ -173,6 +225,7 @@ export async function findGmailThreadCandidates(
   );
 
   const filter = buildCounterpartyFilter(mailboxes.map((m) => m.googleEmail));
+  const qbo = await loadQuickBooksCustomerEmails(job);
   const profile = buildJobMatchProfile(
     {
       jobId: job.id,
@@ -180,6 +233,7 @@ export async function findGmailThreadCandidates(
       projectName: job.projectName,
       projectDescription: job.projectDescription,
       linkedEmails: job.linkedEmails,
+      extraAddresses: qbo.addresses,
     },
     filter,
   );
@@ -190,7 +244,7 @@ export async function findGmailThreadCandidates(
     addressSignalsOnly: budget.addressSignalsOnly,
   });
 
-  const errors: string[] = [];
+  const errors: string[] = [...qbo.errors];
   const searched: string[] = [];
 
   if (plan.length === 0 || mailboxes.length === 0) {

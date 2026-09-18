@@ -567,6 +567,7 @@ export async function GET(req: NextRequest) {
       voiceCallSecretSet: Boolean(
         process.env.INBOUND_VOICE_CALL_WEBHOOK_SECRET?.trim() || process.env.INBOUND_FORM_WEBHOOK_SECRET?.trim(),
       ),
+      gmailAddonSecretSet: Boolean(process.env.GMAIL_ADDON_SECRET?.trim()),
       /** Shared secret Yelp sends back to us (?token=, Bearer, or X-Dash-Yelp-Secret). */
       yelpLeadsVerifyTokenSet: Boolean(process.env.YELP_WEBHOOK_VERIFY_TOKEN?.trim()),
       /** Separate OAuth bearer Dash uses to call the Leads API; without it the webhook returns 503. */
@@ -579,6 +580,7 @@ export async function GET(req: NextRequest) {
         `${origin}/api/webhooks/inbound-conversation`,
         `${origin}/api/webhooks/inbound-voice-call`,
         `${origin}/api/webhooks/yelp-leads`,
+        `${origin}/api/integrations/gmail-addon/create-ticket`,
       ],
     },
     googleDrive: {

@@ -24,6 +24,7 @@ const GENERIC_PROJECT_NAMES = new Set(
     'conversation lead',
     'form lead',
     'voice call',
+    'email lead',
   ].map((s) => s.toLowerCase()),
 );
 
@@ -100,6 +101,8 @@ function inboundKindFallback(kind: InboundLeadKind): string {
       return 'Voice call';
     case InboundLeadKind.YELP_LEAD:
       return 'Yelp lead';
+    case InboundLeadKind.GMAIL:
+      return 'Email lead';
     default: {
       const _n: never = kind;
       return _n;

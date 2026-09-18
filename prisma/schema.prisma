@@ -75,12 +75,13 @@ enum GmailLinkSource {
   YELP_EMAIL
 }
 
-/// How a marketing-sourced pre-quote ticket was created (webhooks only; null for QuickBooks / manual jobs).
+/// How a marketing-sourced pre-quote ticket was created (webhooks, Yelp, or a pasted Gmail thread).
 enum InboundLeadKind {
   FORM
   CONVERSATION
   VOICE_CALL
   YELP_LEAD
+  GMAIL
 }
 
 model Job {

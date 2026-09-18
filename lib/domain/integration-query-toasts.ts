@@ -203,6 +203,55 @@ export function syncToastFromQuery(q: { synced?: string; sync_error?: string }):
   };
 }
 
+export function fromGmailBoardToast(q: { from_gmail_error?: string }): string | null {
+  const raw = q.from_gmail_error?.trim();
+  if (!raw) return null;
+  if (raw === 'mailbox') return 'Choose which Gmail mailbox this thread lives in.';
+  if (
+    /cannot open this conversation|invalid id value|\+ ["“]me["”] both failed|Could not open that conversation/i.test(
+      raw,
+    )
+  ) {
+    return "Could not open that conversation in the connected mailboxes. Paste ⋮ Copy link from the account that has the mail.";
+  }
+  return raw;
+}
+
+export function fromGmailJobToast(q: { from_gmail?: string; qbo_error?: string }): {
+  ok: string | null;
+  info: string | null;
+} {
+  const kind = q.from_gmail?.trim();
+  const qbo = q.qbo_error?.trim() || null;
+  if (kind === 'exists') {
+    return { ok: null, info: 'This Gmail thread is already on this ticket.' };
+  }
+  if (kind === 'qbo' || kind === 'qbo_new') {
+    return {
+      ok:
+        kind === 'qbo_new'
+          ? 'Created a QuickBooks customer, saved a $0 draft estimate (not sent), and attached this Gmail thread.'
+          : 'Found the QuickBooks customer, saved a $0 draft estimate (not sent), and attached this Gmail thread.',
+      info: null,
+    };
+  }
+  if (kind === 'bookmark') {
+    return {
+      ok: 'Pre-quote ticket created with the Gmail link saved.',
+      info:
+        qbo ||
+        'Could not open that conversation in the connected mailboxes, so QuickBooks is skipped until the mail can be read.',
+    };
+  }
+  if (kind === 'dash') {
+    return {
+      ok: 'Pre-quote ticket created from Gmail and the thread is attached.',
+      info: qbo ? `QuickBooks step skipped: ${qbo}` : null,
+    };
+  }
+  return { ok: null, info: null };
+}
+
 export function jobErrorFromQuery(q: { job_error?: string }): string | null {
   if (q.job_error === 'blocked') {
     return "That action isn't available for this ticket (e.g. it's off the board).";

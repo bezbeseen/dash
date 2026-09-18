@@ -1225,6 +1225,77 @@ a.work-cal-chip:hover {
   min-width: 5.5rem;
 }
 
+.prequote-from-gmail {
+  flex-shrink: 0;
+  margin: 0 16px 12px;
+  padding: 14px 16px 16px;
+  border: var(--bs-border-width) solid var(--bs-border-color);
+  border-radius: 12px;
+  background-color: var(--bs-tertiary-bg);
+}
+.prequote-from-gmail-title {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.prequote-from-gmail-copy,
+.prequote-from-gmail-hint {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--bs-secondary-color);
+  max-width: 52rem;
+  line-height: 1.45;
+}
+.prequote-from-gmail-hint {
+  color: var(--bs-body-color);
+}
+.prequote-from-gmail-form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.prequote-from-gmail-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+}
+.prequote-from-gmail-fields.is-submitting .linked-email-field {
+  pointer-events: none;
+  opacity: 0.65;
+}
+.prequote-from-gmail-form .linked-email-field {
+  min-width: 12rem;
+}
+.prequote-from-gmail-url {
+  flex: 1 1 18rem;
+}
+.prequote-from-gmail-form .btn {
+  margin-bottom: 1px;
+}
+.prequote-from-gmail-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-width: 9.25rem;
+}
+.prequote-from-gmail-status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--bs-secondary-color);
+  line-height: 1.45;
+}
+@media (prefers-reduced-motion: reduce) {
+  .prequote-from-gmail-submit .spinner-border {
+    animation: none;
+    border-right-color: currentColor;
+    opacity: 0.65;
+  }
+}
+
 .board-toasts {
   flex-shrink: 0;
   display: flex;

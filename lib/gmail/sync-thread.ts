@@ -2,149 +2,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { google, gmail_v1 } from 'googleapis';
 import { prisma } from '@/lib/db/prisma';
-import { googleApiFirstReason, googleApiStatus } from '@/lib/gmail/google-api-error';
-import {
-  extractRfc822MsgIdForSearch,
-  resolveGmailThreadInputForApi,
-} from '@/lib/gmail/parse-thread-id';
-import { getGmailOAuth2ClientForApi, getGmailOAuth2ClientForConnection } from '@/lib/gmail/tokens-db';
-
-function isRetryableThreadLookupErr(err: unknown): boolean {
-  const status = googleApiStatus(err);
-  const reason = googleApiFirstReason(err);
-  const msg = err instanceof Error ? err.message : '';
-  return (
-    status === 400 ||
-    status === 404 ||
-    reason === 'invalidArgument' ||
-    reason === 'notFound' ||
-    /invalid id/i.test(msg) ||
-    /invalid.*id value/i.test(msg) ||
-    /not found/i.test(msg)
-  );
-}
-
-/**
- * threads.get only accepts a thread id; Gmail UI sometimes exposes a message id.
- * Try both mailbox email and `me` as userId — behavior differs by workspace / consumer account.
- */
-async function getThreadFullSafe(
-  gmail: gmail_v1.Gmail,
-  mailboxEmail: string | null,
-  idFromUser: string,
-): Promise<{ data: gmail_v1.Schema$Thread; resolvedThreadId: string; effectiveUserId: string }> {
-  const userIds = mailboxEmail && mailboxEmail !== 'me' ? [mailboxEmail, 'me'] : ['me'];
-  let lastErr: unknown = null;
-
-  for (const userId of userIds) {
-    try {
-      const res = await gmail.users.threads.get({
-        userId,
-        id: idFromUser,
-        format: 'full',
-      });
-      return { data: res.data, resolvedThreadId: idFromUser, effectiveUserId: userId };
-    } catch (e) {
-      lastErr = e;
-      if (!isRetryableThreadLookupErr(e)) throw e;
-    }
-  }
-
-  for (const userId of userIds) {
-    try {
-      const msgRes = await gmail.users.messages.get({
-        userId,
-        id: idFromUser,
-        format: 'minimal',
-      });
-      const tid = msgRes.data.threadId;
-      if (!tid) continue;
-      const res = await gmail.users.threads.get({
-        userId,
-        id: tid,
-        format: 'full',
-      });
-      return { data: res.data, resolvedThreadId: tid, effectiveUserId: userId };
-    } catch (e) {
-      lastErr = e;
-      if (!isRetryableThreadLookupErr(e)) throw e;
-    }
-  }
-
-  const hint = mailboxEmail != null ? ` (${mailboxEmail} + “me” both failed).` : '';
-  console.error('[gmail/sync] thread lookup failed after retries', {
-    idSample: idFromUser.slice(0, 24),
-    lastErr,
-  });
-  throw new Error(
-    'Gmail API cannot open this conversation' +
-      hint +
-      ' Paste ⋮ → “Copy link” (&th=), or open ⋮ → “Show original” and copy the Message-ID line into this field, or forward the latest message to yourself and sync the new thread. With multiple Google accounts, /u/0 in the URL must match the account you used for Connect Gmail.',
-  );
-}
-
-/** Fallback: Gmail search by RFC822 Message-ID finds the API thread even when the web hash id is wrong. */
-async function findThreadViaRfc822MsgId(
-  gmail: gmail_v1.Gmail,
-  mailboxEmail: string | null,
-  storedRaw: string,
-): Promise<{ data: gmail_v1.Schema$Thread; resolvedThreadId: string; effectiveUserId: string } | null> {
-  const msgId = extractRfc822MsgIdForSearch(storedRaw);
-  console.info('[gmail/sync] rfc822msgid extract', {
-    storedRawSample: storedRaw.slice(0, 60),
-    storedRawTailSample: storedRaw.slice(-60),
-    extractedMsgId: msgId,
-    mailboxEmail,
-  });
-  if (!msgId) return null;
-
-  const userIds = mailboxEmail && mailboxEmail !== 'me' ? [mailboxEmail, 'me'] : ['me'];
-  const bracketed = msgId.startsWith('<') && msgId.endsWith('>') ? msgId : `<${msgId}>`;
-  const unbracketed = bracketed.slice(1, -1);
-
-  const candidateQueries = [
-    `rfc822msgid:${bracketed}`,
-    `rfc822msgid:"${bracketed}"`,
-    `rfc822msgid:${unbracketed}`,
-    `rfc822msgid:"<${unbracketed}>"`,
-  ];
-
-  console.info('[gmail/sync] rfc822msgid search candidates', {
-    msgId,
-    bracketed,
-    unbracketed,
-    userIds,
-    candidateQueries,
-  });
-
-  for (const q of candidateQueries) {
-    for (const userId of userIds) {
-      try {
-        const list = await gmail.users.messages.list({ userId, q, maxResults: 10 });
-        const hits = list.data.messages ?? [];
-        console.info('[gmail/sync] rfc822msgid hits', { userId, q, hitCount: hits.length });
-        for (const hit of hits) {
-          if (!hit.id) continue;
-          let tid: string | undefined | null = hit.threadId;
-          if (!tid) {
-            try {
-              const one = await gmail.users.messages.get({ userId, id: hit.id, format: 'minimal' });
-              tid = one.data.threadId;
-            } catch {
-              continue;
-            }
-          }
-          if (!tid) continue;
-          const res = await gmail.users.threads.get({ userId, id: tid, format: 'full' });
-          return { data: res.data, resolvedThreadId: tid, effectiveUserId: userId };
-        }
-      } catch (e) {
-        console.error('[gmail/sync] rfc822msgid list failed', { userId, q, e });
-      }
-    }
-  }
-  return null;
-}
+import { couldNotOpenGmailThreadMessage, openGmailThreadAcrossMailboxes } from '@/lib/gmail/open-thread';
+import { getGmailOAuth2ClientForConnection } from '@/lib/gmail/tokens-db';
 
 function headerGet(
   headers: gmail_v1.Schema$MessagePartHeader[] | undefined,
@@ -179,41 +38,39 @@ export async function syncGmailThreadForJob(jobId: string): Promise<{ messages: 
     throw new Error('Save a Gmail thread ID or inbox URL on this ticket before syncing.');
   }
 
-  const idForApi = resolveGmailThreadInputForApi(stored);
-
-  const connId = job.gmailConnectionId;
-  const auth = connId
-    ? await getGmailOAuth2ClientForConnection(connId)
-    : await getGmailOAuth2ClientForApi();
-
-  let mailboxEmail: string | null = null;
-  if (connId) {
-    const connRow = await prisma.gmailConnection.findUnique({ where: { id: connId } });
-    if (connRow?.googleEmail) mailboxEmail = connRow.googleEmail;
+  const rows = await prisma.gmailConnection.findMany({
+    select: { id: true, googleEmail: true, createdAt: true },
+  });
+  if (rows.length === 0) {
+    throw new Error('Gmail is not connected. Use Connect Gmail in Settings.');
   }
 
-  const gmail = google.gmail({ version: 'v1', auth });
+  const mailboxes = rows.map(({ id, googleEmail }) => ({ id, googleEmail }));
+  const createdOrder = [...rows]
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    .map(({ id, googleEmail }) => ({ id, googleEmail }));
 
-  let threadPkg: {
-    data: gmail_v1.Schema$Thread;
-    resolvedThreadId: string;
-    effectiveUserId: string;
-  };
-  try {
-    threadPkg = await getThreadFullSafe(gmail, mailboxEmail, idForApi);
-  } catch (firstErr) {
-    console.error('[gmail/sync] first lookup failed; attempting rfc822msgid fallback', {
-      firstErr,
-      storedSample: stored?.slice(0, 60),
+  const openedAcross = await openGmailThreadAcrossMailboxes({
+    storedRaw: stored,
+    preferredConnectionId: job.gmailConnectionId ?? rows[0]!.id,
+    mailboxes,
+    createdOrder,
+  });
+  if (!openedAcross.ok) {
+    throw new Error(couldNotOpenGmailThreadMessage(openedAcross.triedEmails));
+  }
+
+  const mailbox = openedAcross.mailbox;
+  if (mailbox.id !== job.gmailConnectionId) {
+    await prisma.job.update({
+      where: { id: jobId },
+      data: { gmailConnectionId: mailbox.id },
     });
-    const via = await findThreadViaRfc822MsgId(gmail, mailboxEmail, stored);
-    if (via) {
-      console.info('[gmail/sync] resolved thread via rfc822msgid search');
-      threadPkg = via;
-    } else {
-      throw firstErr;
-    }
   }
+
+  const auth = await getGmailOAuth2ClientForConnection(mailbox.id);
+  const gmail = google.gmail({ version: 'v1', auth });
+  const threadPkg = openedAcross.opened;
 
   const { data: threadData, resolvedThreadId, effectiveUserId: gmailUserId } = threadPkg;
 

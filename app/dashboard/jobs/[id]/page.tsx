@@ -26,6 +26,7 @@ import { BoardStatus } from '@prisma/client';
 import { jobIsLeadFirstTicket } from '@/lib/domain/lead-ticket';
 import { jobNeedsWrapUpReminder, jobWrapUpRecorded } from '@/lib/domain/production-workflow';
 import {
+  fromGmailJobToast,
   jobErrorFromQuery,
   syncToastFromQuery,
   ticketThreadMatchToast,
@@ -68,6 +69,8 @@ type PageProps = {
     gmail_match?: string;
     gmail_match_error?: string;
     qb_imported?: string;
+    from_gmail?: string;
+    qbo_error?: string;
     drive_saved?: string;
     drive_error?: string;
     drive_sync_ok?: string;
@@ -97,6 +100,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const gmailMatchToast = ticketThreadMatchToast(sp.gmail_match);
   const gmailMatchError = sp.gmail_match_error?.trim() || gmailMatchToast.error;
   const qbImportedOk = sp.qb_imported === '1';
+  const fromGmailToast = fromGmailJobToast(sp);
   const driveSaved = sp.drive_saved === '1';
   const driveCustomerSaved = sp.drive_saved === 'customer';
   let driveError: string | null = null;
@@ -297,6 +301,8 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
       <div className="ticket-detail-shell container-xl px-0">
       <WorkflowTabsBar />
       {qbImportedOk ||
+      fromGmailToast.ok ||
+      fromGmailToast.info ||
       driveSaved ||
       driveCustomerSaved ||
       driveError ||
@@ -318,6 +324,8 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             <div className="board-toast board-toast-ok">Synced latest estimates/invoices from QuickBooks.</div>
           ) : null}
           {qbImportedOk ? <div className="board-toast board-toast-ok">Invoice imported from QuickBooks.</div> : null}
+          {fromGmailToast.ok ? <div className="board-toast board-toast-ok">{fromGmailToast.ok}</div> : null}
+          {fromGmailToast.info ? <div className="board-toast">{fromGmailToast.info}</div> : null}
           {driveSaved ? <div className="board-toast board-toast-ok">Drive folder link saved.</div> : null}
           {driveCustomerSaved ? (
             <div className="board-toast board-toast-ok">Customer folder linked.</div>

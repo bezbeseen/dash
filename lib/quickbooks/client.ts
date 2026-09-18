@@ -187,6 +187,58 @@ export async function quickBooksCompanyJson(realmId: string, path: string): Prom
   throw lastError ?? new Error(`QuickBooks API failed for ${path}`);
 }
 
+/** POST JSON to QBO (create Customer / Estimate). */
+export async function quickBooksCompanyJsonPost(
+  realmId: string,
+  path: string,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  const token = await getValidQuickBooksAccessToken(realmId);
+  const base = getQuickBooksApiBase();
+  const url = `${base}/v3/company/${encodeURIComponent(realmId)}/${path}${path.includes('?') ? '&' : '?'}minorversion=65`;
+
+  const retryable = new Set([429, 502, 503, 504]);
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 800));
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      const err = new Error(`QuickBooks API ${res.status} POST ${path}: ${text.slice(0, 800)}`);
+      if (retryable.has(res.status) && attempt < 1) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      if (parsed.Fault) {
+        throw new Error(`QuickBooks Fault: ${JSON.stringify(parsed.Fault)}`);
+      }
+      return parsed;
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith('QuickBooks Fault')) throw e;
+      throw new Error(`QuickBooks API returned non-JSON for POST ${path}`);
+    }
+  }
+
+  throw lastError ?? new Error(`QuickBooks API POST failed for ${path}`);
+}
+
 /** Profit & Loss for a date range (month-to-date, quarter, etc.). */
 export async function fetchProfitAndLossReport(
   realmId: string,
@@ -304,6 +356,15 @@ export async function fetchInvoiceById(realmId: string, invoiceId: string): Prom
   return invoiceFromQbo(inv, invoiceId);
 }
 
+/** Customer's PrimaryEmailAddr — the shop's usual "email this customer" address. */
+export async function fetchCustomerPrimaryEmail(realmId: string, customerId: string): Promise<string | null> {
+  const body = await quickBooksCompanyJson(realmId, `customer/${encodeURIComponent(customerId)}`);
+  const addr = (body as { Customer?: { PrimaryEmailAddr?: { Address?: string } } }).Customer?.PrimaryEmailAddr
+    ?.Address;
+  const trimmed = addr?.trim();
+  return trimmed || null;
+}
+
 /** QBO returns raw PDF bytes (not JSON). */
 export async function fetchInvoicePdf(realmId: string, invoiceId: string): Promise<ArrayBuffer> {
   const token = await getValidQuickBooksAccessToken(realmId);
@@ -350,7 +411,7 @@ function qboQueryEntities<T>(qr: { QueryResponse?: Record<string, unknown> } | u
   return Array.isArray(raw) ? (raw as T[]) : [raw as T];
 }
 
-function qboQuerySqlStringLiteral(value: string): string {
+export function qboQuerySqlStringLiteral(value: string): string {
   return value.replace(/'/g, "''");
 }
 

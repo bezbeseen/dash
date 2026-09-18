@@ -116,6 +116,7 @@ const leadProfile = buildJobMatchProfile(
 );
 check('profile: lead address normalized', leadProfile.leadAddresses, ['jane@acmesigns.com']);
 check('profile: own mailbox dropped from lead addresses', leadProfile.leadAddresses.length, 1);
+check('profile: no QBO extras means no customer address', leadProfile.customerAddresses, []);
 check('profile: description address is a weaker ticket address', leadProfile.ticketAddresses, ['billing@acmesigns.com']);
 check('profile: doc ref parsed', leadProfile.docRef, '1263');
 
@@ -215,6 +216,57 @@ const nameOnParticipant = score(
   }),
 );
 check('score: display name counts as the weak name signal', nameOnParticipant.score, 40);
+
+const customerProfile = buildJobMatchProfile(
+  {
+    jobId: 'job-qb',
+    customerName: 'The Back Nine Golf',
+    projectName: 'Invoice #1580',
+    extraAddresses: ['Mickey.Colombo@thebackninegolf.com, contact@beseensignshop.com'],
+  },
+  filter,
+);
+check('profile: QBO bill email is a customer address', customerProfile.customerAddresses, [
+  'mickey.colombo@thebackninegolf.com',
+]);
+check('profile: shop mailbox stripped from QBO extras', customerProfile.customerAddresses.length, 1);
+check(
+  'plan: customer email is searched before invoice number',
+  buildThreadSearchPlan(customerProfile, { lookbackDays: 180 }).map((s) => s.signal),
+  ['customer_email_address', 'subject_doc_ref', 'customer_name'],
+);
+check(
+  'plan: bulk mode still searches the customer email',
+  buildThreadSearchPlan(customerProfile, { addressSignalsOnly: true }).map((s) => s.signal),
+  ['customer_email_address'],
+);
+
+const customerThread = score(
+  customerProfile,
+  withParticipants('t-cust', ['mickey.colombo@thebackninegolf.com', 'bez@beseensignshop.com']),
+);
+check('score: QBO customer email', customerThread.score, 90);
+check('score: customer email signal recorded', customerThread.signals, ['customer_email_address']);
+check('decide: unique customer email auto-links', decideThreadMatch([customerThread]).action, 'auto_link');
+
+const invoiceSubjectOnly = score(
+  customerProfile,
+  withParticipants('t-inv', ['other@corp.com'], 'Invoice 1580 from Be Seen Sign Shop'),
+);
+check('score: invoice number in subject is weaker than customer email', invoiceSubjectOnly.score, 70);
+
+const customerBeatsInvoice = decideThreadMatch([invoiceSubjectOnly, customerThread]);
+check('decide: customer email ranks above invoice-number subject', customerBeatsInvoice.suggestions[0]?.threadId, 't-cust');
+
+const sameThreadBothSignals = score(
+  customerProfile,
+  withParticipants(
+    't-both',
+    ['mickey.colombo@thebackninegolf.com', 'bez@beseensignshop.com'],
+    'Invoice 1580 from Be Seen Sign Shop',
+  ),
+);
+check('score: customer email plus invoice number is stronger still', sameThreadBothSignals.score, 95);
 
 const docRefOnly = score(leadProfile, withParticipants('t7', ['other@corp.com'], 'Re: Estimate 1263'));
 check('score: doc ref in subject alone', docRefOnly.score, 70);

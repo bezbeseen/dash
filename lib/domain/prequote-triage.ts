@@ -12,11 +12,12 @@ export type PrequoteColumnKey = 'new' | 'active' | 'thin' | 'stale';
 
 export const PREQUOTE_COLUMNS: PrequoteColumnKey[] = ['new', 'thin', 'active', 'stale'];
 
-export type PrequoteSourceFilter = 'all' | 'form' | 'conversation' | 'voice' | 'yelp' | 'other';
+export type PrequoteSourceFilter = 'all' | 'form' | 'conversation' | 'voice' | 'yelp' | 'gmail' | 'other';
 
 export const PREQUOTE_SOURCE_FILTERS: { key: PrequoteSourceFilter; label: string }[] = [
   { key: 'all', label: 'All sources' },
   { key: 'yelp', label: 'Yelp' },
+  { key: 'gmail', label: 'Gmail' },
   { key: 'form', label: 'Form' },
   { key: 'conversation', label: 'Conversation' },
   { key: 'voice', label: 'Voice' },
@@ -67,6 +68,7 @@ export function parsePrequoteSourceFilter(raw: string | undefined): PrequoteSour
     raw === 'conversation' ||
     raw === 'voice' ||
     raw === 'yelp' ||
+    raw === 'gmail' ||
     raw === 'other'
   ) {
     return raw;
@@ -84,6 +86,7 @@ export function jobMatchesPrequoteSource(
   if (source === 'conversation') return job.inboundLeadKind === InboundLeadKind.CONVERSATION;
   if (source === 'voice') return job.inboundLeadKind === InboundLeadKind.VOICE_CALL;
   if (source === 'yelp') return job.inboundLeadKind === InboundLeadKind.YELP_LEAD;
+  if (source === 'gmail') return job.inboundLeadKind === InboundLeadKind.GMAIL;
   return true;
 }
 

@@ -31,6 +31,7 @@ export type BulkMatchTicket = {
   mailboxEmail: string | null;
   confidence: number | null;
   leadAddresses: string[];
+  customerAddresses: string[];
   searched: string[];
   threadsInspected: number;
   suggestions: StoredThreadSuggestion[];
@@ -97,6 +98,7 @@ export async function scanJobsForGmailThreads(opts: {
       customerName: job.customerName,
       projectName: job.projectName,
       leadAddresses: run.profile.leadAddresses,
+      customerAddresses: run.profile.customerAddresses,
       searched: run.searched,
       threadsInspected: run.inspected.length,
       errors: run.errors,

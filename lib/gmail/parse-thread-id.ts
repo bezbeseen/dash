@@ -7,78 +7,151 @@ export function sanitizeGmailPaste(raw: string): string {
     .replace(/^["']+|["']+$/g, '');
 }
 
+/** Opaque Gmail web “sync” ids — not valid for threads.get / messages.get. */
+export function isGmailWebSyncId(token: string): boolean {
+  return /^(FMfcg|WhctK|Ktbx|CXKn|QgrcJ)/i.test(token.trim());
+}
+
+function decodeComponent(s: string): string {
+  try {
+    return decodeURIComponent(s.replace(/\+/g, '%20'));
+  } catch {
+    return s;
+  }
+}
+
+function looksLikeApiHexId(token: string): boolean {
+  const t = token.trim();
+  return /^[0-9a-f]{8,}$/i.test(t) && !isGmailWebSyncId(t);
+}
+
+function looksLikeBareApiToken(token: string): boolean {
+  const t = token.trim();
+  if (!t || isGmailWebSyncId(t) || t.includes('@') || t.includes(':') || t.includes('/')) return false;
+  return /^[a-zA-Z0-9_-]+$/.test(t) && t.length >= 8 && t.length <= 64;
+}
+
+/** `thread-f:DECIMAL` / `msg-f:DECIMAL` / `thread-a:r-DECIMAL` → hex id the Gmail API accepts. */
+export function gmailWebFIdToHex(token: string): string | null {
+  const decoded = decodeComponent(token.trim()).replace(/^#/, '');
+  const m = decoded.match(/^(?:thread|msg)-[af]:(?:r-)?(-?\d+)$/i);
+  if (!m?.[1]) return null;
+  try {
+    let n = BigInt(m[1]);
+    if (n < 0n) n += 1n << 64n;
+    const hex = n.toString(16);
+    return hex.length % 2 === 1 ? `0${hex}` : hex;
+  } catch {
+    return null;
+  }
+}
+
+function pushUnique(out: string[], id: string | null | undefined): void {
+  if (!id) return;
+  const t = id.trim();
+  if (!t || isGmailWebSyncId(t) || t.includes('://') || t.includes('@')) return;
+  if (!out.includes(t)) out.push(t);
+}
+
+function pushConvertedOrToken(out: string[], rawToken: string | null | undefined): void {
+  if (!rawToken) return;
+  const token = decodeComponent(rawToken.trim());
+  if (!token || isGmailWebSyncId(token)) return;
+  const converted = gmailWebFIdToHex(token);
+  if (converted) {
+    pushUnique(out, converted);
+    return;
+  }
+  if (looksLikeApiHexId(token) || looksLikeBareApiToken(token)) {
+    pushUnique(out, token);
+  }
+}
+
+function queryParamsFromGmailPaste(s: string): URLSearchParams {
+  const params = new URLSearchParams();
+  const merge = (from: URLSearchParams) => {
+    from.forEach((v, k) => {
+      if (v && !params.has(k)) params.set(k, v);
+    });
+  };
+
+  try {
+    const u = new URL(s);
+    merge(u.searchParams);
+    const hash = u.hash.startsWith('#') ? u.hash.slice(1) : u.hash;
+    const qIdx = hash.indexOf('?');
+    if (qIdx >= 0) merge(new URLSearchParams(hash.slice(qIdx + 1)));
+  } catch {
+    const qIdx = s.indexOf('?');
+    if (qIdx >= 0) {
+      const rest = s.slice(qIdx + 1).split('#')[0] ?? '';
+      merge(new URLSearchParams(rest));
+    }
+  }
+
+  return params;
+}
+
+function hashPathFromGmailPaste(s: string): string {
+  const hashIdx = s.lastIndexOf('#');
+  if (hashIdx < 0) return '';
+  let frag = s.slice(hashIdx + 1);
+  frag = decodeComponent(frag);
+  const qIdx = frag.indexOf('?');
+  return qIdx >= 0 ? frag.slice(0, qIdx) : frag;
+}
+
+/**
+ * Ids we can pass to Gmail `threads.get` / `messages.get`.
+ * Skips FMfcgz… web tokens and never returns the raw URL.
+ */
+export function collectGmailApiIdCandidates(raw: string): string[] {
+  const s = sanitizeGmailPaste(raw);
+  if (!s) return [];
+  const out: string[] = [];
+  const params = queryParamsFromGmailPaste(s);
+
+  pushConvertedOrToken(out, params.get('th'));
+  pushConvertedOrToken(out, params.get('permthid'));
+  pushConvertedOrToken(out, params.get('permmsgid'));
+  pushConvertedOrToken(out, params.get('simpl'));
+
+  const decoded = fullyUrlDecode(s);
+  for (const m of decoded.matchAll(/[?&#](?:th|permthid)=([a-zA-Z0-9_-]+)/gi)) {
+    pushConvertedOrToken(out, m[1]);
+  }
+  for (const m of decoded.matchAll(/[?&#](?:permmsgid|simpl)=([^&?#]+)/gi)) {
+    pushConvertedOrToken(out, m[1]);
+  }
+  for (const m of decoded.matchAll(/\b((?:thread|msg)-[af]:(?:r-)?)(-?\d+)/gi)) {
+    pushConvertedOrToken(out, `${m[1]}${m[2]}`);
+  }
+
+  const hashPath = hashPathFromGmailPaste(s);
+  if (hashPath) {
+    for (const part of hashPath.split('/').filter(Boolean)) {
+      pushConvertedOrToken(out, part);
+    }
+  }
+
+  if (!s.includes('://') && !s.includes('#')) {
+    const msgid = s.match(/<([^\s<>]+@[^\s<>]+)>/);
+    if (!msgid) pushConvertedOrToken(out, s);
+  }
+
+  return out;
+}
+
 /** Parse Gmail thread id from pasted URL or raw id. */
 export function parseGmailThreadId(raw: string): string | null {
   const s = sanitizeGmailPaste(raw);
   if (!s) return null;
 
-  const tokenOk = (t: string) => /^[a-zA-Z0-9_-]+$/.test(t) && t.length >= 8;
+  const candidates = collectGmailApiIdCandidates(s);
+  if (candidates[0]) return candidates[0]!;
 
-  // If the user pasted a "Message-ID: <...@...>" header line, extract the value inside <...>.
   const msgIdBrackets = s.match(/<([^\s<>]+@[^\s<>]+)>/);
   if (msgIdBrackets?.[1]) return msgIdBrackets[1]!;
-
-  // Gmail "print" / share links often use ?th=THREAD_ID or &th=THREAD_ID
-  const thParam = s.match(/[?&]th=([a-zA-Z0-9_-]+)/);
-  if (thParam && tokenOk(thParam[1]!)) return thParam[1]!;
-
-  if (!s.includes('://') && !s.includes('#')) {
-    return tokenOk(s) ? s : null;
-  }
-
-  try {
-    const u = new URL(s);
-    const th = u.searchParams.get('th');
-    if (th && tokenOk(th)) return th;
-
-    // Gmail "open message" URLs often include `permmsgid=msg-f%3A...`
-    // That value is a Gmail *message id*; we can use it to fetch the message,
-    // then read its `threadId`.
-    const perm = u.searchParams.get('permmsgid');
-    if (perm) {
-      try {
-        return decodeURIComponent(perm);
-      } catch {
-        return perm;
-      }
-    }
-  } catch {
-    /* not a full URL */
-  }
-
-  const takeLastSegment = (frag: string): string | null => {
-    const path = frag.split('?')[0] ?? frag;
-    const parts = path.split('/').filter(Boolean);
-    if (parts.length < 2) return null;
-    const last = parts[parts.length - 1]!;
-    return tokenOk(last) ? last : null;
-  };
-
-  const hashIdx = s.lastIndexOf('#');
-  if (hashIdx >= 0) {
-    let frag = s.slice(hashIdx + 1);
-    try {
-      frag = decodeURIComponent(frag);
-    } catch {
-      /* keep raw */
-    }
-    const id = takeLastSegment(frag);
-    if (id) return id;
-  }
-
-  try {
-    const u = new URL(s);
-    let frag = u.hash.startsWith('#') ? u.hash.slice(1) : u.hash;
-    try {
-      frag = decodeURIComponent(frag);
-    } catch {
-      /* keep */
-    }
-    const id = takeLastSegment(frag);
-    if (id) return id;
-  } catch {
-    /* not a URL */
-  }
 
   return null;
 }
@@ -88,17 +161,79 @@ export function parseGmailThreadId(raw: string): string | null {
  * id string we pass to Gmail `threads.get` / `messages.get`.
  */
 export function resolveGmailThreadInputForApi(raw: string): string {
+  return collectGmailApiIdCandidates(raw)[0] ?? '';
+}
+
+export function looksLikeGmailPaste(raw: string): boolean {
   const s = sanitizeGmailPaste(raw);
-  if (!s) return '';
-  const direct = parseGmailThreadId(s);
-  if (direct) return direct;
-  try {
-    const decoded = parseGmailThreadId(decodeURIComponent(s));
-    if (decoded) return decoded;
-  } catch {
-    /* ignore */
-  }
-  return s;
+  if (!s) return false;
+  if (collectGmailApiIdCandidates(s).length > 0) return true;
+  if (extractRfc822MsgIdForSearch(s)) return true;
+  if (/^https:\/\/mail\.google\.com\//i.test(s)) return true;
+  if (isGmailWebSyncId(s) || /^(?:thread|msg)-f:/i.test(s)) return true;
+  if (/^[a-zA-Z0-9_-]+$/.test(s) && s.length >= 8) return true;
+  return false;
+}
+
+/** Browser Gmail account index from `/mail/u/0` — session order, not a stable mailbox map. */
+export function extractGmailUrlUserIndex(raw: string): number | null {
+  const m = sanitizeGmailPaste(raw).match(/mail\.google\.com\/mail\/u\/(\d+)/i);
+  if (!m?.[1]) return null;
+  const n = Number.parseInt(m[1], 10);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+/** `authuser=` on a pasted Gmail URL when it is an email address. */
+export function extractGmailAuthuserEmail(raw: string): string | null {
+  const params = queryParamsFromGmailPaste(sanitizeGmailPaste(raw));
+  const v = params.get('authuser')?.trim() ?? '';
+  if (!v || !v.includes('@')) return null;
+  return v.toLowerCase();
+}
+
+export type GmailMailboxRef = { id: string; googleEmail: string };
+
+export function couldNotOpenGmailThreadMessage(triedEmails: string[]): string {
+  const list = [...new Set(triedEmails.map((e) => e.trim()).filter(Boolean))];
+  const where = list.length ? ` in ${list.join(', ')}` : ' in the connected mailboxes';
+  return `Could not open that conversation${where}. Paste ⋮ Copy link from the account that has the mail.`;
+}
+
+/** One-line note when we still create a pre-quote ticket with the pasted URL saved. */
+export function gmailBookmarkTicketExplanation(triedEmails: string[]): string {
+  const list = [...new Set(triedEmails.map((e) => e.trim()).filter(Boolean))];
+  const where = list.length ? ` (tried ${list.join(', ')})` : ' in the connected mailboxes';
+  return `Could not open that conversation${where}, so QuickBooks is skipped until the mail can be read.`;
+}
+
+/**
+ * Try the URL’s account hint first, then the form mailbox, then every other connection.
+ * `/u/N` is only a weak index into `createdOrder` (oldest first) — Gmail’s index is per-browser.
+ */
+export function orderMailboxesForGmailPaste(
+  mailboxes: GmailMailboxRef[],
+  opts: { preferredId?: string; pasted: string; createdOrder?: GmailMailboxRef[] },
+): GmailMailboxRef[] {
+  const out: GmailMailboxRef[] = [];
+  const used = new Set<string>();
+  const push = (m: GmailMailboxRef | undefined) => {
+    if (!m || used.has(m.id)) return;
+    used.add(m.id);
+    out.push(m);
+  };
+
+  const byEmail = new Map(mailboxes.map((m) => [m.googleEmail.trim().toLowerCase(), m]));
+  const authuser = extractGmailAuthuserEmail(opts.pasted);
+  if (authuser) push(byEmail.get(authuser));
+
+  if (opts.preferredId) push(mailboxes.find((m) => m.id === opts.preferredId));
+
+  const idx = extractGmailUrlUserIndex(opts.pasted);
+  const created = opts.createdOrder ?? mailboxes;
+  if (idx != null) push(created[idx]);
+
+  for (const m of mailboxes) push(m);
+  return out;
 }
 
 /** Iteratively URL-decode (Gmail often double-encodes #search/rfc822msgid…). */
@@ -139,9 +274,9 @@ export function extractRfc822MsgIdForSearch(raw: string): string | null {
   const bareCandidate = s.match(/([^\s<>]+@[^\s<>]+\.[A-Za-z0-9.-]+)/);
   if (bareCandidate?.[1]) {
     const val = bareCandidate[1]!;
-    const left = val.split('@')[0] ?? '';
+    const leftPart = val.split('@')[0] ?? '';
     // Heuristic: Message-ID values usually contain characters like '+' or '=' on the left side.
-    if (left.length >= 8 && /[+=\/]/.test(left)) return val;
+    if (leftPart.length >= 8 && /[+=/]/.test(leftPart)) return val;
   }
 
   // #search/rfc822msgid%3Cxxx%40domain%3E → after decode often still has rfc822msgid prefix

@@ -45,6 +45,8 @@ export function inboundLeadKindShortLabel(kind: InboundLeadKind | null | undefin
       return 'Voice';
     case InboundLeadKind.YELP_LEAD:
       return 'Yelp';
+    case InboundLeadKind.GMAIL:
+      return 'Gmail';
     default: {
       const _n: never = kind;
       return _n;
@@ -64,6 +66,8 @@ export function inboundLeadKindPhrase(kind: InboundLeadKind | null | undefined):
       return 'voice / AI call summary';
     case InboundLeadKind.YELP_LEAD:
       return 'Yelp Leads';
+    case InboundLeadKind.GMAIL:
+      return 'Gmail thread';
     default: {
       const _n: never = kind;
       return _n;
@@ -82,6 +86,8 @@ export function inboundLeadKindPillClassName(kind: InboundLeadKind): string {
       return 'bg-secondary-subtle text-secondary-emphasis border-secondary-subtle';
     case InboundLeadKind.YELP_LEAD:
       return 'bg-danger-subtle text-danger-emphasis border-danger-subtle';
+    case InboundLeadKind.GMAIL:
+      return 'bg-success-subtle text-success-emphasis border-success-subtle';
     default: {
       const _n: never = kind;
       return _n;
@@ -99,6 +105,8 @@ export function inboundLeadKindDetailLabel(kind: InboundLeadKind): string {
       return 'Voice call';
     case InboundLeadKind.YELP_LEAD:
       return 'Yelp';
+    case InboundLeadKind.GMAIL:
+      return 'Gmail';
     default: {
       const _n: never = kind;
       return _n;
@@ -116,6 +124,8 @@ export function inboundLeadKindTitleAttr(kind: InboundLeadKind): string {
       return 'Lead source: voice / AI call summary';
     case InboundLeadKind.YELP_LEAD:
       return 'Lead source: Yelp Leads (Request a Quote)';
+    case InboundLeadKind.GMAIL:
+      return 'Lead source: pasted Gmail conversation';
     default: {
       const _n: never = kind;
       return _n;

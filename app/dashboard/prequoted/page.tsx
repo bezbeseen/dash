@@ -2,11 +2,13 @@ import { BoardStatus } from '@prisma/client';
 import Link from 'next/link';
 import { JobCard } from '@/components/job-card';
 import { PrequoteBoardFilters } from '@/components/prequote-board-filters';
+import { PrequoteFromGmailForm } from '@/components/prequote-from-gmail-form';
 import { TicketBoardBadgeLegend } from '@/components/ticket-board-badge-legend';
 import { prisma } from '@/lib/db/prisma';
 import { taskCountsByJobId } from '@/lib/domain/job-task-counts';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import {
+  fromGmailBoardToast,
   jobErrorFromQuery,
   syncToastFromQuery,
 } from '@/lib/domain/integration-query-toasts';
@@ -42,11 +44,12 @@ type PrequotedPageProps = {
     cleared?: string;
     source?: string;
     line?: string;
+    from_gmail_error?: string;
   }>;
 };
 
 export default async function PrequotedTicketsPage({ searchParams }: PrequotedPageProps) {
-  const [jobs, totalCount, qbToolbar] = await Promise.all([
+  const [jobs, totalCount, qbToolbar, gmailConnections] = await Promise.all([
     prisma.job.findMany({
       where: { archivedAt: null, boardStatus: BoardStatus.REQUESTED },
       orderBy: [
@@ -59,6 +62,10 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
       where: { archivedAt: null, boardStatus: BoardStatus.REQUESTED },
     }),
     loadQbTicketsToolbar(),
+    prisma.gmailConnection.findMany({
+      orderBy: { googleEmail: 'asc' },
+      select: { id: true, googleEmail: true },
+    }),
   ]);
   const taskByJob = await taskCountsByJobId(jobs.map((j) => j.id));
   const lastTicketSyncAt = qbToolbar.lastTicketSyncAt;
@@ -68,6 +75,7 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
   const callerLineId = parsePrequoteCallerLineFilter(q.line);
   const { synced, syncError } = syncToastFromQuery(q);
   const jobError = jobErrorFromQuery(q);
+  const fromGmailError = fromGmailBoardToast(q);
   const cleared = q.cleared === '1';
 
   const lineCounts = Object.fromEntries(countPrequoteJobsByCallerLine(jobs));
@@ -86,9 +94,10 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Pre-quote tickets</h1>
           <p className="board-topbar-sub">
-            Triage leads before a <strong>sent</strong> estimate lands in QuickBooks. Check boxes to select many —
-            use <strong>Select all</strong> in a column, then <strong>Dismiss (junk)</strong> to clear stale leads.
-            Main{' '}
+            Triage leads before a <strong>sent</strong> estimate lands in QuickBooks. Use{' '}
+            <a href="#prequote-from-gmail">New ticket from Gmail</a> below to paste a conversation link.
+            Check boxes to select many — use <strong>Select all</strong> in a column, then{' '}
+            <strong>Dismiss (junk)</strong> to clear stale leads. Main{' '}
             <Link href="/dashboard/tickets" className="text-decoration-underline">
               Tickets
             </Link>{' '}
@@ -102,6 +111,9 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
           </p>
         </div>
         <div className="board-topbar-actions d-flex flex-wrap align-items-center gap-2">
+          <a href="#prequote-from-gmail" className="btn btn-sm btn-primary">
+            New ticket from Gmail
+          </a>
           {qbToolbar.hasToken ? (
             <>
               <form action="/api/jobs/sync" method="post" className="d-inline">
@@ -154,12 +166,13 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
         </div>
       </header>
 
-      {(syncError || jobError || synced || cleared) && (
+      {(syncError || jobError || synced || cleared || fromGmailError) && (
         <div className="board-toasts" role="status">
           {syncError ? (
             <div className="board-toast board-toast-error">QuickBooks sync error: {syncError}</div>
           ) : null}
           {jobError ? <div className="board-toast board-toast-error">{jobError}</div> : null}
+          {fromGmailError ? <div className="board-toast board-toast-error">{fromGmailError}</div> : null}
           {synced ? (
             <div className="board-toast board-toast-ok">Synced latest estimates/invoices from QuickBooks.</div>
           ) : null}
@@ -168,6 +181,8 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
           ) : null}
         </div>
       )}
+
+      <PrequoteFromGmailForm connections={gmailConnections} hasQuickBooks={qbToolbar.hasToken} />
 
       <PrequoteBoardFilters
         source={sourceFilter}
