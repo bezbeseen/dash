@@ -71,6 +71,8 @@ function walkRows(node: unknown, idx: ColIndex, out: AccountListBalanceRow[]): v
   const tryEmit = (cols: ColDataCell[] | null) => {
     if (!cols || cols.length === 0) return;
     const nameCell = cols[idx.name] ?? cols[0];
+    const id = nameCell?.id?.trim();
+    const name = nameCell?.value?.trim();
     // Prefer rows that have an account id on the name cell (QBO puts COA Id there).
     if (!id || !name) return;
     const balCell = cols[idx.bal] ?? cols[cols.length - 1];
