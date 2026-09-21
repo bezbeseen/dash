@@ -13,8 +13,7 @@ export default async function CashPage() {
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Cash &amp; banks</h1>
           <p className="board-topbar-sub">
-            QuickBooks Online Chart of Accounts: every <strong>Bank</strong> account, balances, and how this differs
-            from ticket-level accounting in Dash.
+            Live <strong>current balances</strong> from QuickBooks Bank accounts — not a sum of deposit history.
           </p>
         </div>
         <div className="board-topbar-actions">

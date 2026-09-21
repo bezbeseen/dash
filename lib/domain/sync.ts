@@ -265,18 +265,24 @@ export async function upsertJobFromInvoice(
       target?.projectName ?? nextProjectName,
       target?.projectDescription,
     );
+    // Incomplete QBO Query rows omit Balance → amountPaidCents looks like 0. Keep prior paid state.
+    const paymentTrusted = snapshot.balanceKnown !== false;
     const updatePayload: Prisma.JobUncheckedUpdateInput = {
       quickbooksInvoiceId: snapshot.id,
       quickbooksCustomerId: snapshot.customerId,
       customerName: snapshot.customerName,
       projectName: nextProjectName,
       projectDescription: fromInvoice ?? preserved ?? null,
-      invoiceStatus: mapInvoiceStatus(snapshot.status),
       invoiceAmountCents: snapshot.totalAmtCents,
-      amountPaidCents: snapshot.amountPaidCents,
-      paidAt: invoiceSnapshotEffectivelyPaid(snapshot)
-        ? (target?.paidAt ?? new Date())
-        : null,
+      ...(paymentTrusted
+        ? {
+            invoiceStatus: mapInvoiceStatus(snapshot.status),
+            amountPaidCents: snapshot.amountPaidCents,
+            paidAt: invoiceSnapshotEffectivelyPaid(snapshot)
+              ? (target?.paidAt ?? new Date())
+              : null,
+          }
+        : {}),
       quickbooksEstimateId: target?.quickbooksEstimateId ?? snapshot.linkedEstimateId,
       invoiceCreatedAtQbo: nextInvCreated,
       qbOrderingAt,
@@ -310,8 +316,10 @@ export async function upsertJobFromInvoice(
             ),
             invoiceStatus: mapInvoiceStatus(snapshot.status),
             invoiceAmountCents: snapshot.totalAmtCents,
-            amountPaidCents: snapshot.amountPaidCents,
-            paidAt: invoiceSnapshotEffectivelyPaid(snapshot) ? new Date() : null,
+            // New rows: unknown Balance still stores 0 paid (nothing prior to preserve).
+            amountPaidCents: paymentTrusted ? snapshot.amountPaidCents : 0,
+            paidAt:
+              paymentTrusted && invoiceSnapshotEffectivelyPaid(snapshot) ? new Date() : null,
             quickbooksEstimateId: snapshot.linkedEstimateId ?? undefined,
             invoiceCreatedAtQbo: nextInvCreated,
             qbOrderingAt,

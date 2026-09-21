@@ -325,6 +325,7 @@ function invoiceFromQbo(inv: QboInvoice, fallbackId: string): InvoiceSnapshot {
     totalAmtCents: totalCents,
     balanceCents,
     amountPaidCents,
+    balanceKnown,
     status,
     docNumber: inv.DocNumber?.trim() || undefined,
     txnDate: inv.TxnDate,
@@ -481,36 +482,57 @@ async function mapInBatches<T, R>(
   return out;
 }
 
+/** QBO Query often omits Balance; without it we must not treat the invoice as unpaid. */
+function qboInvoiceBalancePresent(inv: QboInvoice): boolean {
+  const balRaw = inv.Balance;
+  return (
+    balRaw != null &&
+    (typeof balRaw === 'number' || typeof balRaw === 'string') &&
+    String(balRaw).trim().length > 0
+  );
+}
+
 /**
- * List recent invoices — prefer one Query (Balance + LinkedTxn); fall back to per-id GET only for small lists.
+ * List recent invoices. Prefer one Query (Balance + LinkedTxn) for speed, but GET any row
+ * where Balance is missing — otherwise sync writes amountPaidCents=0 and paid jobs look unpaid.
  */
 export async function listRecentInvoices(realmId: string, maxResults = 100): Promise<InvoiceSnapshot[]> {
+  let queryRows: QboInvoice[] | null = null;
   const richSql = `SELECT Id, DocNumber, TotalAmt, Balance, TxnDate, DueDate, CustomerRef, BillEmail, BillEmailCc, CustomerMemo, PrivateNote, LinkedTxn, MetaData FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS ${maxResults}`;
   try {
     const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(richSql)}`);
-    const invoices = qboQueryEntities<QboInvoice>(body as { QueryResponse?: Record<string, unknown> }, 'Invoice');
-    return invoices.map((inv) => invoiceFromQbo(inv, inv.Id ?? ''));
+    queryRows = qboQueryEntities<QboInvoice>(body as { QueryResponse?: Record<string, unknown> }, 'Invoice');
   } catch (richErr) {
     console.warn('[quickbooks] listRecentInvoices rich query failed; falling back to GET-by-id', richErr);
   }
 
-  const ordered = `SELECT Id FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS ${maxResults}`;
-  let body: unknown;
-  try {
-    body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(ordered)}`);
-  } catch {
-    const fallback = `SELECT Id FROM Invoice MAXRESULTS ${maxResults}`;
-    body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(fallback)}`);
+  let stubs = queryRows;
+  if (!stubs) {
+    const ordered = `SELECT Id FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS ${maxResults}`;
+    let body: unknown;
+    try {
+      body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(ordered)}`);
+    } catch {
+      const fallback = `SELECT Id FROM Invoice MAXRESULTS ${maxResults}`;
+      body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(fallback)}`);
+    }
+    stubs = qboQueryEntities<QboInvoice>(body as { QueryResponse?: Record<string, unknown> }, 'Invoice');
   }
-  const stubs = qboQueryEntities<QboInvoice>(body as { QueryResponse?: Record<string, unknown> }, 'Invoice');
-  const ids = [...new Set(stubs.map((s) => s.Id).filter((id): id is string => Boolean(id)))];
 
-  const hydrateCap = Math.min(ids.length, 8);
-  const results = await mapInBatches(ids.slice(0, hydrateCap), 3, async (id) => {
+  const results = await mapInBatches(stubs, 3, async (inv) => {
+    const id = inv.Id?.trim();
+    if (!id) return null;
+
+    // Trust the query row only when Balance is present; otherwise GET the full invoice.
+    if (queryRows && qboInvoiceBalancePresent(inv)) {
+      return invoiceFromQbo(inv, id);
+    }
+
     try {
       return await fetchInvoiceById(realmId, id);
     } catch (e) {
       console.warn('[quickbooks] listRecentInvoices: GET invoice failed, skipping id', id, e);
+      // Skip rather than invent unpaid — avoids wiping a previously correct amountPaidCents.
       return null;
     }
   });
@@ -541,18 +563,28 @@ type QboAccount = {
   AccountType?: string;
   AccountSubType?: string;
   CurrentBalance?: number | string;
+  CurrentBalanceWithSubAccounts?: number | string;
+  SubAccount?: boolean;
+  Active?: boolean;
+  ParentRef?: { value?: string; name?: string };
 };
 
 function accountRowToBalance(a: QboAccount): BankAccountBalance | null {
   const id = a.Id?.trim();
   if (!id) return null;
+  // Prefer explicit Active === false skip; Query may already filter Active = true.
+  if (a.Active === false) return null;
   const name = a.Name?.trim() || `Account ${id}`;
+  const parentId = a.ParentRef?.value?.trim() || undefined;
   return {
     id,
     name,
     accountType: a.AccountType?.trim(),
     accountSubType: a.AccountSubType?.trim(),
     balanceCents: dollarsToCents(a.CurrentBalance),
+    balanceWithSubAccountsCents: dollarsToCents(a.CurrentBalanceWithSubAccounts ?? a.CurrentBalance),
+    isSubAccount: a.SubAccount === true || Boolean(parentId),
+    parentId,
   };
 }
 
@@ -562,13 +594,13 @@ function accountRowToBalance(a: QboAccount): BankAccountBalance | null {
  */
 export async function listCheckingAccountBalances(realmId: string): Promise<BankAccountBalance[]> {
   const checkingSql =
-    "SELECT Id, Name, AccountType, AccountSubType, CurrentBalance FROM Account WHERE AccountType = 'Bank' AND AccountSubType = 'Checking' MAXRESULTS 25";
+    "SELECT Id, Name, AccountType, AccountSubType, CurrentBalance, CurrentBalanceWithSubAccounts, SubAccount, ParentRef, Active FROM Account WHERE AccountType = 'Bank' AND AccountSubType = 'Checking' AND Active = true MAXRESULTS 25";
   let body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(checkingSql)}`);
   let rows = qboQueryEntities<QboAccount>(body as { QueryResponse?: Record<string, unknown> }, 'Account');
 
   if (rows.length === 0) {
     const bankSql =
-      "SELECT Id, Name, AccountType, AccountSubType, CurrentBalance FROM Account WHERE AccountType = 'Bank' MAXRESULTS 25";
+      "SELECT Id, Name, AccountType, AccountSubType, CurrentBalance, CurrentBalanceWithSubAccounts, SubAccount, ParentRef, Active FROM Account WHERE AccountType = 'Bank' AND Active = true MAXRESULTS 25";
     body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(bankSql)}`);
     rows = qboQueryEntities<QboAccount>(body as { QueryResponse?: Record<string, unknown> }, 'Account');
   }
@@ -578,13 +610,21 @@ export async function listCheckingAccountBalances(realmId: string): Promise<Bank
 }
 
 /**
- * All Chart of Accounts rows with AccountType = Bank (up to 100). For the Cash & banks page;
+ * Active Chart of Accounts rows with AccountType = Bank (up to 100). For the Cash & banks page;
  * the sidebar widget uses {@link listCheckingAccountBalances} instead (checking-first).
  */
 export async function listBankAccountsDetailed(realmId: string): Promise<BankAccountBalance[]> {
-  const bankSql =
-    "SELECT Id, Name, AccountType, AccountSubType, CurrentBalance FROM Account WHERE AccountType = 'Bank' MAXRESULTS 100";
-  const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(bankSql)}`);
+  const select =
+    'Id, Name, AccountType, AccountSubType, CurrentBalance, CurrentBalanceWithSubAccounts, SubAccount, ParentRef, Active';
+  const activeSql = `SELECT ${select} FROM Account WHERE AccountType = 'Bank' AND Active = true MAXRESULTS 100`;
+  let body: unknown;
+  try {
+    body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(activeSql)}`);
+  } catch (activeErr) {
+    console.warn('[quickbooks] listBankAccountsDetailed Active filter failed; retrying without it', activeErr);
+    const allSql = `SELECT ${select} FROM Account WHERE AccountType = 'Bank' MAXRESULTS 100`;
+    body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(allSql)}`);
+  }
   const rows = qboQueryEntities<QboAccount>(body as { QueryResponse?: Record<string, unknown> }, 'Account');
   const out = rows.map(accountRowToBalance).filter((x): x is BankAccountBalance => x != null);
   return out.sort((a, b) => b.balanceCents - a.balanceCents);

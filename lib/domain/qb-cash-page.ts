@@ -13,6 +13,16 @@ export function filterCashPageAccounts(accounts: BankAccountBalance[]): BankAcco
   return accounts.filter((a) => !isCashAccountHiddenByName(a.name));
 }
 
+/**
+ * Combined current cash without double-counting parent + sub-accounts.
+ * Uses each top-level account's CurrentBalanceWithSubAccounts (falls back to CurrentBalance).
+ */
+export function totalCurrentCashCents(accounts: BankAccountBalance[]): number {
+  return accounts
+    .filter((a) => !a.isSubAccount)
+    .reduce((s, a) => s + (a.balanceWithSubAccountsCents ?? a.balanceCents), 0);
+}
+
 export type QbCashPageData =
   | { kind: 'disconnected' }
   | { kind: 'error' }
@@ -50,6 +60,7 @@ export function groupBankAccountsBySubtype(accounts: BankAccountBalance[]): Bank
   const groups: BankAccountGroup[] = [...by.entries()].map(([subtypeLabel, rows]) => ({
     subtypeLabel,
     accounts: rows.sort((x, y) => y.balanceCents - x.balanceCents),
+    // Per-account CurrentBalance only — avoids parent roll-up double-count inside a subtype.
     subtotalCents: rows.reduce((s, r) => s + r.balanceCents, 0),
   }));
   groups.sort((a, b) => b.subtotalCents - a.subtotalCents);

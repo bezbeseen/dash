@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import {
   groupBankAccountsBySubtype,
+  totalCurrentCashCents,
   type QbCashPageData,
 } from '@/lib/domain/qb-cash-page';
 import { getQuickBooksEnvironment } from '@/lib/quickbooks/config';
@@ -51,10 +52,10 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
   }
 
   const { accounts, realmId } = data;
-  const totalCents = accounts.reduce((s, a) => s + a.balanceCents, 0);
+  const totalCents = totalCurrentCashCents(accounts);
   const negativeCount = accounts.filter((a) => a.balanceCents < 0).length;
   const groups = groupBankAccountsBySubtype(accounts);
-  const largest = accounts[0];
+  const largest = [...accounts].sort((a, b) => b.balanceCents - a.balanceCents)[0];
 
   return (
     <div className="qb-cash-page d-flex flex-column gap-4">
@@ -71,12 +72,12 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
         <div className="d-flex flex-column flex-lg-row align-items-lg-start justify-content-lg-between gap-3">
           <div>
             <h2 id="qb-cash-hero-title" className="qb-balance-widget-title mb-2">
-              Cash in QuickBooks (all bank accounts)
+              Current cash on books
             </h2>
             <div className="qb-balance-hero qb-cash-hero-amount">{fmtUsd(totalCents)}</div>
             <p className="qb-balance-widget-sub mb-0">
-              {accounts.length} account{accounts.length === 1 ? '' : 's'} on the Chart of Accounts &middot; sum of
-              current balances as QuickBooks stores them
+              Live <strong>CurrentBalance</strong> from QuickBooks for active Bank accounts &middot; parent +
+              sub-accounts counted once
             </p>
           </div>
           <div className="d-flex flex-column gap-2 text-lg-end">
@@ -98,13 +99,14 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
             <div className="card-body">
               <p className="text-body-secondary small text-uppercase fw-semibold mb-1">Accounts</p>
               <p className="fs-4 fw-bold mb-0">{accounts.length}</p>
+              <p className="meta small mb-0 mt-1">Active Bank type only</p>
             </div>
           </div>
         </div>
         <div className="col-12 col-sm-6 col-xl-3">
           <div className="card border rounded-3 h-100 bg-body shadow-sm">
             <div className="card-body">
-              <p className="text-body-secondary small text-uppercase fw-semibold mb-1">Largest balance</p>
+              <p className="text-body-secondary small text-uppercase fw-semibold mb-1">Largest current</p>
               <p className="fs-6 fw-bold mb-0 text-truncate" title={largest?.name}>
                 {largest ? fmtUsd(largest.balanceCents) : '\u2014'}
               </p>
@@ -138,15 +140,15 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
             <i className="material-icons-outlined text-body-secondary" style={{ fontSize: 22 }}>
               account_balance
             </i>
-            Full register list
+            Current balance by account
           </h3>
           <p className="text-body-secondary small mb-0 mt-2">
-            Sorted by balance (high to low). Percent column is share of the total on this page.
+            Each row is that account&apos;s current register balance in QuickBooks — not a running total of deposits.
           </p>
         </div>
         {accounts.length === 0 ? (
           <div className="card-body">
-            <p className="text-body-secondary mb-0">No bank-type accounts returned for this company.</p>
+            <p className="text-body-secondary mb-0">No active bank-type accounts returned for this company.</p>
           </div>
         ) : (
           <div className="table-responsive">
@@ -156,10 +158,10 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
                   <th scope="col">Account</th>
                   <th scope="col">Subtype</th>
                   <th scope="col" className="text-end">
-                    Balance
+                    Current balance
                   </th>
                   <th scope="col" className="text-end">
-                    % of total
+                    % of cash
                   </th>
                 </tr>
               </thead>
@@ -168,7 +170,10 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
                   <tr key={a.id}>
                     <td>
                       <span className="fw-medium">{a.name}</span>
-                      <div className="small text-body-secondary font-monospace">Id {a.id}</div>
+                      <div className="small text-body-secondary">
+                        {a.isSubAccount ? 'Sub-account' : 'Top-level'}
+                        <span className="font-monospace"> · Id {a.id}</span>
+                      </div>
                     </td>
                     <td className="text-body-secondary small">{a.accountSubType || '\u2014'}</td>
                     <td className={`text-end fw-semibold ${a.balanceCents < 0 ? 'text-danger' : ''}`}>
@@ -183,7 +188,7 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
               <tfoot className="table-light">
                 <tr>
                   <th scope="row" colSpan={2} className="text-end">
-                    Total
+                    Combined current cash
                   </th>
                   <td className="text-end fw-bold">{fmtUsd(totalCents)}</td>
                   <td className="text-end">100%</td>
@@ -224,55 +229,28 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
           <h3 className="h6 fw-semibold mb-3">What you are looking at</h3>
           <ul className="text-body-secondary small mb-0 ps-3">
             <li className="mb-2">
-              These rows are <strong>Chart of Accounts</strong> entries whose type is <strong>Bank</strong> in
-              QuickBooks Online. That usually includes checking and savings; credit cards and loans use other account
-              types and do not appear here.
+              Each amount is QuickBooks&apos; <strong>current register balance</strong> for that Bank account — not a
+              lifetime sum of deposits or payments.
             </li>
             <li className="mb-2">
-              <strong>Balance</strong> is the current register balance QuickBooks holds for each account; not
-              necessarily the same as your bank&apos;s live website unless you use banking feeds and QBO is caught up.
+              Only <strong>active</strong> Chart of Accounts rows with type <strong>Bank</strong> are included.
+              Inactive accounts and credit cards are left out.
             </li>
             <li className="mb-2">
-              Dash <strong>tickets</strong> (estimates, invoices, paid amounts) are a different slice of data. They
-              sync from QBO into the board; this page is intentionally about <strong>cash-on-books</strong>, not
-              per-ticket AR.
+              The combined total uses each top-level account&apos;s roll-up so a parent checking account and its
+              sub-accounts are not counted twice.
             </li>
             <li>
-              For ticket-level money, use <Link href="/dashboard/accounting">Accounting</Link>; for connecting QBO and
-              running sync, use <Link href="/dashboard/settings">Settings</Link>.
+              Ticket-level paid amounts live on <Link href="/dashboard/accounting">Accounting</Link>; connect or
+              refresh QBO in <Link href="/dashboard/settings">Settings</Link>.
             </li>
-          </ul>
-        </div>
-      </section>
-
-      <section className="card border rounded-3 border-dashed bg-body-secondary bg-opacity-25">
-        <div className="card-body p-4">
-          <h3 className="h6 fw-semibold mb-3 d-flex align-items-center gap-2">
-            <i className="material-icons-outlined text-body-secondary" style={{ fontSize: 22 }}>
-              construction
-            </i>
-            Room to grow
-          </h3>
-          <p className="text-body-secondary small mb-3">
-            QuickBooks exposes more than we surface here yet. Natural next steps if you want this page to go deeper:
-          </p>
-          <ul className="text-body-secondary small mb-0 ps-3">
-            <li className="mb-2">
-              Register / recent transactions per bank account (query General Ledger or activity endpoints).
-            </li>
-            <li className="mb-2">Credit card balances (separate AccountType query) alongside bank cash.</li>
-            <li className="mb-2">Unpaid bills and AP aging vs cash (requires Bill / Vendor models).</li>
-            <li className="mb-2">
-              Cash-flow window (inflows/outflows over a date range) aligned with your statement cycle.
-            </li>
-            <li>Alerts when total cash crosses thresholds you care about.</li>
           </ul>
         </div>
       </section>
 
       <p className="text-body-tertiary small mb-0">
-        Data loaded on each request from QuickBooks; not a stored snapshot in Dash. Balances from Chart of Accounts;
-        not real-time bank feeds unless QBO is synced with your bank. Accounts whose names include{' '}
+        Loaded live from QuickBooks on each visit. Matches QBO Chart of Accounts current balances when banking feeds
+        are caught up — not always the same as your bank&apos;s website. Accounts whose names include{' '}
         <strong>Chase</strong>, <strong>Bank of America</strong>, or <strong>BofA</strong> are omitted from this page.
       </p>
     </div>

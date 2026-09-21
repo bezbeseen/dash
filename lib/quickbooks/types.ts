@@ -43,7 +43,13 @@ export type BankAccountBalance = {
   accountType?: string;
   /** QBO AccountSubType, e.g. Checking, Savings */
   accountSubType?: string;
+  /** This account's own CurrentBalance (not a sum of history). */
   balanceCents: number;
+  /** Parent + descendants roll-up when QBO returns it. */
+  balanceWithSubAccountsCents?: number;
+  /** True when this row is a sub-account under another Bank account. */
+  isSubAccount?: boolean;
+  parentId?: string;
 };
 
 export type InvoiceSnapshot = {
@@ -54,6 +60,11 @@ export type InvoiceSnapshot = {
   totalAmtCents: number;
   balanceCents: number;
   amountPaidCents: number;
+  /**
+   * False when QBO omitted Balance (common on Query). Sync must not treat that as unpaid.
+   * Absent/undefined means known (legacy callers / full GET).
+   */
+  balanceKnown?: boolean;
   status: 'DRAFT' | 'OPEN' | 'PAID' | 'VOID';
   /** From QBO when returned by GET Invoice / useful for PDF naming & ticket UI */
   docNumber?: string;
