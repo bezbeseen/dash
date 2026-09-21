@@ -46,7 +46,16 @@ type ColIndex = {
 function columnIndexes(root: Record<string, unknown>): ColIndex {
   const columns = (root.Columns as { Column?: unknown } | undefined)?.Column;
   const list = Array.isArray(columns) ? columns : columns ? [columns] : [];
-  const find = (...needles: string[]) => {
+  const findExact = (...needles: string[]) => {
+    const i = list.findIndex((c) => {
+      const col = c as { ColType?: string; ColTitle?: string };
+      const typ = (col.ColType ?? '').toLowerCase().replace(/\s+/g, '_');
+      const title = (col.ColTitle ?? '').toLowerCase().replace(/\s+/g, '_');
+      return needles.some((n) => typ === n || title === n);
+    });
+    return i >= 0 ? i : -1;
+  };
+  const findIncludes = (...needles: string[]) => {
     const i = list.findIndex((c) => {
       const col = c as { ColType?: string; ColTitle?: string };
       const hay = `${col.ColType ?? ''} ${col.ColTitle ?? ''}`.toLowerCase();
@@ -54,13 +63,23 @@ function columnIndexes(root: Record<string, unknown>): ColIndex {
     });
     return i >= 0 ? i : -1;
   };
-  const name = find('account', 'name');
-  const bal = find('account_bal', 'balance', 'bal');
+  // Prefer exact ColType matches — loose "balance"/"account" matching picks the wrong column.
+  const name = findExact('account', 'account_name') >= 0
+    ? findExact('account', 'account_name')
+    : findIncludes('account_name');
+  const bal = findExact('account_bal', 'account_balance') >= 0
+    ? findExact('account_bal', 'account_balance')
+    : findIncludes('account_bal');
+  const typeIdx = findExact('account_type') >= 0 ? findExact('account_type') : findIncludes('account_type');
+  const detailIdx =
+    findExact('detail_acc_type', 'detail_type') >= 0
+      ? findExact('detail_acc_type', 'detail_type')
+      : findIncludes('detail_acc');
   return {
     name: name >= 0 ? name : 0,
     bal: bal >= 0 ? bal : Math.max(list.length - 1, 0),
-    type: find('account_type', 'type') >= 0 ? find('account_type', 'type') : undefined,
-    detail: find('detail') >= 0 ? find('detail') : undefined,
+    type: typeIdx >= 0 ? typeIdx : undefined,
+    detail: detailIdx >= 0 ? detailIdx : undefined,
   };
 }
 

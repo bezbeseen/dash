@@ -3,6 +3,7 @@ import { getQuickBooksApiBase } from '@/lib/quickbooks/config';
 import { getValidQuickBooksAccessToken } from '@/lib/quickbooks/tokens-db';
 import { BankAccountBalance, EstimateSnapshot, InvoiceSnapshot } from './types';
 import { parseAccountListBalances } from './account-list-balances';
+import { parseBalanceSheetBankBalances } from './balance-sheet-banks';
 
 export function verifyQuickBooksSignature(rawBody: string, signatureHeader: string | null) {
   const verifierToken = process.env.QUICKBOOKS_WEBHOOK_VERIFIER;
@@ -586,6 +587,7 @@ function accountRowToBalance(a: QboAccount): BankAccountBalance | null {
     balanceWithSubAccountsCents: dollarsToCents(a.CurrentBalanceWithSubAccounts ?? a.CurrentBalance),
     isSubAccount: a.SubAccount === true || Boolean(parentId),
     parentId,
+    balanceSource: 'account_query',
   };
 }
 
@@ -611,9 +613,14 @@ export async function listCheckingAccountBalances(realmId: string): Promise<Bank
 }
 
 /**
- * Active Chart of Accounts Bank accounts with balances from reports/AccountList
- * (account_bal — matches the register / COA balance in the QBO UI). Falls back to
- * Account.CurrentBalance from Query, then per-id GET, if the report is unavailable.
+ * Active Bank accounts with books/register balances.
+ * Preference order per account:
+ * 1) Balance Sheet as-of today (matches QBO Balance Sheet / COA presentation)
+ * 2) GET Account/{id} CurrentBalance (register balance for that account)
+ * 3) Account List report account_bal
+ * 4) Query CurrentBalance (last resort)
+ *
+ * Note: QBO does not expose the bank-feed “Bank balance” from the Banking page via API.
  */
 export async function listBankAccountsDetailed(realmId: string): Promise<BankAccountBalance[]> {
   const select =
@@ -628,58 +635,82 @@ export async function listBankAccountsDetailed(realmId: string): Promise<BankAcc
     body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(allSql)}`);
   }
   const rows = qboQueryEntities<QboAccount>(body as { QueryResponse?: Record<string, unknown> }, 'Account');
-  const meta = rows.map(accountRowToBalance).filter((x): x is BankAccountBalance => x != null);
+  let accounts = rows.map(accountRowToBalance).filter((x): x is BankAccountBalance => x != null);
 
-  const reportRows = await fetchBankAccountListRows(realmId);
-  if (reportRows.length > 0) {
-    const reportById = new Map(reportRows.map((r) => [r.id, r]));
-    const merged = meta.map((a) => {
-      const fromReport = reportById.get(a.id);
-      if (!fromReport) return a;
-      return {
-        ...a,
-        // AccountList account_bal is the balance QBO shows on the chart / register.
-        balanceCents: fromReport.balanceCents,
-        balanceWithSubAccountsCents: fromReport.balanceCents,
-      };
-    });
-    for (const row of reportRows) {
-      if (merged.some((a) => a.id === row.id)) continue;
-      // Only add if the report typed it as Bank (or type missing).
-      const t = (row.accountType || '').toLowerCase();
-      if (t && t !== 'bank') continue;
-      merged.push({
-        id: row.id,
-        name: row.name,
-        accountType: row.accountType || 'Bank',
-        accountSubType: row.detailType,
-        balanceCents: row.balanceCents,
-        balanceWithSubAccountsCents: row.balanceCents,
-      });
-    }
-    return merged.sort((a, b) => b.balanceCents - a.balanceCents);
-  }
-
-  // Report failed — GET full Account so we do not trust a sparse Query CurrentBalance alone.
-  const hydrated = await mapInBatches(meta, 3, async (a) => {
+  // Hydrate CurrentBalance via GET — Query rows are often stale/sparse.
+  accounts = await mapInBatches(accounts, 4, async (a) => {
     try {
       const full = await quickBooksCompanyJson(realmId, `account/${encodeURIComponent(a.id)}`);
       const acct = (full as { Account?: QboAccount }).Account;
       if (!acct) return a;
       const next = accountRowToBalance(acct);
-      return next ?? a;
+      if (!next) return a;
+      return { ...next, balanceSource: 'account_get' as const };
     } catch (e) {
       console.warn('[quickbooks] listBankAccountsDetailed: GET account failed', a.id, e);
       return a;
     }
   });
 
-  return hydrated.sort((a, b) => b.balanceCents - a.balanceCents);
+  const sheetById = await fetchBalanceSheetBankMap(realmId);
+  if (sheetById.size > 0) {
+    accounts = accounts.map((a) => {
+      const fromSheet = sheetById.get(a.id);
+      if (fromSheet == null) return a;
+      return {
+        ...a,
+        balanceCents: fromSheet,
+        balanceWithSubAccountsCents: fromSheet,
+        balanceSource: 'balance_sheet',
+      };
+    });
+  } else {
+    // Balance Sheet unavailable — try Account List account_bal as a secondary overlay.
+    const listRows = await fetchBankAccountListRows(realmId);
+    if (listRows.length > 0) {
+      const byId = new Map(listRows.map((r) => [r.id, r.balanceCents]));
+      accounts = accounts.map((a) => {
+        const fromList = byId.get(a.id);
+        if (fromList == null) return a;
+        return {
+          ...a,
+          balanceCents: fromList,
+          balanceWithSubAccountsCents: fromList,
+          balanceSource: 'account_list',
+        };
+      });
+    }
+  }
+
+  return accounts.sort((a, b) => b.balanceCents - a.balanceCents);
+}
+
+async function fetchBalanceSheetBankMap(realmId: string): Promise<Map<string, number>> {
+  const tz = (process.env.QUICKBOOKS_REPORT_TIMEZONE || 'America/Los_Angeles').trim() || 'America/Los_Angeles';
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  // Both start_date and end_date required — end_date alone can silently return YTD.
+  const q = new URLSearchParams({
+    start_date: today,
+    end_date: today,
+    accounting_method: 'Accrual',
+  });
+  try {
+    const body = await quickBooksCompanyJson(realmId, `reports/BalanceSheet?${q.toString()}`);
+    const parsed = parseBalanceSheetBankBalances(body);
+    return new Map(parsed.map((r) => [r.id, r.balanceCents]));
+  } catch (e) {
+    console.warn('[quickbooks] BalanceSheet bank balances failed', e);
+    return new Map();
+  }
 }
 
 /**
- * QBO Account List report with account_bal — preferred source for "what balance does
- * QuickBooks show for this bank account right now".
+ * QBO Account List report with account_bal — secondary source when Balance Sheet is unavailable.
  */
 async function fetchBankAccountListRows(realmId: string) {
   const q = new URLSearchParams({

@@ -43,13 +43,15 @@ export type BankAccountBalance = {
   accountType?: string;
   /** QBO AccountSubType, e.g. Checking, Savings */
   accountSubType?: string;
-  /** This account's own CurrentBalance (not a sum of history). */
+  /** This account's own books/register balance in QBO. */
   balanceCents: number;
   /** Parent + descendants roll-up when QBO returns it. */
   balanceWithSubAccountsCents?: number;
   /** True when this row is a sub-account under another Bank account. */
   isSubAccount?: boolean;
   parentId?: string;
+  /** Where balanceCents came from (for Cash page diagnostics). */
+  balanceSource?: 'balance_sheet' | 'account_get' | 'account_list' | 'account_query';
 };
 
 export type InvoiceSnapshot = {

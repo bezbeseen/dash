@@ -72,23 +72,21 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
         <div className="d-flex flex-column flex-lg-row align-items-lg-start justify-content-lg-between gap-3">
           <div>
             <h2 id="qb-cash-hero-title" className="qb-balance-widget-title mb-2">
-              Current cash on books
+              QBO books cash
             </h2>
             <div className="qb-balance-hero qb-cash-hero-amount">{fmtUsd(totalCents)}</div>
             <p className="qb-balance-widget-sub mb-0">
-              From QuickBooks <strong>Account List</strong> report (<code className="small">account_bal</code>) —
-              the same current balance QBO shows on the chart of accounts
+              Balance Sheet / register balances from QuickBooks &middot; not the bank-feed number on the Banking page
+              (that feed balance is not in the public API)
             </p>
           </div>
           <div className="d-flex flex-column gap-2 text-lg-end">
             <Link href="/dashboard/settings" className="btn btn-sm btn-outline-primary align-self-lg-end">
               QuickBooks settings
             </Link>
-            <form action="/api/jobs/sync" method="post" className="align-self-lg-end">
-              <button type="submit" className="btn btn-sm btn-outline-secondary">
-                Sync tickets from QBO
-              </button>
-            </form>
+            <Link href="/dashboard/cash" className="btn btn-sm btn-outline-secondary align-self-lg-end">
+              Refresh balances
+            </Link>
           </div>
         </div>
       </section>
@@ -143,8 +141,8 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
             Current balance by account
           </h3>
           <p className="text-body-secondary small mb-0 mt-2">
-            Balances come from the QuickBooks Account List report (<code className="small">account_bal</code>), not a
-            sum of deposits in Dash.
+            Prefer Balance Sheet as of today, else each account&apos;s register <code className="small">CurrentBalance</code>.
+            Compare to Chart of Accounts / Balance Sheet in QBO — not the Banking page bank-feed balance.
           </p>
         </div>
         {accounts.length === 0 ? (
@@ -174,6 +172,9 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
                       <div className="small text-body-secondary">
                         {a.isSubAccount ? 'Sub-account' : 'Top-level'}
                         <span className="font-monospace"> · Id {a.id}</span>
+                        {a.balanceSource ? (
+                          <span className="text-body-tertiary"> · via {a.balanceSource.replace(/_/g, ' ')}</span>
+                        ) : null}
                       </div>
                     </td>
                     <td className="text-body-secondary small">{a.accountSubType || '\u2014'}</td>
@@ -230,9 +231,9 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
           <h3 className="h6 fw-semibold mb-3">What you are looking at</h3>
           <ul className="text-body-secondary small mb-0 ps-3">
             <li className="mb-2">
-              Amounts come from the QuickBooks Online <strong>Account List</strong> report (
-              <code className="small">account_bal</code>), which is the API Intuit documents for the balance shown on
-              the chart of accounts / register — not a lifetime sum of deposits built in Dash.
+              Amounts are QuickBooks <strong>books</strong> balances (Balance Sheet / register). The green &quot;bank
+              balance&quot; on QBO&apos;s Banking page comes from the bank feed and is <strong>not</strong> exposed on
+              the public API — if you&apos;re comparing to that number, Dash cannot match it.
             </li>
             <li className="mb-2">
               Only <strong>active</strong> Chart of Accounts rows with type <strong>Bank</strong> are included.
