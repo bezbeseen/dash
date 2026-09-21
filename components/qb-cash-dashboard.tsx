@@ -76,8 +76,8 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
             </h2>
             <div className="qb-balance-hero qb-cash-hero-amount">{fmtUsd(totalCents)}</div>
             <p className="qb-balance-widget-sub mb-0">
-              Live <strong>CurrentBalance</strong> from QuickBooks for active Bank accounts &middot; parent +
-              sub-accounts counted once
+              From QuickBooks <strong>Account List</strong> report (<code className="small">account_bal</code>) —
+              the same current balance QBO shows on the chart of accounts
             </p>
           </div>
           <div className="d-flex flex-column gap-2 text-lg-end">
@@ -143,7 +143,8 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
             Current balance by account
           </h3>
           <p className="text-body-secondary small mb-0 mt-2">
-            Each row is that account&apos;s current register balance in QuickBooks — not a running total of deposits.
+            Balances come from the QuickBooks Account List report (<code className="small">account_bal</code>), not a
+            sum of deposits in Dash.
           </p>
         </div>
         {accounts.length === 0 ? (
@@ -229,8 +230,9 @@ export function QbCashDashboard({ data }: { data: QbCashPageData }) {
           <h3 className="h6 fw-semibold mb-3">What you are looking at</h3>
           <ul className="text-body-secondary small mb-0 ps-3">
             <li className="mb-2">
-              Each amount is QuickBooks&apos; <strong>current register balance</strong> for that Bank account — not a
-              lifetime sum of deposits or payments.
+              Amounts come from the QuickBooks Online <strong>Account List</strong> report (
+              <code className="small">account_bal</code>), which is the API Intuit documents for the balance shown on
+              the chart of accounts / register — not a lifetime sum of deposits built in Dash.
             </li>
             <li className="mb-2">
               Only <strong>active</strong> Chart of Accounts rows with type <strong>Bank</strong> are included.

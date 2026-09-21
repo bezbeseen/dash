@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { getQuickBooksApiBase } from '@/lib/quickbooks/config';
 import { getValidQuickBooksAccessToken } from '@/lib/quickbooks/tokens-db';
 import { BankAccountBalance, EstimateSnapshot, InvoiceSnapshot } from './types';
+import { parseAccountListBalances } from './account-list-balances';
 
 export function verifyQuickBooksSignature(rawBody: string, signatureHeader: string | null) {
   const verifierToken = process.env.QUICKBOOKS_WEBHOOK_VERIFIER;
@@ -610,8 +611,9 @@ export async function listCheckingAccountBalances(realmId: string): Promise<Bank
 }
 
 /**
- * Active Chart of Accounts rows with AccountType = Bank (up to 100). For the Cash & banks page;
- * the sidebar widget uses {@link listCheckingAccountBalances} instead (checking-first).
+ * Active Chart of Accounts Bank accounts with balances from reports/AccountList
+ * (account_bal — matches the register / COA balance in the QBO UI). Falls back to
+ * Account.CurrentBalance from Query, then per-id GET, if the report is unavailable.
  */
 export async function listBankAccountsDetailed(realmId: string): Promise<BankAccountBalance[]> {
   const select =
@@ -626,6 +628,70 @@ export async function listBankAccountsDetailed(realmId: string): Promise<BankAcc
     body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(allSql)}`);
   }
   const rows = qboQueryEntities<QboAccount>(body as { QueryResponse?: Record<string, unknown> }, 'Account');
-  const out = rows.map(accountRowToBalance).filter((x): x is BankAccountBalance => x != null);
-  return out.sort((a, b) => b.balanceCents - a.balanceCents);
+  const meta = rows.map(accountRowToBalance).filter((x): x is BankAccountBalance => x != null);
+
+  const reportRows = await fetchBankAccountListRows(realmId);
+  if (reportRows.length > 0) {
+    const reportById = new Map(reportRows.map((r) => [r.id, r]));
+    const merged = meta.map((a) => {
+      const fromReport = reportById.get(a.id);
+      if (!fromReport) return a;
+      return {
+        ...a,
+        // AccountList account_bal is the balance QBO shows on the chart / register.
+        balanceCents: fromReport.balanceCents,
+        balanceWithSubAccountsCents: fromReport.balanceCents,
+      };
+    });
+    for (const row of reportRows) {
+      if (merged.some((a) => a.id === row.id)) continue;
+      // Only add if the report typed it as Bank (or type missing).
+      const t = (row.accountType || '').toLowerCase();
+      if (t && t !== 'bank') continue;
+      merged.push({
+        id: row.id,
+        name: row.name,
+        accountType: row.accountType || 'Bank',
+        accountSubType: row.detailType,
+        balanceCents: row.balanceCents,
+        balanceWithSubAccountsCents: row.balanceCents,
+      });
+    }
+    return merged.sort((a, b) => b.balanceCents - a.balanceCents);
+  }
+
+  // Report failed — GET full Account so we do not trust a sparse Query CurrentBalance alone.
+  const hydrated = await mapInBatches(meta, 3, async (a) => {
+    try {
+      const full = await quickBooksCompanyJson(realmId, `account/${encodeURIComponent(a.id)}`);
+      const acct = (full as { Account?: QboAccount }).Account;
+      if (!acct) return a;
+      const next = accountRowToBalance(acct);
+      return next ?? a;
+    } catch (e) {
+      console.warn('[quickbooks] listBankAccountsDetailed: GET account failed', a.id, e);
+      return a;
+    }
+  });
+
+  return hydrated.sort((a, b) => b.balanceCents - a.balanceCents);
+}
+
+/**
+ * QBO Account List report with account_bal — preferred source for "what balance does
+ * QuickBooks show for this bank account right now".
+ */
+async function fetchBankAccountListRows(realmId: string) {
+  const q = new URLSearchParams({
+    account_type: 'Bank',
+    account_status: 'Not_Deleted',
+    columns: 'account_name,account_type,detail_acc_type,account_bal',
+  });
+  try {
+    const body = await quickBooksCompanyJson(realmId, `reports/AccountList?${q.toString()}`);
+    return parseAccountListBalances(body);
+  } catch (e) {
+    console.warn('[quickbooks] AccountList report failed; falling back to Account CurrentBalance', e);
+    return [];
+  }
 }

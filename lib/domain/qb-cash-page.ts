@@ -15,12 +15,15 @@ export function filterCashPageAccounts(accounts: BankAccountBalance[]): BankAcco
 
 /**
  * Combined current cash without double-counting parent + sub-accounts.
- * Uses each top-level account's CurrentBalanceWithSubAccounts (falls back to CurrentBalance).
+ * Sums each leaf account's balance (accounts that are not a parent of another row).
  */
 export function totalCurrentCashCents(accounts: BankAccountBalance[]): number {
+  const parentIds = new Set(
+    accounts.map((a) => a.parentId).filter((id): id is string => Boolean(id)),
+  );
   return accounts
-    .filter((a) => !a.isSubAccount)
-    .reduce((s, a) => s + (a.balanceWithSubAccountsCents ?? a.balanceCents), 0);
+    .filter((a) => !parentIds.has(a.id))
+    .reduce((s, a) => s + a.balanceCents, 0);
 }
 
 export type QbCashPageData =
