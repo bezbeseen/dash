@@ -39,7 +39,6 @@ const JOB_SELECT = {
   quickbooksCompanyId: true,
   quickbooksEstimateId: true,
   quickbooksInvoiceId: true,
-  archiveReason: true,
   createdAt: true,
   updatedAt: true,
 } as const;
