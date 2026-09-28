@@ -36,6 +36,7 @@ export function DashboardSidebarNav() {
   const dashboardActive = pathname === '/dashboard';
   const workActive = pathname === '/dashboard/work' || pathname.startsWith('/dashboard/work/');
   const activityActive = pathname === '/dashboard/activity' || pathname.startsWith('/dashboard/activity/');
+  const customersActive = pathname === '/dashboard/customers' || pathname.startsWith('/dashboard/customers/');
   const accountingActive = pathname === '/dashboard/accounting' || pathname.startsWith('/dashboard/accounting/');
   const cashActive = pathname === '/dashboard/cash' || pathname.startsWith('/dashboard/cash/');
   const gbpMetricsActive = pathname === '/dashboard/gbp' || pathname.startsWith('/dashboard/gbp/');
@@ -44,6 +45,8 @@ export function DashboardSidebarNav() {
   const workflowActive = isWorkflowRoute(pathname);
   const assistantActive = pathname === '/dashboard/assistant';
   const calendarActive = pathname === '/dashboard/calendar' || pathname.startsWith('/dashboard/calendar/');
+  const projectBookActive =
+    pathname === '/dashboard/project-summary' || pathname.startsWith('/dashboard/project-summary/');
 
   return (
     <ul className="metismenu" id="sidenav">
@@ -80,6 +83,14 @@ export function DashboardSidebarNav() {
           <div className="menu-title">Tickets</div>
         </Link>
       </li>
+      <li className={customersActive ? 'mm-active' : ''}>
+        <Link href="/dashboard/customers">
+          <div className="parent-icon">
+            <i className="material-icons-outlined">groups</i>
+          </div>
+          <div className="menu-title">Customers</div>
+        </Link>
+      </li>
       <li className={assistantActive ? 'mm-active' : ''}>
         <Link href="/dashboard/assistant">
           <div className="parent-icon">
@@ -94,6 +105,14 @@ export function DashboardSidebarNav() {
             <i className="material-icons-outlined">calendar_month</i>
           </div>
           <div className="menu-title">Calendar</div>
+        </Link>
+      </li>
+      <li className={projectBookActive ? 'mm-active' : ''}>
+        <Link href="/dashboard/project-summary">
+          <div className="parent-icon">
+            <i className="material-icons-outlined">slideshow</i>
+          </div>
+          <div className="menu-title">Project book</div>
         </Link>
       </li>
 

@@ -11,6 +11,7 @@ import {
 import { prisma } from '@/lib/db/prisma';
 import { deriveBoardStatus, invoiceSnapshotEffectivelyPaid } from '@/lib/domain/derive-board-status';
 import { preferHumanProjectName, sanitizeJobProjectDescription } from '@/lib/domain/job-display';
+import { qbDocActivityEvents, type QbMoneySnapshot } from '@/lib/domain/qb-doc-activity';
 import {
   computeQbOrderingAt,
   estimateCreatedAtFromSnapshot,
@@ -42,6 +43,45 @@ function mapInvoiceStatus(value: InvoiceSnapshot['status']): InvoiceStatus {
     case 'PAID': return InvoiceStatus.PAID;
     case 'VOID': return InvoiceStatus.VOID;
     default: return InvoiceStatus.NONE;
+  }
+}
+
+function moneySnapshotFromJob(job: {
+  estimateStatus: EstimateStatus;
+  invoiceStatus: InvoiceStatus;
+  estimateAmountCents: number;
+  invoiceAmountCents: number;
+  amountPaidCents: number;
+  quickbooksEstimateId?: string | null;
+  quickbooksInvoiceId?: string | null;
+}): QbMoneySnapshot {
+  return {
+    estimateStatus: job.estimateStatus,
+    invoiceStatus: job.invoiceStatus,
+    estimateAmountCents: job.estimateAmountCents,
+    invoiceAmountCents: job.invoiceAmountCents,
+    amountPaidCents: job.amountPaidCents,
+    quickbooksEstimateId: job.quickbooksEstimateId,
+    quickbooksInvoiceId: job.quickbooksInvoiceId,
+  };
+}
+
+async function writeQbActivityLogs(
+  tx: Prisma.TransactionClient,
+  jobId: string,
+  events: ReturnType<typeof qbDocActivityEvents>,
+  metadata: Prisma.InputJsonValue,
+) {
+  for (const event of events) {
+    await tx.activityLog.create({
+      data: {
+        jobId,
+        source: EventSource.QUICKBOOKS,
+        eventName: event.eventName,
+        message: event.message,
+        metadata,
+      },
+    });
   }
 }
 
@@ -114,15 +154,12 @@ export async function upsertJobFromEstimate(
     const boardStatus = deriveBoardStatus(job);
     const updated = await tx.job.update({ where: { id: job.id }, data: { boardStatus } });
 
-    await tx.activityLog.create({
-      data: {
-        jobId: updated.id,
-        source: EventSource.QUICKBOOKS,
-        eventName: `estimate.${snapshot.status.toLowerCase()}`,
-        message: `Estimate ${snapshot.id} synced from QuickBooks.`,
-        metadata: snapshot as unknown as Prisma.InputJsonValue,
-      },
+    const events = qbDocActivityEvents({
+      prev: existing ? moneySnapshotFromJob(existing) : null,
+      next: moneySnapshotFromJob(updated),
+      estimateDocNumber: snapshot.docNumber,
     });
+    await writeQbActivityLogs(tx, updated.id, events, snapshot as unknown as Prisma.InputJsonValue);
 
     return updated;
   });
@@ -257,9 +294,8 @@ export async function upsertJobFromInvoice(
     });
 
     const invDoc = snapshot.docNumber?.trim();
-    const invoiceTitle = invDoc ? `Invoice #${invDoc}` : null;
-    const nextProjectName =
-      invoiceTitle ?? target?.projectName ?? `Invoice #${snapshot.id}`;
+    const invoiceTitle = invDoc ? `Invoice #${invDoc}` : `Invoice #${snapshot.id}`;
+    const nextProjectName = preferHumanProjectName(target?.projectName, invoiceTitle);
     const fromInvoice = sanitizeJobProjectDescription(nextProjectName, snapshot.projectDescription);
     const preserved = sanitizeJobProjectDescription(
       target?.projectName ?? nextProjectName,
@@ -333,15 +369,12 @@ export async function upsertJobFromInvoice(
     const boardStatus = deriveBoardStatus(job);
     const updated = await tx.job.update({ where: { id: job.id }, data: { boardStatus } });
 
-    await tx.activityLog.create({
-      data: {
-        jobId: updated.id,
-        source: EventSource.QUICKBOOKS,
-        eventName: `invoice.${snapshot.status.toLowerCase()}`,
-        message: `Invoice ${snapshot.id} synced from QuickBooks.`,
-        metadata: snapshot as unknown as Prisma.InputJsonValue,
-      },
+    const events = qbDocActivityEvents({
+      prev: target ? moneySnapshotFromJob(target) : null,
+      next: moneySnapshotFromJob(updated),
+      invoiceDocNumber: snapshot.docNumber,
     });
+    await writeQbActivityLogs(tx, updated.id, events, snapshot as unknown as Prisma.InputJsonValue);
 
     return updated;
   });

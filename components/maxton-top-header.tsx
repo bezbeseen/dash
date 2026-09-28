@@ -8,8 +8,8 @@ export function MaxtonTopHeader() {
 
   return (
     <header className="top-header">
-      <nav className="navbar navbar-expand w-100 align-items-center gap-4 justify-content-center">
-        <div className="top-header-inner d-flex w-100 align-items-center gap-4">
+      <nav className="navbar navbar-expand align-items-center">
+        <div className="top-header-inner d-flex w-100 align-items-center gap-3">
           <div className="btn-toggle">
             <a
               href="#"
@@ -22,9 +22,11 @@ export function MaxtonTopHeader() {
               <i className="material-icons-outlined">menu</i>
             </a>
           </div>
-          <div className="search-bar flex-grow-1 d-none d-md-block" aria-hidden />
+          <div className="top-header-context d-none d-sm-block">
+            <span className="top-header-kicker">Be Seen</span>
+            <span className="top-header-product">Dash / Operations</span>
+          </div>
           <div className="ms-auto d-flex align-items-center gap-2 gap-sm-3 min-w-0">
-            <div className="text-body-secondary small d-none d-sm-block">Dash / Operations</div>
             {status === 'authenticated' ? (
               <div className="d-flex align-items-center gap-2 min-w-0">
                 {email ? (

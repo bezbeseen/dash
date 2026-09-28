@@ -359,13 +359,142 @@ export async function fetchInvoiceById(realmId: string, invoiceId: string): Prom
   return invoiceFromQbo(inv, invoiceId);
 }
 
+type QboPaymentEntity = {
+  Id?: string;
+  CustomerRef?: QboRef;
+  LinkedTxn?: QboLinkedTxn[];
+  Line?: Array<{ LinkedTxn?: QboLinkedTxn[] }>;
+};
+
+function collectInvoiceIdsFromPayment(pay: QboPaymentEntity): string[] {
+  const ids = new Set<string>();
+  const consider = (links: QboLinkedTxn[] | undefined) => {
+    for (const lt of links || []) {
+      if (String(lt.TxnType || '').toLowerCase() === 'invoice' && lt.TxnId) {
+        ids.add(String(lt.TxnId));
+      }
+    }
+  };
+  consider(pay.LinkedTxn);
+  for (const line of pay.Line || []) consider(line.LinkedTxn);
+  return [...ids];
+}
+
+async function fetchPaymentEntity(realmId: string, paymentId: string): Promise<QboPaymentEntity | null> {
+  const body = await quickBooksCompanyJson(realmId, `payment/${encodeURIComponent(paymentId)}`);
+  const pay = (body as { Payment?: QboPaymentEntity }).Payment;
+  return pay?.Id ? pay : null;
+}
+
+/** Invoice ids a QBO Payment is applied to (webhook Payment entities do not include the Invoice itself). */
+export async function fetchInvoiceIdsLinkedToPayment(
+  realmId: string,
+  paymentId: string,
+): Promise<string[]> {
+  const pay = await fetchPaymentEntity(realmId, paymentId);
+  if (!pay) return [];
+  return collectInvoiceIdsFromPayment(pay);
+}
+
+export async function fetchPaymentCustomerId(realmId: string, paymentId: string): Promise<string | null> {
+  const pay = await fetchPaymentEntity(realmId, paymentId);
+  const id = pay?.CustomerRef?.value?.trim();
+  return id || null;
+}
+
+type QboPhone = { FreeFormNumber?: string };
+type QboAddr = {
+  Line1?: string;
+  Line2?: string;
+  City?: string;
+  CountrySubDivisionCode?: string;
+  PostalCode?: string;
+};
+type QboCustomerEntity = {
+  Id?: string;
+  DisplayName?: string;
+  PrimaryEmailAddr?: QboEmailAddr;
+  PrimaryPhone?: QboPhone;
+  Mobile?: QboPhone;
+  Balance?: number | string;
+  BillAddr?: QboAddr;
+};
+
+export type QboCustomerContact = {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+  phone: string | null;
+  balanceCents: number | null;
+  billAddress: string | null;
+};
+
+function formatQboBillAddress(addr: QboAddr | undefined): string | null {
+  if (!addr) return null;
+  const street = [addr.Line1, addr.Line2].map((s) => s?.trim()).filter(Boolean).join(', ');
+  const cityLine = [addr.City, addr.CountrySubDivisionCode, addr.PostalCode]
+    .map((s) => s?.trim())
+    .filter(Boolean)
+    .join(' ');
+  const parts = [street, cityLine].filter(Boolean);
+  return parts.length ? parts.join(', ') : null;
+}
+
+/** One QBO GET: DisplayName, PrimaryEmailAddr, phone, bill address, open balance. */
+export async function fetchQboCustomerContact(
+  realmId: string,
+  customerId: string,
+): Promise<QboCustomerContact | null> {
+  const body = await quickBooksCompanyJson(realmId, `customer/${encodeURIComponent(customerId)}`);
+  const c = (body as { Customer?: QboCustomerEntity }).Customer;
+  if (!c?.Id) return null;
+  const email = c.PrimaryEmailAddr?.Address?.trim() || null;
+  const phone = c.PrimaryPhone?.FreeFormNumber?.trim() || c.Mobile?.FreeFormNumber?.trim() || null;
+  return {
+    id: c.Id,
+    displayName: c.DisplayName?.trim() || null,
+    email,
+    phone,
+    balanceCents: c.Balance == null ? null : dollarsToCents(c.Balance),
+    billAddress: formatQboBillAddress(c.BillAddr),
+  };
+}
+
 /** Customer's PrimaryEmailAddr — the shop's usual "email this customer" address. */
 export async function fetchCustomerPrimaryEmail(realmId: string, customerId: string): Promise<string | null> {
-  const body = await quickBooksCompanyJson(realmId, `customer/${encodeURIComponent(customerId)}`);
-  const addr = (body as { Customer?: { PrimaryEmailAddr?: { Address?: string } } }).Customer?.PrimaryEmailAddr
-    ?.Address;
-  const trimmed = addr?.trim();
-  return trimmed || null;
+  const contact = await fetchQboCustomerContact(realmId, customerId);
+  return contact?.email ?? null;
+}
+
+type QboPaymentStub = {
+  Id?: string;
+  UnappliedAmt?: number | string;
+};
+
+/**
+ * Sum of Payment.UnappliedAmt for a customer — money received that is not on an invoice yet
+ * (QBO customer deposits / unused credits). Paginates; missing UnappliedAmt counts as 0.
+ */
+export async function fetchCustomerUnappliedPaymentCents(
+  realmId: string,
+  customerId: string,
+): Promise<number> {
+  const lit = qboQuerySqlStringLiteral(customerId);
+  let start = 1;
+  let unapplied = 0;
+  for (let page = 0; page < 8; page++) {
+    const sql = `SELECT Id, UnappliedAmt FROM Payment WHERE CustomerRef = '${lit}' STARTPOSITION ${start} MAXRESULTS 100`;
+    const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
+    const rows = qboQueryEntities<QboPaymentStub>(
+      body as { QueryResponse?: Record<string, unknown> },
+      'Payment',
+    );
+    if (rows.length === 0) break;
+    for (const row of rows) unapplied += dollarsToCents(row.UnappliedAmt);
+    if (rows.length < 100) break;
+    start += rows.length;
+  }
+  return unapplied;
 }
 
 /** QBO returns raw PDF bytes (not JSON). */

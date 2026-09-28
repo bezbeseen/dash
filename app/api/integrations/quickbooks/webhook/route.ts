@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { EventProcessStatus } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
+import { upsertJobsFromQboPayment } from '@/lib/domain/apply-qbo-payment';
 import { upsertJobFromEstimate, upsertJobFromInvoice } from '@/lib/domain/sync';
 import { fetchEstimateById, fetchInvoiceById, verifyQuickBooksSignature } from '@/lib/quickbooks/client';
 import { QboWebhookPayload } from '@/lib/quickbooks/types';
@@ -43,6 +44,10 @@ export async function POST(req: NextRequest) {
         if (entity.name === 'Invoice') {
           const invoice = await fetchInvoiceById(realmId, entity.id);
           await upsertJobFromInvoice(invoice, { realmId });
+        }
+
+        if (entity.name === 'Payment') {
+          await upsertJobsFromQboPayment(realmId, entity.id);
         }
 
         await prisma.quickBooksWebhookEvent.update({

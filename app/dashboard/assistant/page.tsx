@@ -7,13 +7,13 @@ export default function AssistantPage() {
   return (
     <div className="board-page">
       <header className="board-topbar">
-        <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-          <div>
-            <h1 className="h4 mb-1">Dash Manager</h1>
-            <p className="text-body-secondary small mb-0">
-              AI assistant with live read-only views of your board, to-dos, and QuickBooks connection status.
-            </p>
-          </div>
+        <div className="board-topbar-titles">
+          <h1 className="board-topbar-title">Dash Manager</h1>
+          <p className="board-topbar-sub">
+            AI assistant with live read-only views of your board, to-dos, and QuickBooks connection status.
+          </p>
+        </div>
+        <div className="board-topbar-actions">
           <Link href="/dashboard" className="btn btn-sm btn-outline-secondary">
             Back to board
           </Link>

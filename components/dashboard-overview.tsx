@@ -354,7 +354,8 @@ export function DashboardOverview({
                 Top customers
               </h2>
               <p className="small text-body-secondary mb-3">
-                By invoiced total on active tickets (name from QuickBooks).
+                By invoiced total on active tickets (name from QuickBooks).{' '}
+                <Link href="/dashboard/customers">All customers</Link>
               </p>
               {s.topCustomers.length === 0 ? (
                 <p className="small text-body-secondary mb-0">No active tickets yet.</p>
@@ -373,7 +374,12 @@ export function DashboardOverview({
                       {s.topCustomers.map((row) => (
                         <tr key={row.customerName} className="border-bottom border-light">
                           <td className="py-2 small text-truncate" style={{ maxWidth: 140 }} title={row.customerName}>
-                            {row.customerName}
+                            <Link
+                              href={`/dashboard/customers?q=${encodeURIComponent(row.customerName)}` as never}
+                              className="text-decoration-none"
+                            >
+                              {row.customerName}
+                            </Link>
                           </td>
                           <td className="py-2 text-end fw-semibold">{row.jobCount}</td>
                           <td className="py-2 text-end small">{fmtUsd(row.invoicedCents)}</td>

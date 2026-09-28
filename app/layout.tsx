@@ -10,6 +10,7 @@ import '@/styles/maxton/sass/blue-theme.css';
 import '@/styles/maxton/sass/semi-dark.css';
 import '@/styles/maxton/sass/bordered-theme.css';
 import '@/styles/maxton/sass/responsive.css';
+import './dash-shell.css';
 import type { Metadata, Viewport } from 'next';
 import React from 'react';
 import { BootstrapClient } from '@/components/bootstrap-client';

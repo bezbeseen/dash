@@ -14,6 +14,7 @@ import {
   jobIsLeadFirstTicket,
 } from '@/lib/domain/lead-ticket';
 import {
+  compactStoredEmailSubtitle,
   inboundCardSubtitleFromStoredDescription,
   inboundLeadCardDisplayParts,
   jobPrimaryHeading,
@@ -76,6 +77,11 @@ export function JobCard({
       }
     }
     sub = raw;
+  }
+
+  if (sub) {
+    const compactEmail = compactStoredEmailSubtitle(sub);
+    if (compactEmail) sub = compactEmail;
   }
 
   const isLeadFirst = jobIsLeadFirstTicket(job);
@@ -225,10 +231,15 @@ export function JobCard({
               Estimate: ${(job.estimateAmountCents / 100).toFixed(2)}
             </div>
             {qbQuotedHint ? <div className="job-card-prequote-qb-hint small text-body-secondary">{qbQuotedHint}</div> : null}
-            <div className="job-card-invoice">
-              Invoice paid: ${(job.amountPaidCents / 100).toFixed(2)} / $
-              {(job.invoiceAmountCents / 100).toFixed(2)}
-            </div>
+            {hasQbInvoice || job.depositCents <= 0 ? (
+              <div className="job-card-invoice">
+                Invoice paid: ${(job.amountPaidCents / 100).toFixed(2)} / $
+                {(job.invoiceAmountCents / 100).toFixed(2)}
+              </div>
+            ) : null}
+            {job.depositCents > 0 ? (
+              <div className="job-card-invoice">Deposit paid: ${(job.depositCents / 100).toFixed(2)}</div>
+            ) : null}
             <div className="job-card-quickbooks">
               QuickBooks date: {job.qbOrderingAt ? fmtDetailDate(job.qbOrderingAt) : 'n/a'}; Dash created{' '}
               {fmtDetailDate(job.createdAt)}

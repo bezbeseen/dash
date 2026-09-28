@@ -23,6 +23,8 @@
     "verify:gmail-from-thread": "tsx scripts/verify-gmail-from-thread.ts",
     "verify:clarity-mapping": "tsx scripts/verify-clarity-mapping.ts",
     "verify:gbp-api": "tsx scripts/verify-gbp-api.ts",
+    "verify:customers-money": "tsx scripts/verify-customers-money.ts",
+    "verify:job-display": "tsx scripts/verify-job-display.ts",
     "docker:build": "docker build -t dash:latest .",
     "docker:up": "docker compose up -d --build"
   },

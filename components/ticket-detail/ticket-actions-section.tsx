@@ -3,6 +3,7 @@
 import { JobWorkflowActions } from '@/components/job-workflow-actions';
 import { PrequoteWorkflowActions } from '@/components/prequote-workflow-actions';
 import { TicketReviewRequestEmailButton } from '@/components/ticket-review-request-email-button';
+import { TicketProjectBookActions } from '@/components/ticket-detail/ticket-project-book-actions';
 
 type Props = {
   sectionId?: string;
@@ -14,6 +15,7 @@ type Props = {
   reviewEmailFeatureEnabled?: boolean;
   reviewEmailMailboxReady?: boolean;
   reviewEmailSentAtIso?: string | null;
+  hasDriveFolder?: boolean;
 };
 
 export function TicketActionsSection({
@@ -26,10 +28,12 @@ export function TicketActionsSection({
   reviewEmailFeatureEnabled = false,
   reviewEmailMailboxReady = false,
   reviewEmailSentAtIso = null,
+  hasDriveFolder = false,
 }: Props) {
   return (
     <section id={sectionId} className="ticket-detail-panel">
       <h2 className="detail-section-title">Actions</h2>
+      <TicketProjectBookActions jobId={jobId} hasFolder={hasDriveFolder} />
       {suppressProductionShortcuts ? (
         <PrequoteWorkflowActions jobId={jobId} archived={archived} />
       ) : (

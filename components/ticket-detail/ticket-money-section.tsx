@@ -1,5 +1,5 @@
 import type { EstimateStatus, InvoiceStatus } from '@prisma/client';
-import type { InvoiceSnapshot } from '@/lib/quickbooks/types';
+import type { EstimateSnapshot, InvoiceSnapshot } from '@/lib/quickbooks/types';
 import { fmtUsd, labelEnum } from '@/lib/ticket/format';
 
 type Props = {
@@ -9,6 +9,9 @@ type Props = {
   invoiceStatus: InvoiceStatus;
   invoiceTotalDisplayCents: number;
   paidDisplayCents: number;
+  depositCents?: number;
+  invoiceBalanceDisplayCents: number;
+  qboEstimate: EstimateSnapshot | null;
   qboInvoice: InvoiceSnapshot | null;
 };
 
@@ -19,15 +22,24 @@ export function TicketMoneySection({
   invoiceStatus,
   invoiceTotalDisplayCents,
   paidDisplayCents,
+  depositCents = 0,
+  invoiceBalanceDisplayCents,
+  qboEstimate,
   qboInvoice,
 }: Props) {
+  const liveNote =
+    qboEstimate || qboInvoice
+      ? `Uses live QuickBooks ${[qboEstimate ? 'estimate' : null, qboInvoice ? 'invoice' : null]
+          .filter(Boolean)
+          .join(' and ')} so totals and deposits match QBO even before the next board sync.`
+      : null;
+
   return (
     <section id={sectionId} className="ticket-detail-panel">
       <h2 className="detail-section-title">Money</h2>
-      {qboInvoice ? (
+      {liveNote ? (
         <p className="meta" style={{ marginBottom: 12 }}>
-          Invoice line uses <strong>live QuickBooks</strong> (GET) so paid balance matches QBO even before the
-          next board sync.
+          {liveNote}
         </p>
       ) : null}
       <dl className="detail-kv">
@@ -35,8 +47,16 @@ export function TicketMoneySection({
         <dd>{fmtUsd(estimateAmountCents)}</dd>
         <dt>Invoice total</dt>
         <dd>{fmtUsd(invoiceTotalDisplayCents)}</dd>
-        <dt>Paid</dt>
+        <dt>Paid on invoice</dt>
         <dd>{fmtUsd(paidDisplayCents)}</dd>
+        {depositCents > 0 ? (
+          <>
+            <dt>Deposit paid</dt>
+            <dd>{fmtUsd(depositCents)}</dd>
+          </>
+        ) : null}
+        <dt>Open on invoice</dt>
+        <dd>{fmtUsd(invoiceBalanceDisplayCents)}</dd>
         <dt>Estimate status</dt>
         <dd>{labelEnum(estimateStatus)}</dd>
         <dt>Invoice status</dt>

@@ -2,6 +2,7 @@ import { ArchiveReason, BoardStatus, EventSource, TaskStatus } from '@prisma/cli
 import { prisma } from '@/lib/db/prisma';
 import { qbEventDateLabelFromMetadata } from '@/lib/domain/activity-metadata';
 import { DASHBOARD_COLUMNS, type DashboardColumnKey } from '@/lib/domain/board-display';
+import { jobPrimaryHeading } from '@/lib/domain/job-display';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import { computeMoneyRollup } from '@/lib/domain/money-rollup';
 
@@ -52,7 +53,7 @@ export async function loadRecentActions(
     eventName: row.eventName,
     message: row.message,
     jobId: row.jobId,
-    ticketTitle: `${row.job.customerName} \u00b7 ${row.job.projectName}`,
+    ticketTitle: jobPrimaryHeading(row.job),
   }));
 }
 

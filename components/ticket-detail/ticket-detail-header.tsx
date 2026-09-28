@@ -6,10 +6,17 @@ import {
   inboundLeadKindPillClassName,
   inboundLeadKindTitleAttr,
 } from '@/lib/domain/lead-ticket';
-import { inboundLeadCardDisplayParts, jobPrimaryHeading, jobSecondaryHeading } from '@/lib/domain/job-display';
+import {
+  compactStoredEmailSubtitle,
+  inboundLeadCardDisplayParts,
+  jobPrimaryHeading,
+  jobSecondaryHeading,
+} from '@/lib/domain/job-display';
 import { fmtDetailDate } from '@/lib/ticket/format';
+import { TicketTitleEditor } from '@/components/ticket-detail/ticket-title-editor';
 
 type Props = {
+  jobId: string;
   projectName: string;
   projectDescription?: string | null;
   customerName: string;
@@ -24,6 +31,7 @@ type Props = {
 };
 
 export function TicketDetailHeader({
+  jobId,
   projectName,
   projectDescription,
   customerName,
@@ -44,17 +52,30 @@ export function TicketDetailHeader({
     if (parts) {
       sub = parts.synopsis.trim() || null;
     } else {
-      sub = jobSecondaryHeading({ projectName, projectDescription: projectDescription ?? undefined });
+      sub = jobSecondaryHeading({
+        projectName,
+        customerName,
+        projectDescription: projectDescription ?? undefined,
+      });
     }
   } else {
-    sub = jobSecondaryHeading({ projectName, projectDescription: projectDescription ?? undefined });
+    sub = jobSecondaryHeading({
+      projectName,
+      customerName,
+      projectDescription: projectDescription ?? undefined,
+    });
   }
+  if (sub) {
+    const compactEmail = compactStoredEmailSubtitle(sub);
+    if (compactEmail) sub = compactEmail;
+  }
+  const displayTitle = jobPrimaryHeading({ projectName, customerName });
 
   return (
     <header className="detail-header">
       <div>
-        <h1 className="detail-title">{jobPrimaryHeading({ projectName, customerName })}</h1>
-        {sub ? <p className="detail-subtitle">{sub}</p> : null}
+        <TicketTitleEditor jobId={jobId} projectName={projectName} displayTitle={displayTitle} />
+        {sub && sub !== displayTitle ? <p className="detail-subtitle">{sub}</p> : null}
       </div>
       <div className="detail-header-badges d-flex flex-column align-items-end gap-2 flex-shrink-0">
         {inboundLeadKind != null ? (

@@ -60,21 +60,7 @@ body {
   }
 }
 
-@media (max-width: 767.98px) {
-  .main-wrapper .main-content,
-  .top-header .navbar {
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
-  }
-}
-
-@media (max-width: 575.98px) {
-  .main-wrapper .main-content,
-  .top-header .navbar {
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-  }
-}
+/* Content / top-bar gutters live in dash-shell.css (loaded after Maxton). */
 
 /* SimpleBar’s `[data-simplebar]{position:relative}` ties with `.sidebar-wrapper` specificity; when
    that stylesheet loads after Maxton, it overrides `position:fixed`. The sidebar then participates
@@ -285,8 +271,7 @@ body {
   background-color: var(--bs-secondary-bg);
 }
 
-/* Maxton navbar is fixed + full-bleed; inner row must match `.main-content` padding
-   (already on `.top-header .navbar`), not a separate centered max-width. */
+/* Inner row is sized in dash-shell.css so it stays in the main-wrapper column. */
 .top-header-inner {
   width: 100%;
   max-width: none;
@@ -1054,6 +1039,36 @@ a.work-cal-chip:hover {
   color: #212529;
 }
 
+.ticket-title-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 12px;
+  margin: 0 0 8px;
+}
+
+.ticket-title-editor .detail-title {
+  margin: 0;
+}
+
+.ticket-title-edit-btn {
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+.ticket-title-editor-open {
+  flex-direction: column;
+  align-items: stretch;
+  max-width: 40rem;
+  gap: 8px;
+}
+
+.ticket-title-editor-input {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 .detail-subtitle {
   font-size: 19px;
   color: #495057;
@@ -1688,7 +1703,11 @@ a.work-cal-chip:hover {
   color: var(--bs-body-color);
   font-size: 0.9375rem;
   font-weight: bold;
-  padding-bottom: 10px; 
+  padding-bottom: 10px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 .job-card-badges {
   margin-bottom: 8px;

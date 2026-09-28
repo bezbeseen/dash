@@ -9,6 +9,7 @@ import {
 } from '@/lib/drive/config';
 import { driveBucketForJob } from '@/lib/drive/resolve-bucket';
 import { fmtDetailDate } from '@/lib/ticket/format';
+import { TicketProjectBookActions } from '@/components/ticket-detail/ticket-project-book-actions';
 
 function folderCountLabel(group: DrivePreviewGroup): string {
   const n = group.files.length + group.extraCount;
@@ -132,6 +133,7 @@ export function TicketDriveSection({
           ? `Creates a new job folder from your template under this customer’s ${bucketLabel(bucket)} stage folder. Invoice and estimate PDFs go in that job folder.`
           : 'Creates a new job folder from your template in the Active jobs folder. Invoice and estimate PDFs go in that job folder (invoices/quotes subfolder when the template has one). Prepaid tickets stay in Active until the job is delivered; then the folder moves to Completed, or Archive when the ticket is Done.'}
       </p>
+      <TicketProjectBookActions jobId={jobId} hasFolder={Boolean(googleDriveFolderId)} />
       {!bucketsOk ? (
         <p className="small text-warning-emphasis mb-3">
           Folder moves need Active, Completed, and Archive folder ids in the server environment.{' '}

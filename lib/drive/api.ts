@@ -1,3 +1,4 @@
+import { Readable } from 'stream';
 import { google } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
 
@@ -209,6 +210,42 @@ export async function findDriveFoldersByExactName(
     if (!f.id || !f.name) return [];
     return [{ id: f.id, name: f.name, parents: f.parents ?? [] }];
   });
+}
+
+export async function downloadDriveFileBuffer(auth: OAuth2Client, fileId: string): Promise<Buffer> {
+  const drive = driveV3(auth);
+  const res = await drive.files.get(
+    { fileId, alt: 'media', supportsAllDrives: true },
+    { responseType: 'arraybuffer' },
+  );
+  return Buffer.from(res.data as ArrayBuffer);
+}
+
+export async function uploadOrReplaceDriveFile(
+  auth: OAuth2Client,
+  parentId: string,
+  name: string,
+  mimeType: string,
+  body: Buffer,
+): Promise<{ id: string; webViewLink: string | null }> {
+  const drive = driveV3(auth);
+  const existingId = await findDriveChildByName(auth, parentId, name);
+  if (existingId) {
+    const updated = await drive.files.update({
+      fileId: existingId,
+      media: { mimeType, body: Readable.from(body) },
+      supportsAllDrives: true,
+      fields: 'id, webViewLink',
+    });
+    return { id: updated.data.id ?? existingId, webViewLink: updated.data.webViewLink ?? null };
+  }
+  const created = await drive.files.create({
+    requestBody: { name, parents: [parentId] },
+    media: { mimeType, body: Readable.from(body) },
+    supportsAllDrives: true,
+    fields: 'id, webViewLink',
+  });
+  return { id: created.data.id ?? '', webViewLink: created.data.webViewLink ?? null };
 }
 
 /** Find a direct child (any mime type) with exact name. */

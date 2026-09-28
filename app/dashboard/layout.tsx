@@ -23,12 +23,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
               alt="Be Seen"
             />
           </Link>
-          <div className="logo-name flex-grow-1">
+          <div className="logo-name flex-grow-1 min-w-0">
             <h5 className="mb-0">
               <Link href="/dashboard" className="text-body text-decoration-none">
                 Dash
               </Link>
             </h5>
+            <div className="sidebar-brand-sub">Be Seen</div>
           </div>
           <div className="sidebar-close">
             <span className="material-icons-outlined">close</span>

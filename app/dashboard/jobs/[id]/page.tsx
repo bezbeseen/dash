@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import type { InvoiceSnapshot } from '@/lib/quickbooks/types';
+import type { EstimateSnapshot, InvoiceSnapshot } from '@/lib/quickbooks/types';
 import { prisma } from '@/lib/db/prisma';
 import { TicketDocumentsSection } from '@/components/ticket-documents-section';
 import { TicketLinkedEmailsSection } from '@/components/ticket-linked-emails-section';
@@ -36,7 +36,12 @@ import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import { listJobDriveFolderPreview } from '@/lib/drive/list-for-job';
 import { canCreateDriveJobFolderFromTemplate, getClientJobsRootFolderId, getCustomerHubFolderId } from '@/lib/drive/config';
 import { resolveCustomerDriveFolderForJob } from '@/lib/drive/resolve-customer-folder';
-import { fetchInvoiceById } from '@/lib/quickbooks/client';
+import { persistCustomerDepositCents } from '@/lib/domain/customer-deposit';
+import {
+  displayJobMoney,
+  fetchLiveJobMoney,
+  persistHydratedJobMoney,
+} from '@/lib/domain/hydrate-job-money';
 import {
   fetchEstimateActivityTimeline,
   fetchInvoiceActivityTimeline,
@@ -46,6 +51,7 @@ import {
 import type { InvoiceActivityTimeline } from '@/lib/quickbooks/types-activity';
 import { resolveRealmIdForJob } from '@/lib/quickbooks/realm';
 import { GMAIL_UI_MESSAGE_CAP } from '@/lib/gmail/ui-limits';
+import { customerCrmHref } from '@/lib/domain/customers';
 import { fmtDetailDate } from '@/lib/ticket/format';
 import { buildCorrespondenceThread } from '@/lib/ticket/correspondence-thread';
 import Link from 'next/link';
@@ -178,12 +184,30 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
       : [];
 
   const realmId = await resolveRealmIdForJob(job.quickbooksCompanyId);
+  let qboEstimate: EstimateSnapshot | null = null;
   let qboInvoice: InvoiceSnapshot | null = null;
-  if (realmId && job.quickbooksInvoiceId) {
+  if (realmId) {
+    const live = await fetchLiveJobMoney(realmId, [job], { maxJobs: 1 });
+    const docs = live.get(job.id);
+    qboEstimate = docs?.estimate ?? null;
+    qboInvoice = docs?.invoice ?? null;
+  }
+  const money = displayJobMoney(job, { estimate: qboEstimate, invoice: qboInvoice });
+  if (qboEstimate || qboInvoice) {
     try {
-      qboInvoice = await fetchInvoiceById(realmId, job.quickbooksInvoiceId);
+      await persistHydratedJobMoney(job.id, money);
     } catch {
-      qboInvoice = null;
+      /* still show live numbers */
+    }
+  }
+
+  let depositCents = job.depositCents;
+  const depositCustomerId = qboEstimate?.customerId ?? qboInvoice?.customerId ?? job.quickbooksCustomerId;
+  if (realmId && depositCustomerId) {
+    try {
+      depositCents = await persistCustomerDepositCents(realmId, depositCustomerId);
+    } catch {
+      /* keep the last stored deposit */
     }
   }
 
@@ -202,8 +226,12 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
     }
   }
   const { groups: drivePreviewGroups, listError: driveListError } = await listJobDriveFolderPreview(id);
-  const invoiceTotalDisplayCents = qboInvoice?.totalAmtCents ?? job.invoiceAmountCents;
-  const paidDisplayCents = qboInvoice?.amountPaidCents ?? job.amountPaidCents;
+  const invoiceTotalDisplayCents = money.invoiceAmountCents;
+  const paidDisplayCents = money.amountPaidCents;
+  const invoiceBalanceDisplayCents =
+    qboInvoice && qboInvoice.balanceKnown !== false
+      ? qboInvoice.balanceCents
+      : Math.max(0, money.invoiceAmountCents - money.amountPaidCents);
 
   let qbActivityTimeline: InvoiceActivityTimeline | null = null;
   let invoiceActivityError: string | null = null;
@@ -381,8 +409,14 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
         <TicketDetailToc items={tocItems} />
         <div className="ticket-detail-main">
           <div id="ticket-overview" className="ticket-detail-panel ticket-detail-overview">
-            <TicketDetailBack />
+            <TicketDetailBack
+              customerHref={customerCrmHref({
+                quickbooksCustomerId: job.quickbooksCustomerId,
+                customerName: job.customerName,
+              })}
+            />
             <TicketDetailHeader
+              jobId={job.id}
               projectName={job.projectName}
               projectDescription={job.projectDescription}
               customerName={job.customerName}
@@ -409,11 +443,14 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
           {!isLeadFirst ? (
             <TicketMoneySection
               sectionId="ticket-money"
-              estimateAmountCents={job.estimateAmountCents}
-              estimateStatus={job.estimateStatus}
-              invoiceStatus={job.invoiceStatus}
+              estimateAmountCents={money.estimateAmountCents}
+              estimateStatus={money.estimateStatus}
+              invoiceStatus={money.invoiceStatus}
               invoiceTotalDisplayCents={invoiceTotalDisplayCents}
               paidDisplayCents={paidDisplayCents}
+              depositCents={depositCents}
+              invoiceBalanceDisplayCents={invoiceBalanceDisplayCents}
+              qboEstimate={qboEstimate}
               qboInvoice={qboInvoice}
             />
           ) : null}
@@ -455,6 +492,10 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
                 sectionId="ticket-quickbooks"
                 realmId={job.quickbooksCompanyId}
                 customerId={job.quickbooksCustomerId}
+                customerHref={customerCrmHref({
+                  quickbooksCustomerId: job.quickbooksCustomerId,
+                  customerName: job.customerName,
+                })}
                 estimateId={job.quickbooksEstimateId}
                 invoiceId={job.quickbooksInvoiceId}
               />
@@ -530,6 +571,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             reviewEmailFeatureEnabled={reviewEmailFeatureOn}
             reviewEmailMailboxReady={reviewEmailMailboxReady}
             reviewEmailSentAtIso={job.reviewRequestEmailSentAt?.toISOString() ?? null}
+            hasDriveFolder={Boolean(job.googleDriveFolderId)}
           />
 
           <TicketActivityLogSection sectionId="ticket-activity-log" logs={job.activityLogs} />

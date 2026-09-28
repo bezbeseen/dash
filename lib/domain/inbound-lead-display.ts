@@ -3,6 +3,7 @@ import { InboundLeadKind } from '@prisma/client';
 import {
   inboundCardSubtitleFromStoredDescription,
   inboundLeadCardDisplayParts,
+  isGenericProjectLabel,
   sanitizeJobProjectDescription,
   splitInboundStoredDescription,
 } from '@/lib/domain/job-display';
@@ -16,25 +17,6 @@ import {
 import { isShopPlaceholderName } from '@/lib/domain/shop-name';
 
 export { isShopPlaceholderName };
-
-const GENERIC_PROJECT_NAMES = new Set(
-  [
-    'website / form lead',
-    'conversation / sms lead',
-    'conversation lead',
-    'form lead',
-    'voice call',
-    'email lead',
-  ].map((s) => s.toLowerCase()),
-);
-
-function isGenericProjectLabel(name: string | null | undefined): boolean {
-  const n = name?.trim().toLowerCase();
-  if (!n) return true;
-  if (GENERIC_PROJECT_NAMES.has(n)) return true;
-  if (/^voice call\s*[—–-]/i.test(name!.trim())) return true;
-  return false;
-}
 
 const PHONE_LINE_RE = /^Phone:\s*(.+)$/im;
 const EMAIL_LINE_RE = /^Email:\s*(.+)$/im;
