@@ -39,6 +39,8 @@ const JOB_SELECT = {
   quickbooksCompanyId: true,
   quickbooksEstimateId: true,
   quickbooksInvoiceId: true,
+  archiveReason: true,
+  createdAt: true,
   updatedAt: true,
 } as const;
 
@@ -81,12 +83,45 @@ export default async function CustomerDetailPage({ params }: PageProps) {
 
   if (jobs.length === 0) notFound();
 
+  const historyNames = [
+    ...new Set(
+      jobs
+        .map((job) => job.customerName.trim())
+        .filter((name) => name.length > 0),
+    ),
+  ];
+  if (historyNames.length > 0) {
+    const nameHistory = await prisma.job.findMany({
+      where: {
+        id: { notIn: jobs.map((job) => job.id) },
+        OR: historyNames.map((name) => ({
+          customerName: { equals: name, mode: 'insensitive' as const },
+        })),
+        AND: [
+          {
+            OR: [
+              { quickbooksCustomerId: null },
+              { quickbooksCustomerId: '' },
+              ...(parsed.kind === 'qbo' ? [{ quickbooksCustomerId: parsed.id }] : []),
+            ],
+          },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      select: JOB_SELECT,
+    });
+    jobs.push(...nameHistory);
+    jobs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
   const displayNameFromJobs =
     jobs.find((j) => j.customerName.trim())?.customerName.trim() ||
     (parsed.kind === 'name' ? parsed.name : 'Customer');
   const qboId =
     parsed.kind === 'qbo' ? parsed.id : jobs.find((j) => j.quickbooksCustomerId?.trim())?.quickbooksCustomerId?.trim() || null;
-  const realmId = await resolveRealmIdForJob(jobs[0].quickbooksCompanyId);
+  const realmId = await resolveRealmIdForJob(
+    jobs.find((job) => job.quickbooksCompanyId)?.quickbooksCompanyId ?? null,
+  );
 
   let qboContact = null as Awaited<ReturnType<typeof fetchQboCustomerContact>>;
   let qboContactError: string | null = null;
@@ -166,7 +201,7 @@ export default async function CustomerDetailPage({ params }: PageProps) {
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">{name}</h1>
           <p className="board-topbar-sub">
-            Jobs, estimates, invoices, and payments for this customer.
+            Every ticket for this customer, including older and archived jobs.
             {qboId
               ? ' Contact, open balance, and unapplied deposits come from QuickBooks. Ticket money is refreshed from the estimate/invoice ids on each job.'
               : ' No QuickBooks customer id on these tickets yet — contact is not loaded from QBO.'}
@@ -243,8 +278,13 @@ export default async function CustomerDetailPage({ params }: PageProps) {
         <div className="row g-3 mb-3">
           <div className="col-6 col-lg-3">
             <div className="card border rounded-3 p-3 h-100 bg-body">
-              <p className="text-body-secondary small mb-1">Open tickets</p>
-              <p className="fs-5 fw-semibold mb-0">{openJobs.length}</p>
+              <p className="text-body-secondary small mb-1">Tickets</p>
+              <p className="fs-5 fw-semibold mb-0">
+                {displayJobs.length}
+                {archivedJobs.length > 0 ? (
+                  <span className="text-body-secondary fw-normal fs-6"> · {archivedJobs.length} history</span>
+                ) : null}
+              </p>
             </div>
           </div>
           <div className="col-6 col-lg-3">
@@ -282,11 +322,25 @@ export default async function CustomerDetailPage({ params }: PageProps) {
 
         <CustomerJobsTable title="Open tickets" jobs={openJobs} empty="No open tickets." />
         {archivedJobs.length > 0 ? (
-          <CustomerJobsTable title="Archived" jobs={archivedJobs} empty="No archived tickets." />
+          <CustomerJobsTable title="History" jobs={archivedJobs} empty="No older tickets." />
         ) : null}
       </div>
     </div>
   );
+}
+
+function ticketStatusLabel(job: {
+  boardStatus: Parameters<typeof boardStatusDisplayLabel>[0];
+  archivedAt: Date | null;
+  archiveReason: string | null;
+}): string {
+  if (job.archivedAt) {
+    if (job.archiveReason === 'DONE') return 'Done';
+    if (job.archiveReason === 'LOST') return 'Lost';
+    if (job.archiveReason === 'DISMISSED') return 'Dismissed';
+    return 'Archived';
+  }
+  return boardStatusDisplayLabel(job.boardStatus);
 }
 
 function CustomerJobsTable({
@@ -309,6 +363,8 @@ function CustomerJobsTable({
     amountPaidCents: number;
     quickbooksEstimateId: string | null;
     quickbooksInvoiceId: string | null;
+    archiveReason: string | null;
+    createdAt: Date;
     updatedAt: Date;
   }>;
   empty: string;
@@ -328,6 +384,7 @@ function CustomerJobsTable({
               <tr>
                 <th>Ticket</th>
                 <th>Status</th>
+                <th className="d-none d-md-table-cell">Created</th>
                 <th className="text-end">Estimate</th>
                 <th className="text-end">Invoice</th>
                 <th className="text-end">Paid / deposit</th>
@@ -354,9 +411,14 @@ function CustomerJobsTable({
                       </div>
                     </td>
                     <td>
-                      <span className="badge bg-primary-subtle text-primary">
-                        {boardStatusDisplayLabel(job.boardStatus)}
+                      <span
+                        className={`badge ${job.archivedAt ? 'bg-secondary-subtle text-secondary' : 'bg-primary-subtle text-primary'}`}
+                      >
+                        {ticketStatusLabel(job)}
                       </span>
+                    </td>
+                    <td className="small text-body-secondary text-nowrap d-none d-md-table-cell">
+                      {fmtShortDate(job.createdAt)}
                     </td>
                     <td className="text-end text-nowrap detail-mono">
                       {fmtUsd(job.estimateAmountCents)}

@@ -25,6 +25,8 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
       estimateAmountCents: true,
       invoiceAmountCents: true,
       amountPaidCents: true,
+      quickbooksEstimateId: true,
+      quickbooksInvoiceId: true,
       updatedAt: true,
     },
   });
@@ -41,9 +43,8 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Customers</h1>
           <p className="board-topbar-sub">
-            One row per QuickBooks customer (or name when a ticket has no customer id). Estimate, invoice,
-            and paid/deposit totals come from jobs already in Dash. The customer page refreshes those
-            figures from QuickBooks when a ticket has an estimate or invoice id.
+            Customers with a QuickBooks estimate or invoice. Click a column to sort. Opening a
+            customer shows every ticket for that name, including older and archived jobs.
           </p>
         </div>
         <div className="board-topbar-actions">
@@ -98,11 +99,15 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
             quickbooksCustomerId: row.quickbooksCustomerId,
             openJobCount: row.openJobCount,
             archivedJobCount: row.archivedJobCount,
+            estimatedCents: row.estimatedCents,
             estimatedLabel: fmtUsd(row.estimatedCents),
+            invoicedCents: row.invoicedCents,
             invoicedLabel: fmtUsd(row.invoicedCents),
+            paidCents: row.paidCents,
             paidLabel: fmtUsd(row.paidCents),
             outstandingCents: row.outstandingCents,
             outstandingLabel: fmtUsd(row.outstandingCents),
+            lastUpdatedAt: row.lastUpdatedAt.toISOString(),
             lastUpdatedLabel: fmtShortDate(row.lastUpdatedAt),
           }))}
         />

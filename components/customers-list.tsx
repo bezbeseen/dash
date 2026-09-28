@@ -3,6 +3,39 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
+function SortableTh({
+  label,
+  column,
+  sortKey,
+  sortDir,
+  onSort,
+  align = 'start',
+  className = '',
+}: {
+  label: string;
+  column: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (key: SortKey) => void;
+  align?: 'start' | 'end';
+  className?: string;
+}) {
+  const active = sortKey === column;
+  const arrow = active ? (sortDir === 'asc' ? '↑' : '↓') : '';
+  return (
+    <th className={`${align === 'end' ? 'text-end' : ''} ${className}`.trim()} aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button
+        type="button"
+        className="btn btn-link btn-sm p-0 text-reset text-decoration-none fw-semibold"
+        onClick={() => onSort(column)}
+      >
+        {label}
+        {arrow ? <span className="ms-1" aria-hidden>{arrow}</span> : null}
+      </button>
+    </th>
+  );
+}
+
 function rowMatchesQuery(
   row: { name: string; quickbooksCustomerId: string | null },
   query: string,
@@ -19,13 +52,57 @@ export type CustomerListRowView = {
   quickbooksCustomerId: string | null;
   openJobCount: number;
   archivedJobCount: number;
+  estimatedCents: number;
   estimatedLabel: string;
+  invoicedCents: number;
   invoicedLabel: string;
+  paidCents: number;
   paidLabel: string;
   outstandingCents: number;
   outstandingLabel: string;
+  lastUpdatedAt: string;
   lastUpdatedLabel: string;
 };
+
+type SortKey = 'name' | 'open' | 'estimate' | 'invoiced' | 'paid' | 'outstanding' | 'updated';
+type SortDir = 'asc' | 'desc';
+
+function defaultDir(key: SortKey): SortDir {
+  return key === 'name' ? 'asc' : 'desc';
+}
+
+function compareRows(a: CustomerListRowView, b: CustomerListRowView, key: SortKey, dir: SortDir): number {
+  let cmp = 0;
+  switch (key) {
+    case 'name':
+      cmp = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      break;
+    case 'open':
+      cmp = a.openJobCount - b.openJobCount;
+      break;
+    case 'estimate':
+      cmp = a.estimatedCents - b.estimatedCents;
+      break;
+    case 'invoiced':
+      cmp = a.invoicedCents - b.invoicedCents;
+      break;
+    case 'paid':
+      cmp = a.paidCents - b.paidCents;
+      break;
+    case 'outstanding':
+      cmp = a.outstandingCents - b.outstandingCents;
+      break;
+    case 'updated':
+      cmp = Date.parse(a.lastUpdatedAt) - Date.parse(b.lastUpdatedAt);
+      break;
+    default: {
+      const _n: never = key;
+      return _n;
+    }
+  }
+  if (cmp === 0) cmp = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  return dir === 'asc' ? cmp : -cmp;
+}
 
 export function CustomersList({
   rows,
@@ -35,10 +112,21 @@ export function CustomersList({
   initialQuery: string;
 }) {
   const [q, setQ] = useState(initialQuery);
-  const filtered = useMemo(
-    () => rows.filter((row) => rowMatchesQuery(row, q)),
-    [rows, q],
-  );
+  const [sortKey, setSortKey] = useState<SortKey>('outstanding');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const filtered = useMemo(() => {
+    const matched = rows.filter((row) => rowMatchesQuery(row, q));
+    return [...matched].sort((a, b) => compareRows(a, b, sortKey, sortDir));
+  }, [rows, q, sortKey, sortDir]);
+
+  function sortBy(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(defaultDir(key));
+  }
 
   return (
     <>
@@ -77,7 +165,7 @@ export function CustomersList({
       {filtered.length === 0 ? (
         <p className="text-body-secondary small mb-0">
           {rows.length === 0
-            ? 'No customers yet. Sync QuickBooks or add a ticket and they will show up here.'
+            ? 'No customers with an estimate or invoice yet. Sync QuickBooks and they will show up here.'
             : 'No customers match that search.'}
         </p>
       ) : (
@@ -85,13 +173,13 @@ export function CustomersList({
           <table className="table table-sm table-hover mb-0 align-middle">
             <thead className="table-light">
               <tr>
-                <th className="ps-3">Customer</th>
-                <th className="text-end">Open tickets</th>
-                <th className="text-end d-none d-lg-table-cell">Estimate</th>
-                <th className="text-end">Invoiced</th>
-                <th className="text-end">Paid / deposit</th>
-                <th className="text-end">Outstanding</th>
-                <th className="text-end pe-3 d-none d-md-table-cell">Updated</th>
+                <SortableTh label="Customer" column="name" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} className="ps-3" />
+                <SortableTh label="Open tickets" column="open" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="end" />
+                <SortableTh label="Estimate" column="estimate" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="end" className="d-none d-lg-table-cell" />
+                <SortableTh label="Invoiced" column="invoiced" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="end" />
+                <SortableTh label="Paid / deposit" column="paid" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="end" />
+                <SortableTh label="Outstanding" column="outstanding" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="end" />
+                <SortableTh label="Updated" column="updated" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="end" className="pe-3 d-none d-md-table-cell" />
               </tr>
             </thead>
             <tbody>
@@ -115,7 +203,7 @@ export function CustomersList({
                     {row.archivedJobCount > 0 ? (
                       <span className="small text-body-secondary">
                         {' '}
-                        · {row.archivedJobCount} archived
+                        · {row.archivedJobCount} history
                       </span>
                     ) : null}
                   </td>

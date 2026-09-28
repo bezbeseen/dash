@@ -82,6 +82,8 @@ const jobs: CustomerJobRollupInput[] = [
   {
     customerName: 'Kollab',
     quickbooksCustomerId: '11',
+    quickbooksEstimateId: 'e1',
+    quickbooksInvoiceId: 'i1',
     archivedAt: null,
     estimateAmountCents: 89459,
     invoiceAmountCents: 89459,
@@ -91,6 +93,7 @@ const jobs: CustomerJobRollupInput[] = [
   {
     customerName: 'Kollab',
     quickbooksCustomerId: '11',
+    quickbooksInvoiceId: 'i2',
     archivedAt: null,
     estimateAmountCents: 0,
     invoiceAmountCents: 19755,
@@ -104,6 +107,46 @@ check('rollup: estimated sum', rows[0]?.estimatedCents, 89459);
 check('rollup: invoiced sum', rows[0]?.invoicedCents, 109214);
 check('rollup: paid / deposits sum', rows[0]?.paidCents, 89459);
 check('rollup: outstanding from unpaid invoice', rows[0]?.outstandingCents, 19755);
+
+const withLead = rollupCustomersFromJobs([
+  ...jobs,
+  {
+    customerName: 'Walk-in lead',
+    quickbooksCustomerId: null,
+    archivedAt: null,
+    estimateAmountCents: 0,
+    invoiceAmountCents: 0,
+    amountPaidCents: 0,
+    updatedAt: day(4),
+  },
+  {
+    customerName: 'Preview only',
+    quickbooksCustomerId: '99',
+    quickbooksInvoiceId: 'csv-preview',
+    archivedAt: null,
+    estimateAmountCents: 100,
+    invoiceAmountCents: 100,
+    amountPaidCents: 0,
+    updatedAt: day(5),
+  },
+]);
+check('rollup: leads and preview ids stay off the list', withLead.map((row) => row.name), ['Kollab']);
+
+const withHistory = rollupCustomersFromJobs([
+  ...jobs,
+  {
+    customerName: 'Kollab',
+    quickbooksCustomerId: null,
+    archivedAt: day(1),
+    estimateAmountCents: 0,
+    invoiceAmountCents: 0,
+    amountPaidCents: 0,
+    updatedAt: day(1),
+  },
+]);
+check('rollup: name-only history stays on the QuickBooks customer', withHistory.length, 1);
+check('rollup: historical ticket counts as archived', withHistory[0]?.archivedJobCount, 1);
+check('rollup: open tickets stay the estimate jobs', withHistory[0]?.openJobCount, 2);
 
 if (failures) {
   console.error(`\n${failures} failed`);

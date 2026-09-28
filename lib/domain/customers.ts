@@ -4,6 +4,8 @@ const NAME_KEY_PREFIX = 'n-';
 export type CustomerJobRollupInput = {
   customerName: string;
   quickbooksCustomerId: string | null;
+  quickbooksEstimateId?: string | null;
+  quickbooksInvoiceId?: string | null;
   archivedAt: Date | null;
   estimateAmountCents: number;
   invoiceAmountCents: number;
@@ -70,6 +72,79 @@ export function parseCustomerCrmKey(raw: string): ParsedCustomerCrmKey | null {
   return null;
 }
 
+/** Local CSV / demo ids are not a real QuickBooks estimate or invoice. */
+function isRealQboDocId(id: string | null | undefined): boolean {
+  const trimmed = id?.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith('csv-') || trimmed.startsWith('demo-')) return false;
+  return true;
+}
+
+export function jobHasEstimateOrInvoice(job: Pick<CustomerJobRollupInput, 'quickbooksEstimateId' | 'quickbooksInvoiceId'>): boolean {
+  return isRealQboDocId(job.quickbooksEstimateId) || isRealQboDocId(job.quickbooksInvoiceId);
+}
+
+function normalizedCustomerName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/**
+ * A lead or old ticket often has the customer name and no QuickBooks id.
+ * Fold that history into the one QuickBooks customer with the same name.
+ * Two QuickBooks customers sharing a name are left alone.
+ */
+function foldNameOnlyHistoryIntoQuickBooksCustomers(
+  map: Map<
+    string,
+    {
+      name: string;
+      nameUpdatedAt: number;
+      quickbooksCustomerId: string | null;
+      openJobCount: number;
+      archivedJobCount: number;
+      estimatedCents: number;
+      outstandingCents: number;
+      invoicedCents: number;
+      paidCents: number;
+      lastUpdatedAt: Date;
+      hasEstimateOrInvoice: boolean;
+    }
+  >,
+): void {
+  const qboBucketsByName = new Map<string, string[]>();
+  for (const [bucket, row] of map) {
+    if (!bucket.startsWith('qbo:')) continue;
+    const key = normalizedCustomerName(row.name);
+    if (!key || key === '(no name)') continue;
+    const list = qboBucketsByName.get(key) ?? [];
+    list.push(bucket);
+    qboBucketsByName.set(key, list);
+  }
+
+  for (const [bucket, row] of [...map]) {
+    if (!bucket.startsWith('name:')) continue;
+    const matches = qboBucketsByName.get(normalizedCustomerName(row.name)) ?? [];
+    if (matches.length !== 1) continue;
+    const target = map.get(matches[0]!);
+    if (!target) continue;
+    target.openJobCount += row.openJobCount;
+    target.archivedJobCount += row.archivedJobCount;
+    target.estimatedCents += row.estimatedCents;
+    target.outstandingCents += row.outstandingCents;
+    target.invoicedCents += row.invoicedCents;
+    target.paidCents += row.paidCents;
+    if (row.lastUpdatedAt.getTime() >= target.lastUpdatedAt.getTime()) {
+      target.lastUpdatedAt = row.lastUpdatedAt;
+    }
+    if (row.nameUpdatedAt >= target.nameUpdatedAt && row.name !== '(no name)') {
+      target.name = row.name;
+      target.nameUpdatedAt = row.nameUpdatedAt;
+    }
+    if (row.hasEstimateOrInvoice) target.hasEstimateOrInvoice = true;
+    map.delete(bucket);
+  }
+}
+
 function groupBucketId(job: CustomerJobRollupInput): string {
   const qbo = job.quickbooksCustomerId?.trim();
   if (qbo) return `qbo:${qbo}`;
@@ -89,6 +164,7 @@ export function rollupCustomersFromJobs(jobs: CustomerJobRollupInput[]): Custome
     invoicedCents: number;
     paidCents: number;
     lastUpdatedAt: Date;
+    hasEstimateOrInvoice: boolean;
   };
   const map = new Map<string, Acc>();
 
@@ -110,6 +186,7 @@ export function rollupCustomersFromJobs(jobs: CustomerJobRollupInput[]): Custome
         invoicedCents: job.invoiceAmountCents,
         paidCents: job.amountPaidCents,
         lastUpdatedAt: job.updatedAt,
+        hasEstimateOrInvoice: jobHasEstimateOrInvoice(job),
       });
       continue;
     }
@@ -127,9 +204,13 @@ export function rollupCustomersFromJobs(jobs: CustomerJobRollupInput[]): Custome
       existing.nameUpdatedAt = updatedMs;
     }
     if (!existing.quickbooksCustomerId && qbo) existing.quickbooksCustomerId = qbo;
+    if (jobHasEstimateOrInvoice(job)) existing.hasEstimateOrInvoice = true;
   }
 
+  foldNameOnlyHistoryIntoQuickBooksCustomers(map);
+
   return [...map.values()]
+    .filter((row) => row.hasEstimateOrInvoice)
     .map((row) => ({
       key: customerCrmKey({
         quickbooksCustomerId: row.quickbooksCustomerId,
