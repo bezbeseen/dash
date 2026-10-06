@@ -1,5 +1,5 @@
 import { gmail_v1 } from 'googleapis';
-import { extractGmailMessageText, gmailHeader } from '@/lib/gmail/message-text';
+import { decodeHtmlEntities, extractGmailMessageText, gmailHeader } from '@/lib/gmail/message-text';
 import { extractSignaturePhoneFromMessages } from '@/lib/gmail/signature-phone';
 import {
   buildCounterpartyFilter,
@@ -37,7 +37,7 @@ export function threadMessagesFromGmail(thread: gmail_v1.Schema$Thread): ThreadH
       to: gmailHeader(headers, 'To'),
       cc: gmailHeader(headers, 'Cc'),
       subject: gmailHeader(headers, 'Subject'),
-      snippet: (m.snippet ?? '').trim(),
+      snippet: decodeHtmlEntities(m.snippet ?? '').trim(),
       body: extractGmailMessageText(m.payload),
     };
   });

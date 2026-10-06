@@ -14,6 +14,12 @@ export function TicketBoardBadgeLegend() {
           QuickBooks estimate linked
         </li>
         <li className="d-flex align-items-center gap-2">
+          <span className="badge rounded-pill bg-danger-subtle text-danger-emphasis border border-danger-subtle small fw-semibold">
+            No deposit
+          </span>
+          Gmail estimate without a deposit request (turn it on in QuickBooks)
+        </li>
+        <li className="d-flex align-items-center gap-2">
           <span className="badge rounded-pill bg-info-subtle text-info-emphasis border border-info-subtle small fw-semibold">
             Inv
           </span>

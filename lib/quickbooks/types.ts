@@ -33,6 +33,11 @@ export type EstimateSnapshot = {
   acceptedAt?: string;
   /** MetaData.CreateTime from QBO (when the estimate was created in QuickBooks). */
   metaCreateTime?: string;
+  /** MetaData.LastUpdatedTime — changes whenever the estimate is saved in QuickBooks. */
+  metaLastUpdatedTime?: string;
+  /** Raw QBO TxnStatus (Pending / Accepted / Closed / Converted / Rejected); `status` folds these. */
+  qboTxnStatus?: string;
+  privateNote?: string;
 };
 
 /** Bank account row from QBO Account query (widget + cash page). */

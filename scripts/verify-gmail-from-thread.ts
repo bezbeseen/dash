@@ -26,7 +26,28 @@ import {
   pickCustomerFromThreadMessages,
   gmailLeadProjectDescription,
   sanitizeGmailTicketLabel,
+  threadMessagesFromGmail,
 } from '../lib/gmail/thread-customer';
+import { decodeHtmlEntities } from '../lib/gmail/message-text';
+import { EstimateStatus } from '@prisma/client';
+import {
+  DEPOSIT_CHECK_EVENT,
+  depositCheckFromLogs,
+  depositWarningShows,
+  jobOpenForDepositWarning,
+} from '../lib/domain/estimate-deposit-check';
+import {
+  estimateDepositReminderText,
+  getEstimateDepositPercent,
+  quickBooksEstimateAppUrl,
+} from '../lib/quickbooks/config';
+import {
+  GMAIL_ESTIMATE_NOTE_MARKER,
+  estimateCameFromGmail,
+  estimateOpenForDeposit,
+  pdfTextShowsDepositRequest,
+} from '../lib/quickbooks/estimate-deposit';
+import { contentStreamTextRuns, extractPdfTextRuns, parseToUnicodeCMap } from '../lib/quickbooks/pdf-text';
 import { extractSignaturePhoneFromMessages, extractSignaturePhoneFromText } from '../lib/gmail/signature-phone';
 import {
   buildQboCustomerCreatePayload,
@@ -551,6 +572,180 @@ check(
 check(
   'addon auth: trims expected',
   gmailAddonAuthorized(addonOk, ' addon-secret\n'),
+  true,
+);
+
+check('entities: apostrophe', decodeHtmlEntities('We&#39;d like a quote'), "We'd like a quote");
+check(
+  'entities: named',
+  decodeHtmlEntities('A &amp; B &quot;sign&quot; &lt;24&quot;&gt;'),
+  'A & B "sign" <24">',
+);
+check('entities: hex + numeric', decodeHtmlEntities('&#x27;hi&#8217; &#8211; ok'), '\'hi\u2019 \u2013 ok');
+check('entities: single pass keeps literal &lt;', decodeHtmlEntities('&amp;lt;'), '&lt;');
+check('entities: unknown left as-is', decodeHtmlEntities('a &bogus; b & c'), 'a &bogus; b & c');
+check(
+  'entities: Gmail snippet decoded before ticket/estimate',
+  threadMessagesFromGmail({
+    messages: [
+      {
+        snippet: 'We&#39;re ready &amp; can you quote?',
+        payload: { headers: [{ name: 'From', value: 'Jane <jane@acmesigns.com>' }] },
+      },
+    ],
+  })[0]?.snippet,
+  "We're ready & can you quote?",
+);
+
+const depositNote = String(
+  buildUnsentEstimatePayload({
+    customerId: '99',
+    email: 'jane@acmesigns.com',
+    subject: 'Banner',
+    snippet: "We're ready & can you quote?",
+    item: null,
+  }).PrivateNote,
+);
+check(
+  'estimate note: starts with deposit reminder',
+  depositNote.startsWith('Before sending: turn on Deposit request (50%).'),
+  true,
+);
+check('estimate note: still has Gmail marker', depositNote.includes(GMAIL_ESTIMATE_NOTE_MARKER), true);
+check('estimate note: decoded snippet kept', depositNote.endsWith("Snippet: We're ready & can you quote?"), true);
+check('estimate note: marks it as from Gmail', estimateCameFromGmail({ privateNote: depositNote }), true);
+check('estimate note: hand-made estimate is not', estimateCameFromGmail({ privateNote: 'Rush job' }), false);
+
+function withDepositPercent<T>(raw: string | undefined, fn: () => T): T {
+  const prev = process.env.QUICKBOOKS_ESTIMATE_DEPOSIT_PERCENT;
+  if (raw === undefined) delete process.env.QUICKBOOKS_ESTIMATE_DEPOSIT_PERCENT;
+  else process.env.QUICKBOOKS_ESTIMATE_DEPOSIT_PERCENT = raw;
+  try {
+    return fn();
+  } finally {
+    if (prev === undefined) delete process.env.QUICKBOOKS_ESTIMATE_DEPOSIT_PERCENT;
+    else process.env.QUICKBOOKS_ESTIMATE_DEPOSIT_PERCENT = prev;
+  }
+}
+check('deposit %: default 50', withDepositPercent(undefined, getEstimateDepositPercent), 50);
+check('deposit %: env 30%', withDepositPercent('30%', getEstimateDepositPercent), 30);
+check('deposit %: junk falls back', withDepositPercent('abc', getEstimateDepositPercent), 50);
+check('deposit %: over 100 falls back', withDepositPercent('150', getEstimateDepositPercent), 50);
+check(
+  'deposit reminder text',
+  withDepositPercent('25', estimateDepositReminderText),
+  'Before sending: turn on Deposit request (25%).',
+);
+
+function withQboEnvironment<T>(raw: string | undefined, fn: () => T): T {
+  const prev = process.env.QUICKBOOKS_ENVIRONMENT;
+  if (raw === undefined) delete process.env.QUICKBOOKS_ENVIRONMENT;
+  else process.env.QUICKBOOKS_ENVIRONMENT = raw;
+  try {
+    return fn();
+  } finally {
+    if (prev === undefined) delete process.env.QUICKBOOKS_ENVIRONMENT;
+    else process.env.QUICKBOOKS_ENVIRONMENT = prev;
+  }
+}
+check(
+  'qbo link: production estimate',
+  withQboEnvironment('production', () => quickBooksEstimateAppUrl('6280')),
+  'https://qbo.intuit.com/app/estimate?txnId=6280',
+);
+check(
+  'qbo link: sandbox estimate',
+  withQboEnvironment('sandbox', () => quickBooksEstimateAppUrl('6280')),
+  'https://app.sandbox.qbo.intuit.com/app/estimate?txnId=6280',
+);
+
+check(
+  'pdf: Deposit due line',
+  pdfTextShowsDepositRequest(['Estimate', 'Subtotal', '$1,000.00', 'Total', '$1,000.00', 'Deposit due', '$500.00']),
+  true,
+);
+check(
+  'pdf: Deposit paid line',
+  pdfTextShowsDepositRequest(['Total', '$1,000.00', 'Deposit paid', '$500.00']),
+  true,
+);
+check('pdf: split Deposit / due runs', pdfTextShowsDepositRequest(['Total', '$0.00', 'Deposit', 'due', '$0.00']), true);
+check('pdf: no deposit line', pdfTextShowsDepositRequest(['Subtotal', '$0.00', 'Total', '$0.00']), false);
+check(
+  'pdf: deposit wording in a line description is not a request',
+  pdfTextShowsDepositRequest(['Total', '$0.00', 'Customer asked about a deposit for the sign']),
+  false,
+);
+check('pdf: unreadable text (no Total) is unknown', pdfTextShowsDepositRequest(['garbled']), null);
+
+const cmap = parseToUnicodeCMap(
+  '2 beginbfchar <0003> <0020> <0011> <0044> endbfchar 1 beginbfrange <0050> <0052> <0065> endbfrange',
+);
+check(
+  'pdf: ToUnicode CMap + Tj runs',
+  contentStreamTextRuns(
+    'BT /F1 9 Tf <001100500051> Tj ET BT /F1 9 Tf [<0011>-20<0052>] TJ ET',
+    new Map([['F1', cmap]]),
+  ),
+  ['Def', 'Dg'],
+);
+check('pdf: non-PDF bytes are unknown', extractPdfTextRuns(Buffer.from('<html>not a pdf</html>')), null);
+check(
+  'qbo status: pending/accepted open, closed/rejected not',
+  ['Pending', 'Accepted', '', 'Closed', 'Rejected'].map((s) => estimateOpenForDeposit({ qboTxnStatus: s })),
+  [true, true, true, false, false],
+);
+
+const openGmailJob = {
+  archivedAt: null,
+  quickbooksEstimateId: '6280',
+  quickbooksInvoiceId: null,
+  estimateStatus: EstimateStatus.DRAFT,
+};
+const missingCheck = {
+  estimateId: '6280',
+  estimateUpdatedAt: '2026-10-01T10:00:00-07:00',
+  hasDepositRequest: false,
+  checkedAt: '2026-10-01T17:05:00.000Z',
+};
+check('deposit warning: open estimate without deposit', depositWarningShows(openGmailJob, missingCheck), true);
+check(
+  'deposit warning: deposit turned on',
+  depositWarningShows(openGmailJob, { ...missingCheck, hasDepositRequest: true }),
+  false,
+);
+check('deposit warning: never checked', depositWarningShows(openGmailJob, null), false);
+check(
+  'deposit warning: estimate closed after check',
+  depositWarningShows(openGmailJob, { ...missingCheck, estimateClosed: true }),
+  false,
+);
+check(
+  'deposit warning: check was for an older estimate',
+  depositWarningShows({ ...openGmailJob, quickbooksEstimateId: '6300' }, missingCheck),
+  false,
+);
+check(
+  'deposit warning: invoiced ticket',
+  jobOpenForDepositWarning({ ...openGmailJob, quickbooksInvoiceId: '9001' }),
+  false,
+);
+check(
+  'deposit warning: rejected estimate',
+  jobOpenForDepositWarning({ ...openGmailJob, estimateStatus: EstimateStatus.REJECTED }),
+  false,
+);
+check('deposit warning: off the board', jobOpenForDepositWarning({ ...openGmailJob, archivedAt: new Date() }), false);
+check(
+  'deposit cache: newest row for this estimate wins',
+  depositCheckFromLogs(
+    [
+      { eventName: 'gmail.thread_linked', metadata: null },
+      { eventName: DEPOSIT_CHECK_EVENT, metadata: { ...missingCheck, hasDepositRequest: true } },
+      { eventName: DEPOSIT_CHECK_EVENT, metadata: missingCheck },
+    ],
+    '6280',
+  )?.hasDepositRequest,
   true,
 );
 

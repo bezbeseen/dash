@@ -6,6 +6,7 @@ import { PrequoteFromGmailForm } from '@/components/prequote-from-gmail-form';
 import { TicketBoardBadgeLegend } from '@/components/ticket-board-badge-legend';
 import { prisma } from '@/lib/db/prisma';
 import { taskCountsByJobId } from '@/lib/domain/job-task-counts';
+import { jobIdsMissingEstimateDeposit } from '@/lib/domain/estimate-deposit-check';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import {
   fromGmailBoardToast,
@@ -67,7 +68,10 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
       select: { id: true, googleEmail: true },
     }),
   ]);
-  const taskByJob = await taskCountsByJobId(jobs.map((j) => j.id));
+  const [taskByJob, depositMissingJobIds] = await Promise.all([
+    taskCountsByJobId(jobs.map((j) => j.id)),
+    jobIdsMissingEstimateDeposit(jobs),
+  ]);
   const lastTicketSyncAt = qbToolbar.lastTicketSyncAt;
 
   const q = await searchParams;
@@ -226,6 +230,7 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
                               job={full}
                               leadSubstance={substanceByJobId.get(job.id) ?? null}
                               taskCounts={taskByJob.get(job.id) ?? { open: 0, done: 0 }}
+                              estimateDepositMissing={depositMissingJobIds.has(job.id)}
                               updatedAfterLastTicketSync={
                                 lastTicketSyncAt != null && full.updatedAt > lastTicketSyncAt
                               }

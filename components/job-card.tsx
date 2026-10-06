@@ -23,6 +23,7 @@ import {
 import { leadPrequoteCardDisplay } from '@/lib/domain/inbound-lead-display';
 import { InboundLeadConversationPanel } from '@/components/inbound-lead-conversation-panel';
 import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
+import { estimateDepositReminderText } from '@/lib/quickbooks/config';
 import { thinLeadBadgeTitle, type LeadSubstanceResult } from '@/lib/domain/lead-substance';
 import { fmtDetailDate } from '@/lib/ticket/format';
 
@@ -39,6 +40,8 @@ type JobCardProps = {
   boardColumn?: DashboardColumnKey;
   /** Pre-quote triage: thin-lead scoring from the pre-quote board. */
   leadSubstance?: LeadSubstanceResult | null;
+  /** Gmail-made estimate still open without QuickBooks' Deposit request (cached PDF check). */
+  estimateDepositMissing?: boolean;
 };
 
 export function JobCard({
@@ -49,6 +52,7 @@ export function JobCard({
   selectionSlot,
   boardColumn,
   leadSubstance = null,
+  estimateDepositMissing = false,
 }: JobCardProps) {
   const needsWrapUpReminder = jobNeedsWrapUpReminder(job, null);
   const wrapUpRecorded = jobWrapUpRecorded(job);
@@ -154,6 +158,14 @@ export function JobCard({
           {hasQbEstimate ? (
             <span className="badge rounded-pill bg-primary-subtle text-primary-emphasis border border-primary-subtle small fw-semibold">
               Est
+            </span>
+          ) : null}
+          {estimateDepositMissing ? (
+            <span
+              className="badge rounded-pill bg-danger-subtle text-danger-emphasis border border-danger-subtle small fw-semibold"
+              title={`Estimate has no deposit request in QuickBooks. ${estimateDepositReminderText()}`}
+            >
+              No deposit
             </span>
           ) : null}
           {hasQbInvoice ? (

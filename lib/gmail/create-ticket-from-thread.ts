@@ -11,6 +11,7 @@ import { prisma } from '@/lib/db/prisma';
 import { looksLikeQboDocProjectName, preferHumanProjectName } from '@/lib/domain/job-display';
 import { replaceJobEstimateFromSnapshot, restoreJobToBoard, upsertJobFromEstimate } from '@/lib/domain/sync';
 import { applyThreadLink } from '@/lib/gmail/find-thread-for-job';
+import { decodeHtmlEntities } from '@/lib/gmail/message-text';
 import { openGmailThreadAcrossMailboxes } from '@/lib/gmail/open-thread';
 import {
   gmailBookmarkTicketExplanation,
@@ -32,8 +33,12 @@ import {
   type GmailThreadCustomer,
 } from '@/lib/gmail/thread-customer';
 import type { ScoredThreadCandidate } from '@/lib/gmail/thread-match';
+import { jobOpenForDepositWarning, refreshEstimateDepositCheck } from '@/lib/domain/estimate-deposit-check';
 import { fetchEstimateById } from '@/lib/quickbooks/client';
+import { estimateDepositReminderText, quickBooksEstimateAppUrl } from '@/lib/quickbooks/config';
+import { estimateCameFromGmail, estimateOpenForDeposit } from '@/lib/quickbooks/estimate-deposit';
 import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
+import type { EstimateSnapshot } from '@/lib/quickbooks/types';
 import { resolveRealmIdForJob } from '@/lib/quickbooks/realm';
 import {
   createUnsentEstimateFromEmail,
@@ -67,6 +72,13 @@ export type CreateTicketFromGmailResult = {
   canForceEstimate?: boolean;
   /** forceEstimate created a new QBO estimate on the existing job (did not mint a second Job). */
   estimateCreated?: boolean;
+  /** Usable QBO estimate on the ticket (new or existing). */
+  estimateId?: string | null;
+  /** Estimate is a Gmail-made draft that may still lack QuickBooks' Deposit request. */
+  depositReminder?: boolean;
+  /** Add-on card lines and buttons, so the card can change without an Apps Script redeploy. */
+  addonNotes?: string[];
+  addonLinks?: { label: string; url: string }[];
 };
 
 /** Job page path after creating/linking from Gmail (paste form or add-on). */
@@ -118,12 +130,40 @@ async function attachGmailTicketCardFields(
     result.estimateNumber?.trim() ||
     (result.needsEstimate ? null : estimateNumberFromProjectName(fromJob)) ||
     null;
+  const estimateId = result.needsEstimate ? null : result.estimateId?.trim() || null;
   return {
     ...result,
     customerName: job?.customerName?.trim() || result.customerName || null,
     ticketLabel,
     estimateNumber,
+    estimateId,
+    addonNotes: estimateId && result.depositReminder ? [estimateDepositReminderText()] : [],
+    addonLinks: estimateId ? [{ label: 'Open in QuickBooks', url: quickBooksEstimateAppUrl(estimateId) }] : [],
   };
+}
+
+/** Existing ticket: remind unless the cached (or freshly read) PDF shows a deposit request. */
+async function existingEstimateNeedsDepositReminder(jobId: string, estimate: EstimateSnapshot): Promise<boolean> {
+  if (!estimateCameFromGmail(estimate) || !estimateOpenForDeposit(estimate)) return false;
+  try {
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      select: {
+        archivedAt: true,
+        quickbooksCompanyId: true,
+        quickbooksEstimateId: true,
+        quickbooksInvoiceId: true,
+        estimateStatus: true,
+      },
+    });
+    if (!job || !jobOpenForDepositWarning(job)) return false;
+    const realmId = await resolveRealmIdForJob(job.quickbooksCompanyId);
+    const check = realmId ? await refreshEstimateDepositCheck({ realmId, jobId, estimate }) : null;
+    return check?.hasDepositRequest !== true;
+  } catch (e) {
+    console.warn('[gmail/from-thread] deposit reminder check failed', jobId, e);
+    return true;
+  }
 }
 
 async function findJobForThread(
@@ -208,32 +248,35 @@ async function reopenExistingGmailJob(opts: {
 async function inspectJobQboEstimate(jobId: string): Promise<{
   usable: boolean;
   estimateNumber: string | null;
+  estimate: EstimateSnapshot | null;
 }> {
+  const unusable = { usable: false, estimateNumber: null, estimate: null };
   const job = await prisma.job.findUnique({
     where: { id: jobId },
     select: { quickbooksEstimateId: true, quickbooksCompanyId: true, projectName: true },
   });
   const estimateId = job?.quickbooksEstimateId?.trim() || '';
   if (!estimateId || isSyntheticQuickBooksId(estimateId)) {
-    return { usable: false, estimateNumber: null };
+    return unusable;
   }
 
   const realmId = await resolveRealmIdForJob(job?.quickbooksCompanyId);
   if (!realmId) {
-    return { usable: false, estimateNumber: null };
+    return unusable;
   }
 
   try {
     const snap = await fetchEstimateById(realmId, estimateId);
-    if (!snap.id) return { usable: false, estimateNumber: null };
+    if (!snap.id) return unusable;
     return {
       usable: true,
       estimateNumber: snap.docNumber?.trim() || estimateNumberFromProjectName(job?.projectName) || null,
+      estimate: snap,
     };
   } catch {
     // Stale Dash id (deleted 5845 → GET 610/400/404) is not healthy. Fail closed
     // on any GET error so we never hide Create estimate anyway / skip minting.
-    return { usable: false, estimateNumber: null };
+    return unusable;
   }
 }
 
@@ -241,7 +284,7 @@ async function mintEstimateOnExistingJob(opts: {
   jobId: string;
   customer: GmailThreadCustomer;
   ticketLabel: string;
-}): Promise<{ customerCreated: boolean; estimateNumber: string | null }> {
+}): Promise<{ customerCreated: boolean; estimateNumber: string | null; estimateId: string }> {
   const job = await prisma.job.findUnique({ where: { id: opts.jobId } });
   if (!job) throw new Error('Ticket not found.');
 
@@ -293,7 +336,7 @@ async function mintEstimateOnExistingJob(opts: {
     { realmId, syncDrive: false },
   );
 
-  return { customerCreated, estimateNumber: estimate.docNumber?.trim() || null };
+  return { customerCreated, estimateNumber: estimate.docNumber?.trim() || null, estimateId: estimate.id };
 }
 
 async function finishExistingGmailJob(opts: {
@@ -346,6 +389,8 @@ async function finishExistingGmailJob(opts: {
         canForceEstimate: false,
         estimateCreated: true,
         estimateNumber: minted.estimateNumber,
+        estimateId: minted.estimateId,
+        depositReminder: true,
       };
     } catch (e) {
       return {
@@ -366,6 +411,10 @@ async function finishExistingGmailJob(opts: {
     needsEstimate: !health.usable,
     canForceEstimate: true,
     estimateNumber: health.usable ? health.estimateNumber : null,
+    estimateId: health.estimate?.id ?? null,
+    depositReminder: health.estimate
+      ? await existingEstimateNeedsDepositReminder(opts.jobId, health.estimate)
+      : false,
   };
 }
 
@@ -627,7 +676,7 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
     email: '',
     name: 'Gmail lead',
     subject: fallbackSubject.slice(0, 512),
-    snippet: (thread.data.snippet ?? '').trim().slice(0, 500),
+    snippet: decodeHtmlEntities(thread.data.snippet ?? '').trim().slice(0, 500),
     participants: [],
   };
   const ticketLabel = sanitizeGmailTicketLabel(opts.ticketLabel, customer.subject || fallbackSubject);
@@ -656,6 +705,7 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
   let customerCreated = false;
   let jobId: string | null = null;
   let estimateNumber: string | null = null;
+  let estimateId: string | null = null;
 
   if (!customer.email) {
     qboError = 'No customer email on that thread — QuickBooks skipped until the thread has an outside address.';
@@ -693,6 +743,7 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
         jobId = job.id;
         usedQuickBooks = true;
         estimateNumber = estimate.docNumber?.trim() || null;
+        estimateId = estimate.id;
         if (job.inboundLeadKind == null) {
           await prisma.job.update({
             where: { id: job.id },
@@ -728,5 +779,7 @@ async function createTicketFromGmailThreadWithMailbox(opts: {
     syncError,
     bookmarkOnly: false,
     estimateNumber,
+    estimateId,
+    depositReminder: estimateId != null,
   };
 }

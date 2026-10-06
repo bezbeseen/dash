@@ -62,6 +62,7 @@ type QboEstimate = {
   CustomerRef?: QboRef;
   /** QBO may return a string or `{ value: "..." }`. */
   CustomerMemo?: string | { value?: string; Value?: string };
+  PrivateNote?: string;
   Line?: unknown[];
   MetaData?: QboMeta;
 };
@@ -276,6 +277,9 @@ function estimateFromQbo(e: QboEstimate, fallbackId: string): EstimateSnapshot {
     status: mapEstimateTxnStatus(e.TxnStatus),
     txnDate: e.TxnDate,
     metaCreateTime: e.MetaData?.CreateTime,
+    metaLastUpdatedTime: e.MetaData?.LastUpdatedTime,
+    qboTxnStatus: e.TxnStatus,
+    privateNote: e.PrivateNote?.trim() || undefined,
   };
 }
 
@@ -571,7 +575,8 @@ export async function fetchInvoiceByDocNumber(realmId: string, docNumberRaw: str
 }
 
 // Avoid SELECT * on estimates: line items on many of them can make QBO stream-timeout (504).
-const ESTIMATE_QUERY_FIELDS = 'Id, TxnStatus, TxnDate, TotalAmt, DocNumber, CustomerRef, CustomerMemo, MetaData';
+const ESTIMATE_QUERY_FIELDS =
+  'Id, TxnStatus, TxnDate, TotalAmt, DocNumber, CustomerRef, CustomerMemo, PrivateNote, MetaData';
 // Query rejects the whole statement on an unknown property (BillEmailCc is GET-only).
 const INVOICE_QUERY_FIELDS =
   'Id, DocNumber, TotalAmt, Balance, TxnDate, DueDate, CustomerRef, BillEmail, CustomerMemo, PrivateNote, LinkedTxn, MetaData';
@@ -775,6 +780,23 @@ export async function listPaymentsChangedSince(
     newestUpdatedAt: newestLastUpdated(rows),
     truncated,
   };
+}
+
+/** Current state of specific estimates (missing ids were deleted in QuickBooks). */
+export async function listEstimatesByIds(realmId: string, ids: string[]): Promise<EstimateSnapshot[]> {
+  const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+  const out: EstimateSnapshot[] = [];
+  for (let i = 0; i < unique.length; i += 30) {
+    const list = unique
+      .slice(i, i + 30)
+      .map((id) => `'${qboQuerySqlStringLiteral(id)}'`)
+      .join(', ');
+    const sql = `SELECT ${ESTIMATE_QUERY_FIELDS} FROM Estimate WHERE Id IN (${list}) MAXRESULTS 30`;
+    const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
+    const rows = qboQueryEntities<QboEstimate>(body as { QueryResponse?: Record<string, unknown> }, 'Estimate');
+    out.push(...rows.filter((e) => e.Id).map((e) => estimateFromQbo(e, e.Id!)));
+  }
+  return out;
 }
 
 /** Current state of specific invoices (missing ids were deleted in QuickBooks). */

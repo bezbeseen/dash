@@ -162,6 +162,8 @@ function createDashTicket(e) {
     estimateNumber: bodyString_(body, 'estimateNumber'),
     ticketUrl: ticketUrl,
     qboError: bodyString_(body, 'qboError'),
+    notes: bodyNotes_(body),
+    links: bodyLinks_(body),
     showAnyway: alreadyOnBoard,
     threadId: threadId,
     messageId: messageId,
@@ -177,6 +179,9 @@ function createDashTicket(e) {
 function buildTicketResultCard_(opts) {
   var section = CardService.newCardSection();
   section.addWidget(CardService.newTextParagraph().setText('<b>' + opts.heading + '</b>'));
+  (opts.notes || []).forEach(function (note) {
+    section.addWidget(CardService.newTextParagraph().setText('<b>' + escapeHtml_(note) + '</b>'));
+  });
 
   if (opts.showAnyway) {
     var forceAction = CardService.newAction()
@@ -235,12 +240,54 @@ function buildTicketResultCard_(opts) {
         ),
     );
   }
+  (opts.links || []).forEach(function (link) {
+    section.addWidget(
+      CardService.newTextButton()
+        .setText(link.label)
+        .setTextButtonStyle(CardService.TextButtonStyle.TEXT)
+        .setOpenLink(
+          CardService.newOpenLink()
+            .setUrl(link.url)
+            .setOpenAs(CardService.OpenAs.FULL_SIZE)
+            .setOnClose(CardService.OnClose.NOTHING),
+        ),
+    );
+  });
   return CardService.newCardBuilder().setHeader(CardService.newCardHeader().setTitle('Dash')).addSection(section).build();
 }
 
 function bodyString_(body, key) {
   if (!body || body[key] == null) return '';
   return String(body[key]).replace(/\s+/g, ' ').trim();
+}
+
+// Server-driven card lines/buttons (addonNotes, addonLinks) so Dash can change them without a redeploy.
+function bodyNotes_(body) {
+  var list = body && Array.isArray(body.addonNotes) ? body.addonNotes : [];
+  return list
+    .map(function (n) {
+      return clip_(String(n == null ? '' : n).replace(/\s+/g, ' ').trim(), 300);
+    })
+    .filter(function (n) {
+      return n;
+    })
+    .slice(0, 4);
+}
+
+function bodyLinks_(body) {
+  var list = body && Array.isArray(body.addonLinks) ? body.addonLinks : [];
+  return list
+    .filter(function (l) {
+      return l && typeof l.label === 'string' && l.label.trim() && typeof l.url === 'string' && /^https:\/\//i.test(l.url);
+    })
+    .map(function (l) {
+      return { label: clip_(l.label.trim(), 40), url: l.url };
+    })
+    .slice(0, 3);
+}
+
+function escapeHtml_(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function bodyFlag_(body, key) {

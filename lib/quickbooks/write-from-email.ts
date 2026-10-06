@@ -6,6 +6,8 @@ import {
   quickBooksCompanyJson,
   quickBooksCompanyJsonPost,
 } from '@/lib/quickbooks/client';
+import { estimateDepositReminderText } from '@/lib/quickbooks/config';
+import { GMAIL_ESTIMATE_NOTE_MARKER } from '@/lib/quickbooks/estimate-deposit';
 import type { EstimateSnapshot } from '@/lib/quickbooks/types';
 
 export type QboCustomerRef = {
@@ -341,7 +343,12 @@ export function buildUnsentEstimatePayload(opts: {
   const snippet = clipQboMemo(opts.snippet, 1500);
   const lineDesc = clipQboMemo(opts.subject || opts.snippet || 'From Gmail', 4000);
   const privateNote = clipQboMemo(
-    [`Created from Gmail in Dash (not sent).`, `Customer: ${opts.email}`, snippet && `Snippet: ${snippet}`]
+    [
+      estimateDepositReminderText(),
+      `${GMAIL_ESTIMATE_NOTE_MARKER} (not sent).`,
+      `Customer: ${opts.email}`,
+      snippet && `Snippet: ${snippet}`,
+    ]
       .filter(Boolean)
       .join('\n'),
     4000,

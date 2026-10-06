@@ -9,6 +9,7 @@ import { TicketDetailBack } from '@/components/ticket-detail/ticket-detail-back'
 import { TicketDetailHeader } from '@/components/ticket-detail/ticket-detail-header';
 import { TicketArchivedBanner } from '@/components/ticket-detail/ticket-archived-banner';
 import { TicketMoneySection } from '@/components/ticket-detail/ticket-money-section';
+import { TicketEstimateDepositWarning } from '@/components/ticket-detail/ticket-estimate-deposit-warning';
 import { TicketProductionSection } from '@/components/ticket-detail/ticket-production-section';
 import { TicketQuickBooksIdsSection } from '@/components/ticket-detail/ticket-qb-ids-section';
 import { TicketQuickBooksInvoiceActivitySection } from '@/components/ticket-detail/ticket-qb-invoice-activity-section';
@@ -50,6 +51,13 @@ import {
 } from '@/lib/quickbooks/invoice-activity';
 import type { InvoiceActivityTimeline } from '@/lib/quickbooks/types-activity';
 import { resolveRealmIdForJob } from '@/lib/quickbooks/realm';
+import { estimateDepositReminderText, quickBooksEstimateAppUrl } from '@/lib/quickbooks/config';
+import {
+  depositCheckFromLogs,
+  depositWarningShows,
+  jobOpenForDepositWarning,
+  refreshEstimateDepositCheck,
+} from '@/lib/domain/estimate-deposit-check';
 import { GMAIL_UI_MESSAGE_CAP } from '@/lib/gmail/ui-limits';
 import { customerCrmHref } from '@/lib/domain/customers';
 import { fmtDetailDate } from '@/lib/ticket/format';
@@ -210,6 +218,12 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
       /* keep the last stored deposit */
     }
   }
+
+  let depositCheck = depositCheckFromLogs(job.activityLogs, job.quickbooksEstimateId);
+  if (realmId && qboEstimate && jobOpenForDepositWarning(job)) {
+    depositCheck = await refreshEstimateDepositCheck({ realmId, jobId: job.id, estimate: qboEstimate });
+  }
+  const showDepositWarning = depositWarningShows(job, depositCheck);
 
   const headerBoardStatus = boardStatusForTicketHeader(job, qboInvoice);
   const isLeadFirst = jobIsLeadFirstTicket(job);
@@ -439,6 +453,15 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
           ) : null}
 
           {isLeadFirst ? <TicketLeadDetailsSection job={job} /> : null}
+
+          {showDepositWarning && job.quickbooksEstimateId ? (
+            <TicketEstimateDepositWarning
+              sectionId="ticket-estimate-deposit"
+              docNumber={qboEstimate?.docNumber}
+              reminder={estimateDepositReminderText()}
+              quickBooksUrl={quickBooksEstimateAppUrl(job.quickbooksEstimateId)}
+            />
+          ) : null}
 
           {!isLeadFirst ? (
             <TicketMoneySection

@@ -10,6 +10,7 @@ import { TicketBoardColumnBody, TicketBoardDndProvider } from '@/components/tick
 import { TicketBoardBadgeLegend } from '@/components/ticket-board-badge-legend';
 import { prisma } from '@/lib/db/prisma';
 import { taskCountsByJobId } from '@/lib/domain/job-task-counts';
+import { jobIdsMissingEstimateDeposit } from '@/lib/domain/estimate-deposit-check';
 import {
   boardColumnTitle,
   DASHBOARD_COLUMNS,
@@ -61,7 +62,10 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     loadQbTicketsToolbar(),
     resolveYelpLeadMailboxState(null),
   ]);
-  const taskByJob = await taskCountsByJobId(jobs.map((j) => j.id));
+  const [taskByJob, depositMissingJobIds] = await Promise.all([
+    taskCountsByJobId(jobs.map((j) => j.id)),
+    jobIdsMissingEstimateDeposit(jobs),
+  ]);
   const lastTicketSyncAt = qbToolbar.lastTicketSyncAt;
   const q = await searchParams;
   const { synced, syncError } = syncToastFromQuery(q);
@@ -199,6 +203,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
                         job={job}
                         boardColumn={column}
                         taskCounts={taskByJob.get(job.id) ?? { open: 0, done: 0 }}
+                        estimateDepositMissing={depositMissingJobIds.has(job.id)}
                         updatedAfterLastTicketSync={
                           lastTicketSyncAt != null && job.updatedAt > lastTicketSyncAt
                         }

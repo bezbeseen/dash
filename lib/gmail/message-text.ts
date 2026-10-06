@@ -9,6 +9,33 @@ export function decodeGmailBase64(data: string): string {
   }
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  rsquo: '\u2019',
+  lsquo: '\u2018',
+  rdquo: '\u201d',
+  ldquo: '\u201c',
+  ndash: '\u2013',
+  mdash: '\u2014',
+  hellip: '\u2026',
+};
+
+/** Gmail's `snippet` is HTML-escaped (`Esme&#39;s`). Single pass, so `&amp;lt;` stays `&lt;`. */
+export function decodeHtmlEntities(text: string): string {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, body: string) => {
+    if (body[0] === '#') {
+      const n = body[1] === 'x' || body[1] === 'X' ? parseInt(body.slice(2), 16) : Number(body.slice(1));
+      return Number.isFinite(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : whole;
+    }
+    return NAMED_ENTITIES[body.toLowerCase()] ?? whole;
+  });
+}
+
 const BLOCK_LEVEL_TAGS = /<(?:\/?(?:p|div|tr|table|ul|ol|h[1-6]|blockquote)|br\s*\/?|hr\s*\/?)>/gi;
 
 /**

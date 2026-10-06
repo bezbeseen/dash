@@ -1,6 +1,7 @@
 import { Prisma, type AutoSyncState } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { persistCustomerDepositCents } from '@/lib/domain/customer-deposit';
+import { refreshDepositChecksAfterSync } from '@/lib/domain/estimate-deposit-check';
 import { usableQboDocId } from '@/lib/domain/hydrate-job-money';
 import { upsertJobFromEstimate, upsertJobFromInvoice } from '@/lib/domain/sync';
 import { scanYelpLeadEmailsAllMailboxes } from '@/lib/gmail/scan-yelp-lead-emails';
@@ -27,6 +28,9 @@ const YELP_MIN_LOOKBACK_DAYS = 2;
 const YELP_MAX_LOOKBACK_DAYS = 14;
 /** Leaves the Yelp pass room to finish inside a 60 s function. */
 const YELP_START_DEADLINE_MS = 35_000;
+/** Estimate PDFs downloaded per run for the Gmail deposit-request check (about 2 s each). */
+const DEPOSIT_CHECK_MAX_PDFS = 4;
+const DEPOSIT_CHECK_DEADLINE_MS = 25_000;
 
 export type QuickBooksAutoSyncPass = {
   status: 'ok' | 'not_connected' | 'error';
@@ -38,6 +42,10 @@ export type QuickBooksAutoSyncPass = {
   /** Open tickets whose invoice changed in the periodic re-read; null when it did not run. */
   openInvoicesRefreshed: number | null;
   depositsChecked: number;
+  /** Gmail estimate PDFs read for the deposit-request warning. */
+  estimateDepositPdfs: number;
+  /** Tickets whose deposit-request warning appeared or cleared. */
+  estimateDepositChanges: number;
   error?: string;
 };
 
@@ -157,6 +165,8 @@ async function syncQuickBooks(
     paidInvoices: 0,
     openInvoicesRefreshed: null,
     depositsChecked: 0,
+    estimateDepositPdfs: 0,
+    estimateDepositChanges: 0,
   };
   const token = await prisma.quickBooksToken.findFirst({
     orderBy: { updatedAt: 'desc' },
@@ -206,10 +216,23 @@ async function syncQuickBooks(
       await persistCustomerDepositCents(realmId, customerId);
     }
 
+    // Invoices are applied first so a just-converted estimate is already off the open list.
+    const depositRequests = await refreshDepositChecksAfterSync({
+      realmId,
+      changedEstimates: estimates.items,
+      maxPdfs: DEPOSIT_CHECK_MAX_PDFS,
+      deadlineAt: now.getTime() + DEPOSIT_CHECK_DEADLINE_MS,
+    }).catch((e) => {
+      console.warn('[auto-sync] estimate deposit checks failed', e);
+      return { pdfsRead: 0, changed: 0 };
+    });
+
     pass.estimates = estimates.items.length;
     pass.invoices = invoices.items.length;
     pass.payments = payments.items.length;
     pass.depositsChecked = depositCustomers.size;
+    pass.estimateDepositPdfs = depositRequests.pdfsRead;
+    pass.estimateDepositChanges = depositRequests.changed;
 
     await prisma.quickBooksToken.update({
       where: { id: token.id },
@@ -296,7 +319,13 @@ export async function runAutoSync(opts: { force?: boolean } = {}): Promise<AutoS
   const q = qbo?.pass ?? null;
   const qboTouched =
     q != null &&
-    q.estimates + q.invoices + q.paidInvoices + (q.openInvoicesRefreshed ?? 0) + q.depositsChecked > 0;
+    q.estimates +
+      q.invoices +
+      q.paidInvoices +
+      (q.openInvoicesRefreshed ?? 0) +
+      q.depositsChecked +
+      q.estimateDepositChanges >
+      0;
   const result: AutoSyncResult = {
     ran: true,
     changed: qboTouched || (yelp?.pass.ticketsCreated ?? 0) > 0,

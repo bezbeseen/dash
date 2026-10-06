@@ -128,6 +128,9 @@ export async function POST(req: Request) {
       needsEstimate: Boolean(result.needsEstimate),
       canForceEstimate: Boolean(result.canForceEstimate),
       estimateCreated: Boolean(result.estimateCreated),
+      estimateId: result.estimateId ?? null,
+      addonNotes: result.addonNotes ?? [],
+      addonLinks: result.addonLinks ?? [],
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Could not create a ticket from this conversation.';
