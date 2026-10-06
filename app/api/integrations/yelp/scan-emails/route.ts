@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { scanYelpLeadEmails, YelpMailboxNotReadyError } from '@/lib/gmail/scan-yelp-lead-emails';
+import {
+  scanYelpLeadEmails,
+  scanYelpLeadEmailsAllMailboxes,
+  YelpMailboxNotReadyError,
+} from '@/lib/gmail/scan-yelp-lead-emails';
 import { safeDashboardReturnPath } from '@/lib/http/safe-dashboard-return-path';
 import { resolveYelpLeadMailboxState } from '@/lib/yelp/lead-mailbox';
 import { parseDryRunQueryParam } from '@/lib/yelp/scan-query';
@@ -66,7 +70,10 @@ async function resolveScanReturnPath(req: NextRequest): Promise<string> {
   return '/dashboard/settings';
 }
 
-/** Imports new Yelp lead emails as pre-quote tickets, then returns to Settings or `return_to`. */
+/**
+ * Imports new Yelp lead emails as pre-quote tickets, then returns to Settings or `return_to`.
+ * Without `mailbox`, every connected mailbox is read.
+ */
 export async function POST(req: NextRequest) {
   const opts = readOptions(req);
   const returnPath = await resolveScanReturnPath(req);
@@ -76,9 +83,15 @@ export async function POST(req: NextRequest) {
   const wantsJson = (req.headers.get('accept') ?? '').includes('application/json');
 
   try {
-    const result = await scanYelpLeadEmails({ ...opts, dryRun: false });
+    const result = opts.mailboxEmail
+      ? await scanYelpLeadEmails({ ...opts, dryRun: false })
+      : await scanYelpLeadEmailsAllMailboxes({ lookbackDays: opts.lookbackDays, maxMessages: opts.maxMessages });
     if (wantsJson) {
       return NextResponse.json({ ok: true, ...result });
+    }
+    const failed = 'mailboxes' in result ? result.mailboxes.filter((m) => m.error) : [];
+    if ('mailboxes' in result && failed.length === result.mailboxes.length && failed.length > 0) {
+      return back(new URLSearchParams({ yelp_scan_error: failed[0].error!.slice(0, 400) }).toString());
     }
     const q = new URLSearchParams({
       yelp_scan: '1',

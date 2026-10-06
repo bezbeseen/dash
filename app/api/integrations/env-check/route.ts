@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { getQuickBooksEnvironment, getQuickBooksSyncMaxResults, QUICKBOOKS_OAUTH_CALLBACK_PATH } from '@/lib/quickbooks/config';
 import { probeQuickBooksApiAccess } from '@/lib/quickbooks/client';
+import { getAutoSyncState } from '@/lib/domain/auto-sync';
 import {
   quickBooksClientIdFingerprint,
   quickBooksOAuthCredentialsConfigured,
@@ -278,6 +279,34 @@ export async function GET(req: NextRequest) {
     /* db error already hinted */
   }
 
+  let autoSync: {
+    lastStartedAt: Date | null;
+    lastFinishedAt: Date | null;
+    quickBooksChangesAppliedThrough: Date | null;
+    yelpScannedAt: Date | null;
+    lastError: string | null;
+  } | null = null;
+  let quickBooksWebhookEvents: { received: number; lastReceivedAt: Date | null } | null = null;
+  try {
+    const state = await getAutoSyncState();
+    autoSync = state
+      ? {
+          lastStartedAt: state.startedAt,
+          lastFinishedAt: state.finishedAt,
+          quickBooksChangesAppliedThrough: state.qboChangedSince,
+          yelpScannedAt: state.yelpScannedAt,
+          lastError: state.lastError?.slice(0, 300) ?? null,
+        }
+      : null;
+    const [received, last] = await Promise.all([
+      prisma.quickBooksWebhookEvent.count(),
+      prisma.quickBooksWebhookEvent.findFirst({ orderBy: { receivedAt: 'desc' }, select: { receivedAt: true } }),
+    ]);
+    quickBooksWebhookEvents = { received, lastReceivedAt: last?.receivedAt ?? null };
+  } catch {
+    /* db error already hinted */
+  }
+
   let quickBooksApiProbe: { ok: boolean; apiBase: string; error?: string } | null = null;
   if (quickBooksRealmId) {
     try {
@@ -467,6 +496,16 @@ export async function GET(req: NextRequest) {
       syncMaxResults: getQuickBooksSyncMaxResults(),
       storedRealmId: quickBooksRealmId,
       apiProbe: quickBooksApiProbe,
+      /** Intuit only delivers webhooks once the endpoint is registered and this verifier matches. */
+      webhookVerifierSet: Boolean(process.env.QUICKBOOKS_WEBHOOK_VERIFIER?.trim()),
+      webhookUrl: `${origin}/api/integrations/quickbooks/webhook`,
+      webhookEvents: quickBooksWebhookEvents,
+    },
+    /** QuickBooks + Yelp pull that runs while Dash is open, and from /api/cron/auto-sync. */
+    autoSync: {
+      state: autoSync,
+      cronSecretSet: Boolean(process.env.CRON_SECRET?.trim()),
+      cronUrl: `${origin}/api/cron/auto-sync`,
     },
     google: {
       /** Paste each URI into Google Cloud → OAuth Web client → Authorized redirect URIs */

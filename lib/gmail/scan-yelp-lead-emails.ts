@@ -175,6 +175,7 @@ async function createYelpLeadTicket(opts: {
         gmailThreadId: job.gmailThreadId,
         gmailConnectionId: job.gmailConnectionId,
         gmailLinkSource: job.gmailLinkSource,
+        yelpThreadId: job.yelpThreadId,
       },
       mailbox,
       message: item.record,
@@ -199,6 +200,8 @@ export async function scanYelpLeadEmails(opts: {
   lookbackDays?: number;
   maxMessages?: number;
   dryRun?: boolean;
+  /** Background runs skip the Yelp Biz pull; it is rate-limited and often denied. */
+  pullYelpBiz?: boolean;
 }): Promise<YelpEmailScanResult> {
   const limits: YelpScanLimits = resolveYelpScanLimits(opts);
   const { lookbackDays, maxMessages } = limits;
@@ -227,7 +230,7 @@ export async function scanYelpLeadEmails(opts: {
   const yelpBizSynced = new Set<string>();
 
   const maybePullYelpBiz = async (jobId: string) => {
-    if (!yelpLeadsAccessTokenConfigured()) return;
+    if (opts.pullYelpBiz === false || !yelpLeadsAccessTokenConfigured()) return;
     if (yelpBizSynced.has(jobId) || yelpBizSynced.size >= YELP_BIZ_SCAN_SYNC_CAP) return;
     yelpBizSynced.add(jobId);
     try {
@@ -360,10 +363,12 @@ export async function scanYelpLeadEmails(opts: {
 
   const rememberOpened = (parsed: ParsedYelpLeadEmail) => {
     for (const key of yelpLeadDedupeLookupKeys(parsed)) openedThisScan.add(key);
+    if (parsed.yelpThreadId) openedThisScan.add(`thread:${parsed.yelpThreadId}`);
   };
 
   const openedInThisScan = (item: ExaminedYelpMessage) =>
-    yelpMessageDedupeLookupKeys(item.record).some((key) => openedThisScan.has(key));
+    yelpMessageDedupeLookupKeys(item.record).some((key) => openedThisScan.has(key)) ||
+    (item.parsed.yelpThreadId != null && openedThisScan.has(`thread:${item.parsed.yelpThreadId}`));
 
   const pushCandidate = (
     item: ExaminedYelpMessage,
@@ -526,4 +531,53 @@ export async function scanYelpLeadEmails(opts: {
     truncationReason,
     candidates,
   };
+}
+
+export type YelpAllMailboxesScanResult = {
+  mailboxes: Array<{
+    mailboxEmail: string;
+    counts: YelpScanCounts | null;
+    truncated: boolean;
+    error: string | null;
+  }>;
+  counts: YelpScanCounts;
+  createdJobIds: string[];
+  truncated: boolean;
+};
+
+/**
+ * Yelp notifies each Biz team member separately, so a lead can land in any connected inbox.
+ * Every connected mailbox is imported (the configured one first); yelpThreadId keeps each
+ * team member's copy of a lead on one ticket. A failing mailbox does not stop the others.
+ */
+export async function scanYelpLeadEmailsAllMailboxes(opts: {
+  lookbackDays?: number;
+  maxMessages?: number;
+  pullYelpBiz?: boolean;
+}): Promise<YelpAllMailboxesScanResult> {
+  const preferred = (await resolveYelpLeadMailboxState(null)).mailbox.trim().toLowerCase();
+  const connections = await prisma.gmailConnection.findMany({ select: { googleEmail: true } });
+  const emails = [...new Set(connections.map((c) => c.googleEmail.trim().toLowerCase()))].sort(
+    (a, b) => Number(b === preferred) - Number(a === preferred) || a.localeCompare(b),
+  );
+
+  const mailboxes: YelpAllMailboxesScanResult['mailboxes'] = [];
+  const candidates: YelpEmailCandidate[] = [];
+  const createdJobIds: string[] = [];
+  let truncated = false;
+
+  for (const mailboxEmail of emails) {
+    try {
+      const result = await scanYelpLeadEmails({ ...opts, mailboxEmail, dryRun: false });
+      candidates.push(...result.candidates);
+      createdJobIds.push(...result.createdJobIds);
+      truncated ||= result.truncated;
+      mailboxes.push({ mailboxEmail, counts: result.counts, truncated: result.truncated, error: null });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      mailboxes.push({ mailboxEmail, counts: null, truncated: false, error: message.slice(0, 300) });
+    }
+  }
+
+  return { mailboxes, counts: summarizeYelpScan(candidates), createdJobIds, truncated };
 }

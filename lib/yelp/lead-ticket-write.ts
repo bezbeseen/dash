@@ -37,6 +37,7 @@ export function yelpLeadEmailJobWriteData(
     projectDescription: parsed.projectDescription,
     inboundLeadKind: InboundLeadKind.YELP_LEAD,
     yelpLeadId: parsed.dedupeKey,
+    yelpThreadId: parsed.yelpThreadId,
     boardStatus: BoardStatus.REQUESTED,
     productionStatus: ProductionStatus.NOT_STARTED,
     estimateStatus: EstimateStatus.UNKNOWN,

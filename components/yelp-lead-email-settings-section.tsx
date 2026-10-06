@@ -20,13 +20,15 @@ export async function YelpLeadEmailSettingsSection() {
       <h2 className="h6 fw-semibold mb-2">Yelp leads → pre-quote tickets</h2>
       <p className="small text-body-secondary mb-3">
         Yelp&apos;s Leads API is limited to advertising resellers with a minimum spend, so Dash reads Yelp&apos;s
-        &quot;Request a Quote&quot; notification emails from a connected mailbox instead. Each new lead becomes a
-        Requested ticket, deduped on Yelp&apos;s conversation id so re-scanning is safe. Every run reports what it
-        examined, how many were customer leads, how many already had tickets and how many tickets it created.
+        &quot;Request a Quote&quot; notification emails instead. Yelp emails each team member separately, so the
+        import reads every connected mailbox and keeps all copies of a lead (and its follow-ups) on one ticket,
+        matched on Yelp&apos;s thread id. Each new lead becomes a Requested ticket. Dash runs this import on its
+        own every few minutes while it is open; the buttons below run it now. Every run reports what it examined,
+        how many were customer leads, how many already had tickets and how many tickets it created.
       </p>
 
       <p className="small mb-1">
-        Scanning: <code className="detail-mono">{mailbox.mailbox}</code>{' '}
+        Preview reads: <code className="detail-mono">{mailbox.mailbox}</code>{' '}
         {mailbox.connected ? (
           <span className="text-success fw-semibold">· connected</span>
         ) : (

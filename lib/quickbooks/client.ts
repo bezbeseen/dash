@@ -4,6 +4,7 @@ import { getValidQuickBooksAccessToken } from '@/lib/quickbooks/tokens-db';
 import { BankAccountBalance, EstimateSnapshot, InvoiceSnapshot } from './types';
 import { parseAccountListBalances } from './account-list-balances';
 import { parseBalanceSheetBankBalances } from './balance-sheet-banks';
+import { customerDepositCentsFromPayments, type QboPaymentForDeposit } from './payment-deposits';
 
 export function verifyQuickBooksSignature(rawBody: string, signatureHeader: string | null) {
   const verifierToken = process.env.QUICKBOOKS_WEBHOOK_VERIFIER;
@@ -39,6 +40,7 @@ function mapEstimateTxnStatus(txnStatus?: string): EstimateSnapshot['status'] {
       return 'SENT';
     case 'accepted':
     case 'closed':
+    case 'converted':
       return 'ACCEPTED';
     case 'rejected':
       return 'REJECTED';
@@ -466,14 +468,9 @@ export async function fetchCustomerPrimaryEmail(realmId: string, customerId: str
   return contact?.email ?? null;
 }
 
-type QboPaymentStub = {
-  Id?: string;
-  UnappliedAmt?: number | string;
-};
-
 /**
- * Sum of Payment.UnappliedAmt for a customer — money received that is not on an invoice yet
- * (QBO customer deposits / unused credits). Paginates; missing UnappliedAmt counts as 0.
+ * Money this customer paid that no invoice has absorbed yet (QBO estimate deposits / unused
+ * credits). Paginates; see `customerDepositCentsFromPayments` for how applied deposits drop out.
  */
 export async function fetchCustomerUnappliedPaymentCents(
   realmId: string,
@@ -481,20 +478,21 @@ export async function fetchCustomerUnappliedPaymentCents(
 ): Promise<number> {
   const lit = qboQuerySqlStringLiteral(customerId);
   let start = 1;
-  let unapplied = 0;
+  const payments: QboPaymentForDeposit[] = [];
   for (let page = 0; page < 8; page++) {
-    const sql = `SELECT Id, UnappliedAmt FROM Payment WHERE CustomerRef = '${lit}' STARTPOSITION ${start} MAXRESULTS 100`;
+    // SELECT * so PaymentExtendedType and Line come back; one customer's payments are few.
+    const sql = `SELECT * FROM Payment WHERE CustomerRef = '${lit}' STARTPOSITION ${start} MAXRESULTS 100`;
     const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
-    const rows = qboQueryEntities<QboPaymentStub>(
+    const rows = qboQueryEntities<QboPaymentForDeposit>(
       body as { QueryResponse?: Record<string, unknown> },
       'Payment',
     );
     if (rows.length === 0) break;
-    for (const row of rows) unapplied += dollarsToCents(row.UnappliedAmt);
+    payments.push(...rows);
     if (rows.length < 100) break;
     start += rows.length;
   }
-  return unapplied;
+  return customerDepositCentsFromPayments(payments);
 }
 
 /** QBO returns raw PDF bytes (not JSON). */
@@ -572,10 +570,15 @@ export async function fetchInvoiceByDocNumber(realmId: string, docNumberRaw: str
   return fetchInvoiceById(realmId, ids[0]!);
 }
 
+// Avoid SELECT * on estimates: line items on many of them can make QBO stream-timeout (504).
+const ESTIMATE_QUERY_FIELDS = 'Id, TxnStatus, TxnDate, TotalAmt, DocNumber, CustomerRef, CustomerMemo, MetaData';
+// Query rejects the whole statement on an unknown property (BillEmailCc is GET-only).
+const INVOICE_QUERY_FIELDS =
+  'Id, DocNumber, TotalAmt, Balance, TxnDate, DueDate, CustomerRef, BillEmail, CustomerMemo, PrivateNote, LinkedTxn, MetaData';
+
 /** Pull recent estimates from QuickBooks (sandbox or prod per env). */
 export async function listRecentEstimates(realmId: string, maxResults = 100): Promise<EstimateSnapshot[]> {
-  // Avoid SELECT * — line items on many estimates can make QBO stream-timeout (504).
-  const sql = `SELECT Id, TxnStatus, TxnDate, TotalAmt, DocNumber, CustomerRef, CustomerMemo, MetaData FROM Estimate ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS ${maxResults}`;
+  const sql = `SELECT ${ESTIMATE_QUERY_FIELDS} FROM Estimate ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS ${maxResults}`;
   let body: unknown;
   try {
     body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
@@ -629,7 +632,7 @@ function qboInvoiceBalancePresent(inv: QboInvoice): boolean {
  */
 export async function listRecentInvoices(realmId: string, maxResults = 100): Promise<InvoiceSnapshot[]> {
   let queryRows: QboInvoice[] | null = null;
-  const richSql = `SELECT Id, DocNumber, TotalAmt, Balance, TxnDate, DueDate, CustomerRef, BillEmail, BillEmailCc, CustomerMemo, PrivateNote, LinkedTxn, MetaData FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS ${maxResults}`;
+  const richSql = `SELECT ${INVOICE_QUERY_FIELDS} FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS ${maxResults}`;
   try {
     const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(richSql)}`);
     queryRows = qboQueryEntities<QboInvoice>(body as { QueryResponse?: Record<string, unknown> }, 'Invoice');
@@ -650,25 +653,145 @@ export async function listRecentInvoices(realmId: string, maxResults = 100): Pro
     stubs = qboQueryEntities<QboInvoice>(body as { QueryResponse?: Record<string, unknown> }, 'Invoice');
   }
 
-  const results = await mapInBatches(stubs, 3, async (inv) => {
+  return invoiceSnapshotsFromRows(realmId, stubs, { rowsHaveFields: queryRows != null });
+}
+
+/**
+ * Trust a query row only when Balance is present; otherwise GET the full invoice. A failed GET
+ * is skipped rather than invented unpaid, so a previously correct amountPaidCents survives.
+ */
+async function invoiceSnapshotsFromRows(
+  realmId: string,
+  rows: QboInvoice[],
+  opts: { rowsHaveFields: boolean },
+): Promise<InvoiceSnapshot[]> {
+  const results = await mapInBatches(rows, 3, async (inv) => {
     const id = inv.Id?.trim();
     if (!id) return null;
 
-    // Trust the query row only when Balance is present; otherwise GET the full invoice.
-    if (queryRows && qboInvoiceBalancePresent(inv)) {
+    if (opts.rowsHaveFields && qboInvoiceBalancePresent(inv)) {
       return invoiceFromQbo(inv, id);
     }
 
     try {
       return await fetchInvoiceById(realmId, id);
     } catch (e) {
-      console.warn('[quickbooks] listRecentInvoices: GET invoice failed, skipping id', id, e);
-      // Skip rather than invent unpaid — avoids wiping a previously correct amountPaidCents.
+      console.warn('[quickbooks] invoice GET failed, skipping id', id, e);
       return null;
     }
   });
 
   return results.filter((x): x is InvoiceSnapshot => x != null);
+}
+
+const CHANGE_PAGE_SIZE = 100;
+
+/** QBO query datetime literal: whole seconds with an explicit offset. */
+function qboDateTimeLiteral(d: Date): string {
+  return d.toISOString().replace(/\.\d{3}Z$/, '+00:00');
+}
+
+function newestLastUpdated(rows: Array<{ MetaData?: QboMeta }>): Date | null {
+  let newest: Date | null = null;
+  for (const row of rows) {
+    const raw = row.MetaData?.LastUpdatedTime;
+    const t = raw ? new Date(raw) : null;
+    if (t && !Number.isNaN(t.getTime()) && (!newest || t > newest)) newest = t;
+  }
+  return newest;
+}
+
+export type QboChangeBatch<T> = {
+  items: T[];
+  /** Newest MetaData.LastUpdatedTime in the batch; the next run asks for changes after it. */
+  newestUpdatedAt: Date | null;
+  /** More changes than one page. Oldest-first order means the next run picks up the rest. */
+  truncated: boolean;
+};
+
+async function queryChangedSince<T>(
+  realmId: string,
+  entity: 'Estimate' | 'Invoice' | 'Payment',
+  fields: string,
+  since: Date,
+): Promise<{ rows: T[]; truncated: boolean }> {
+  const sql = `SELECT ${fields} FROM ${entity} WHERE MetaData.LastUpdatedTime > '${qboDateTimeLiteral(since)}' ORDERBY MetaData.LastUpdatedTime ASC MAXRESULTS ${CHANGE_PAGE_SIZE}`;
+  const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
+  const rows = qboQueryEntities<T>(body as { QueryResponse?: Record<string, unknown> }, entity);
+  return { rows, truncated: rows.length >= CHANGE_PAGE_SIZE };
+}
+
+/** Estimates edited in QuickBooks after `since`. */
+export async function listEstimatesChangedSince(
+  realmId: string,
+  since: Date,
+): Promise<QboChangeBatch<EstimateSnapshot>> {
+  const { rows, truncated } = await queryChangedSince<QboEstimate>(realmId, 'Estimate', ESTIMATE_QUERY_FIELDS, since);
+  return {
+    items: rows.filter((e) => e.Id).map((e) => estimateFromQbo(e, e.Id!)),
+    newestUpdatedAt: newestLastUpdated(rows),
+    truncated,
+  };
+}
+
+/** Invoices edited in QuickBooks after `since` (receiving a payment updates the invoice too). */
+export async function listInvoicesChangedSince(
+  realmId: string,
+  since: Date,
+): Promise<QboChangeBatch<InvoiceSnapshot>> {
+  const { rows, truncated } = await queryChangedSince<QboInvoice>(realmId, 'Invoice', INVOICE_QUERY_FIELDS, since);
+  return {
+    items: await invoiceSnapshotsFromRows(realmId, rows, { rowsHaveFields: true }),
+    newestUpdatedAt: newestLastUpdated(rows),
+    truncated,
+  };
+}
+
+export type QboPaymentChange = {
+  id: string;
+  customerId: string | null;
+  invoiceIds: string[];
+};
+
+/** Payments recorded or edited after `since`, with the invoices each one is applied to. */
+export async function listPaymentsChangedSince(
+  realmId: string,
+  since: Date,
+): Promise<QboChangeBatch<QboPaymentChange>> {
+  const { rows, truncated } = await queryChangedSince<QboPaymentEntity & { MetaData?: QboMeta }>(
+    realmId,
+    'Payment',
+    '*',
+    since,
+  );
+  return {
+    items: rows
+      .filter((p) => p.Id)
+      .map((p) => ({
+        id: p.Id!,
+        customerId: p.CustomerRef?.value?.trim() || null,
+        invoiceIds: collectInvoiceIdsFromPayment(p),
+      })),
+    newestUpdatedAt: newestLastUpdated(rows),
+    truncated,
+  };
+}
+
+/** Current state of specific invoices (missing ids were deleted in QuickBooks). */
+export async function listInvoicesByIds(realmId: string, ids: string[]): Promise<InvoiceSnapshot[]> {
+  const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+  const out: InvoiceSnapshot[] = [];
+  for (let i = 0; i < unique.length; i += 30) {
+    const list = unique
+      .slice(i, i + 30)
+      .map((id) => `'${qboQuerySqlStringLiteral(id)}'`)
+      .join(', ');
+    const sql = `SELECT ${INVOICE_QUERY_FIELDS} FROM Invoice WHERE Id IN (${list}) MAXRESULTS 30`;
+    const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
+    const rows = qboQueryEntities<QboInvoice>(body as { QueryResponse?: Record<string, unknown> }, 'Invoice');
+    out.push(...(await invoiceSnapshotsFromRows(realmId, rows, { rowsHaveFields: true })));
+  }
+  return out;
 }
 
 /** Lightweight API check for env-check / diagnostics (token refresh + one-row query). */

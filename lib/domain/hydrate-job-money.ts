@@ -1,6 +1,10 @@
 import { EstimateStatus, EventSource, InvoiceStatus } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
-import { BOARD_PAID_SLACK_CENTS, deriveBoardStatus } from '@/lib/domain/derive-board-status';
+import {
+  BOARD_PAID_SLACK_CENTS,
+  deriveBoardStatus,
+  estimateStatusFromQbo,
+} from '@/lib/domain/derive-board-status';
 import { qbDocActivityEvents } from '@/lib/domain/qb-doc-activity';
 import { isSyntheticQuickBooksId } from '@/lib/quickbooks/invoice-activity';
 import { fetchEstimateById, fetchInvoiceById } from '@/lib/quickbooks/client';
@@ -67,10 +71,9 @@ export function displayJobMoney(stored: JobMoneyFields, live: LiveJobDocs): JobM
 
   return {
     estimateAmountCents: preferLiveTotal(live.estimate?.totalAmtCents, stored.estimateAmountCents),
-    estimateStatus:
-      liveEstimateStatus && liveEstimateStatus !== EstimateStatus.UNKNOWN
-        ? liveEstimateStatus
-        : stored.estimateStatus,
+    estimateStatus: liveEstimateStatus
+      ? estimateStatusFromQbo(stored.estimateStatus, liveEstimateStatus)
+      : stored.estimateStatus,
     invoiceAmountCents: preferLiveTotal(live.invoice?.totalAmtCents, stored.invoiceAmountCents),
     amountPaidCents: invoiceTrusted ? live.invoice!.amountPaidCents : stored.amountPaidCents,
     invoiceStatus: invoiceTrusted ? mapInvoiceStatus(live.invoice!.status) : stored.invoiceStatus,

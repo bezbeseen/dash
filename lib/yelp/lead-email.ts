@@ -31,6 +31,8 @@ export type ParsedYelpLeadEmail = {
   jobType: string | null;
   /** Yelp's conversation id, so the right thread is findable from the inbox. */
   conversationId: string | null;
+  /** Yelp Biz thread id, shared by every mailbox's copy and every follow-up (see extractYelpThreadId). */
+  yelpThreadId: string | null;
   /** Always safe to click: never one of Yelp's one-click action endpoints. */
   threadUrl: string | null;
   serviceZip: string | null;
@@ -173,6 +175,19 @@ export function extractYelpConversationId(fromHeader: string, body: string): str
     if (m) return normalizeConversationId(m[1]);
   }
   return null;
+}
+
+/**
+ * Yelp Biz's messaging thread id. The reply+hex differs for each team member Yelp notifies,
+ * but this id is the same in every copy of a lead (the "report this conversation" link) and in
+ * every follow-up (the URL-encoded return_url behind "Read message").
+ */
+export function extractYelpThreadId(body: string): string | null {
+  const decoded = body.replace(/%2F/gi, '/');
+  const m =
+    /message_to_business_conversation\/([A-Za-z0-9_-]{12,40})/.exec(decoded) ??
+    /\/messaging\/[A-Za-z0-9_-]+\/thread\/([A-Za-z0-9_-]{12,40})/.exec(decoded);
+  return m ? m[1] : null;
 }
 
 /** Hex ids are case-insensitive; Yelp's base64-ish thread ids are not. */
@@ -400,6 +415,7 @@ export function parseYelpLeadEmail(input: {
     phone,
     jobType,
     conversationId,
+    yelpThreadId: extractYelpThreadId(body),
     threadUrl,
     serviceZip,
     survey,

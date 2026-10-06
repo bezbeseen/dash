@@ -8,7 +8,9 @@ import {
   rollupCustomersFromJobs,
   type CustomerJobRollupInput,
 } from '../lib/domain/customers';
+import { estimateStatusFromQbo } from '../lib/domain/derive-board-status';
 import { displayJobMoney, jobMoneyNeedsPersist, type JobMoneyFields } from '../lib/domain/hydrate-job-money';
+import { customerDepositCentsFromPayments, type QboPaymentForDeposit } from '../lib/quickbooks/payment-deposits';
 import type { EstimateSnapshot, InvoiceSnapshot } from '../lib/quickbooks/types';
 
 let failures = 0;
@@ -55,6 +57,23 @@ const liveInvoice: InvoiceSnapshot = {
 const overlaid = displayJobMoney(stored, { estimate: liveEstimate, invoice: liveInvoice });
 check('hydrate: live estimate total', overlaid.estimateAmountCents, 89459);
 check('hydrate: keep stored estimate status when QBO status is UNKNOWN', overlaid.estimateStatus, EstimateStatus.SENT);
+const approvedOnBoard: JobMoneyFields = { ...stored, estimateStatus: EstimateStatus.ACCEPTED };
+check(
+  'hydrate: QBO "Pending" does not pull a board approval back to Quoted',
+  displayJobMoney(approvedOnBoard, { estimate: { ...liveEstimate, status: 'SENT' }, invoice: null }).estimateStatus,
+  EstimateStatus.ACCEPTED,
+);
+check(
+  'hydrate: an explicit QBO rejection still wins',
+  displayJobMoney(approvedOnBoard, { estimate: { ...liveEstimate, status: 'REJECTED' }, invoice: null }).estimateStatus,
+  EstimateStatus.REJECTED,
+);
+check(
+  'hydrate: QBO acceptance moves a quoted ticket to Approved',
+  displayJobMoney(stored, { estimate: { ...liveEstimate, status: 'ACCEPTED' }, invoice: null }).estimateStatus,
+  EstimateStatus.ACCEPTED,
+);
+check('estimate status: new ticket takes QBO as-is', estimateStatusFromQbo(null, EstimateStatus.SENT), EstimateStatus.SENT);
 check('hydrate: live invoice total', overlaid.invoiceAmountCents, 89459);
 check('hydrate: live payments / deposits', overlaid.amountPaidCents, 89459);
 check('hydrate: live invoice status', overlaid.invoiceStatus, InvoiceStatus.PAID);
@@ -147,6 +166,48 @@ const withHistory = rollupCustomersFromJobs([
 check('rollup: name-only history stays on the QuickBooks customer', withHistory.length, 1);
 check('rollup: historical ticket counts as archived', withHistory[0]?.archivedJobCount, 1);
 check('rollup: open tickets stay the estimate jobs', withHistory[0]?.openJobCount, 2);
+
+// ---- QuickBooks deposits: an estimate deposit stops counting once it moves onto the invoice
+const estimateDeposit: QboPaymentForDeposit = {
+  Id: '5803',
+  TotalAmt: 287.55,
+  UnappliedAmt: 287.55,
+  PaymentExtendedType: 'Prepayment',
+  Line: [],
+};
+const depositMovedOntoInvoice: QboPaymentForDeposit = {
+  Id: '6267',
+  TotalAmt: 0,
+  UnappliedAmt: 0,
+  PaymentExtendedType: 'Prepayment',
+  Line: [
+    { Amount: 287.55, LinkedTxn: [{ TxnId: '6265', TxnType: 'Invoice' }] },
+    { Amount: 287.55, LinkedTxn: [{ TxnId: '6266', TxnType: 'JournalEntry' }] },
+  ],
+};
+check('deposit: counts while the job is still an estimate', customerDepositCentsFromPayments([estimateDeposit]), 28755);
+check(
+  'deposit: zero once the estimate converts (the invoice shows it as paid)',
+  customerDepositCentsFromPayments([estimateDeposit, depositMovedOntoInvoice]),
+  0,
+);
+check(
+  'deposit: another open estimate deposit still counts',
+  customerDepositCentsFromPayments([
+    estimateDeposit,
+    depositMovedOntoInvoice,
+    { Id: '7000', TotalAmt: '500.00', UnappliedAmt: '500.00', PaymentExtendedType: 'Prepayment' },
+  ]),
+  50000,
+);
+check(
+  'deposit: unapplied part of an ordinary payment counts',
+  customerDepositCentsFromPayments([
+    { Id: '1', TotalAmt: 100, UnappliedAmt: 40, Line: [{ Amount: 60, LinkedTxn: [{ TxnId: '9', TxnType: 'Invoice' }] }] },
+  ]),
+  4000,
+);
+check('deposit: never negative', customerDepositCentsFromPayments([depositMovedOntoInvoice]), 0);
 
 if (failures) {
   console.error(`\n${failures} failed`);

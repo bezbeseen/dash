@@ -113,6 +113,9 @@ model Job {
   yelpLeadId           String?           @unique
   /// Partner Get Lead `id` when it differs from the conversation hex stored in yelpLeadId.
   yelpApiLeadId        String?           @unique
+  /// Yelp Biz messaging thread id (`/messaging/<business>/thread/<id>`). Unlike the reply+hex, it is the
+  /// same in every team member's copy of a lead and in every follow-up, so it dedupes across mailboxes.
+  yelpThreadId         String?           @unique
   /// Set when this ticket was created from an inbound marketing webhook (form vs conversation).
   inboundLeadKind      InboundLeadKind?
   productionStatus     ProductionStatus  @default(NOT_STARTED)
@@ -321,8 +324,24 @@ model QuickBooksToken {
   refreshToken            String
   accessTokenExpiresAt    DateTime
   refreshTokenExpiresAt   DateTime?
-  /// Last successful POST /api/jobs/sync (manual ticket sync from QBO).
+  /// Last successful POST /api/jobs/sync (manual ticket sync from QBO) or automatic sync.
   lastTicketSyncAt        DateTime?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
+}
+
+/// Single row (id "default") for the automatic QuickBooks + Yelp sync that runs while Dash is open or on a cron.
+model AutoSyncState {
+  id                  String    @id
+  /// Claimed atomically so several open tabs cannot run overlapping syncs.
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  /// QBO MetaData.LastUpdatedTime of the newest estimate / invoice / payment already applied.
+  qboChangedSince     DateTime?
+  /// Last pass that re-read every open ticket's invoice by id (catches payments the change feed missed).
+  invoicesRefreshedAt DateTime?
+  yelpScannedAt       DateTime?
+  lastResult          Json?
+  lastError           String?
+  updatedAt           DateTime  @updatedAt
 }

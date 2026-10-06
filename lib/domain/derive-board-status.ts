@@ -24,6 +24,21 @@ export function invoiceSnapshotEffectivelyPaid(
   return inv > 0 && paid + BOARD_PAID_SLACK_CENTS >= inv;
 }
 
+/**
+ * QuickBooks leaves most estimates "Pending" after the customer says yes, so re-reading one must
+ * not pull a ticket approved on the board back to Quoted. Only an explicit rejection undoes it,
+ * and a status QuickBooks reports that Dash cannot map keeps whatever the ticket had.
+ */
+export function estimateStatusFromQbo(
+  current: EstimateStatus | null | undefined,
+  fromQbo: EstimateStatus,
+): EstimateStatus {
+  if (current == null) return fromQbo;
+  if (fromQbo === EstimateStatus.UNKNOWN) return current;
+  if (current === EstimateStatus.ACCEPTED && fromQbo !== EstimateStatus.REJECTED) return current;
+  return fromQbo;
+}
+
 export function deriveBoardStatus(job: JobLike): BoardStatus {
   const amountPaid = job.amountPaidCents ?? 0;
   const invoiceAmount = job.invoiceAmountCents ?? 0;

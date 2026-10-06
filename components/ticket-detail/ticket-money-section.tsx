@@ -49,7 +49,8 @@ export function TicketMoneySection({
         <dd>{fmtUsd(invoiceTotalDisplayCents)}</dd>
         <dt>Paid on invoice</dt>
         <dd>{fmtUsd(paidDisplayCents)}</dd>
-        {depositCents > 0 ? (
+        {/* depositCents is per customer; once this job is invoiced, its payments show as paid on invoice. */}
+        {depositCents > 0 && !qboInvoice && invoiceTotalDisplayCents === 0 ? (
           <>
             <dt>Deposit paid</dt>
             <dd>{fmtUsd(depositCents)}</dd>

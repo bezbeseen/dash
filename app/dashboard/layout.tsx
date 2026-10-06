@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import React from 'react';
+import { AutoSync } from '@/components/auto-sync';
 import { DashboardSidebarNav } from '@/components/dashboard-sidebar-nav';
 import { DashboardSidebarOverlay } from '@/components/dashboard-sidebar-overlay';
 import { PreserveShellScroll } from '@/components/preserve-shell-scroll';
@@ -55,6 +56,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <MaxtonTopHeader />
         <div className="main-content">
           <PreserveShellScroll />
+          <AutoSync />
           {children}
         </div>
       </main>

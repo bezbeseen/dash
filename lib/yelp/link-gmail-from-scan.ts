@@ -3,8 +3,9 @@
  * link the Gmail thread with YELP_EMAIL provenance, and store the message the
  * same way a Gmail sync would, so the ticket Gmail section shows the thread.
  */
-import { EventSource, GmailLinkSource, InboundLeadKind } from '@prisma/client';
+import { EventSource, GmailLinkSource, InboundLeadKind, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
+import { extractYelpThreadId } from '@/lib/yelp/lead-email';
 import {
   formatYelpCorrespondenceActivityMessage,
   formatYelpCorrespondenceSnippet,
@@ -18,6 +19,7 @@ export type YelpJobGmailState = {
   gmailThreadId: string | null;
   gmailConnectionId: string | null;
   gmailLinkSource: GmailLinkSource | null;
+  yelpThreadId: string | null;
 };
 
 const JOB_GMAIL_SELECT = {
@@ -25,6 +27,7 @@ const JOB_GMAIL_SELECT = {
   gmailThreadId: true,
   gmailConnectionId: true,
   gmailLinkSource: true,
+  yelpThreadId: true,
 } as const;
 
 export type YelpScanMailbox = {
@@ -51,7 +54,15 @@ export type RecordYelpEmailOnJobResult = {
 export async function findExistingYelpJob(opts: {
   lookupKeys: string[];
   gmailThreadId: string;
+  yelpThreadId?: string | null;
 }): Promise<YelpJobGmailState | null> {
+  if (opts.yelpThreadId) {
+    const byThread = await prisma.job.findUnique({
+      where: { yelpThreadId: opts.yelpThreadId },
+      select: JOB_GMAIL_SELECT,
+    });
+    if (byThread) return byThread;
+  }
   if (opts.lookupKeys.length > 0) {
     const byLeadId = await prisma.job.findFirst({
       where: {
@@ -80,7 +91,22 @@ export async function findExistingYelpJobForMessage(
   return findExistingYelpJob({
     lookupKeys: yelpMessageDedupeLookupKeys(message),
     gmailThreadId: message.gmailThreadId,
+    yelpThreadId: extractYelpThreadId(message.body),
   });
+}
+
+/** Older tickets predate yelpThreadId; learn it from the first email that matches them. */
+async function rememberYelpThreadId(job: YelpJobGmailState, body: string): Promise<void> {
+  if (job.yelpThreadId) return;
+  const yelpThreadId = extractYelpThreadId(body);
+  if (!yelpThreadId) return;
+  try {
+    await prisma.job.update({ where: { id: job.id }, data: { yelpThreadId }, select: { id: true } });
+    job.yelpThreadId = yelpThreadId;
+  } catch (e) {
+    // Another ticket already owns this thread (an older duplicate); leave both as they are.
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')) throw e;
+  }
 }
 
 async function correspondenceAlreadyLogged(jobId: string, gmailMessageId: string): Promise<boolean> {
@@ -108,6 +134,8 @@ export async function recordYelpEmailOnJob(opts: {
 }): Promise<RecordYelpEmailOnJobResult> {
   const { job, mailbox, message } = opts;
   let linked = false;
+
+  await rememberYelpThreadId(job, message.body);
 
   if (mailbox.connectionId && yelpScanShouldWriteGmailLink(job, message.gmailThreadId)) {
     await prisma.job.update({

@@ -9,7 +9,11 @@ import {
   Prisma,
 } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
-import { deriveBoardStatus, invoiceSnapshotEffectivelyPaid } from '@/lib/domain/derive-board-status';
+import {
+  deriveBoardStatus,
+  estimateStatusFromQbo,
+  invoiceSnapshotEffectivelyPaid,
+} from '@/lib/domain/derive-board-status';
 import { preferHumanProjectName, sanitizeJobProjectDescription } from '@/lib/domain/job-display';
 import { qbDocActivityEvents, type QbMoneySnapshot } from '@/lib/domain/qb-doc-activity';
 import {
@@ -112,8 +116,11 @@ export async function upsertJobFromEstimate(
       quickbooksCustomerId: snapshot.customerId,
       customerName: snapshot.customerName,
       projectName: nextProjectName,
-      projectDescription: sanitizeJobProjectDescription(nextProjectName, snapshot.projectDescription),
-      estimateStatus,
+      // Bulk queries omit line items, so a memo-less estimate must not erase lead details.
+      projectDescription:
+        sanitizeJobProjectDescription(nextProjectName, snapshot.projectDescription) ??
+        sanitizeJobProjectDescription(nextProjectName, existing?.projectDescription),
+      estimateStatus: estimateStatusFromQbo(existing?.estimateStatus, estimateStatus),
       estimateAmountCents: snapshot.totalAmtCents,
       estimateSentAt: snapshot.txnDate ? new Date(snapshot.txnDate) : undefined,
       estimateAcceptedAt: snapshot.acceptedAt ? new Date(snapshot.acceptedAt) : estimateStatus === EstimateStatus.ACCEPTED ? new Date() : undefined,

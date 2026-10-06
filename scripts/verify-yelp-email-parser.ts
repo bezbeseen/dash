@@ -7,6 +7,7 @@ import { htmlToPlainText } from '../lib/gmail/message-text';
 import {
   cleanYelpEmailBody,
   extractYelpConversationId,
+  extractYelpThreadId,
   parseYelpLeadEmail,
   senderIsYelp,
 } from '../lib/yelp/lead-email';
@@ -1399,6 +1400,39 @@ assertNoUnsafeUrls(
   'biz thread bodies',
   mixed.flatMap((item) => [item.body, item.originalBody]),
 );
+
+// ---- Yelp Biz thread id: the same in every team member's copy of a lead and in follow-ups
+const bizId = 'a5Q-my4x3biuDN9rxPHZpw';
+const threadId = 'ZUosBFkUj5_3UNbiV8gUOw';
+const leadCopyBody = yelpLeadBody({
+  headingJob: 'printing',
+  sentenceJob: 'printing',
+  firstName: 'Ju',
+  displayName: 'Ju',
+  hex: 'c0ffee11c0ffee22c0ffee33c0ffee44',
+  survey: roseSurvey,
+});
+const flaggedLeadBody = `${leadCopyBody}
+Report this conversation: https://biz.yelp.com/flag/${bizId}/message_to_business_conversation/${threadId}?utm_source=request_a_quote_first_message_v4`;
+const followUpReadMessage = `Ju sent you a new message.
+Read message: https://www.yelp.com/login/passwordless?return_url=%2Fmessaging%2F${bizId}%2Fthread%2F${threadId}%3Futm_source%3Dbiz_new_message&utm_medium=email`;
+check('thread id: lead flag link', extractYelpThreadId(flaggedLeadBody), threadId);
+check('thread id: follow-up encoded return_url', extractYelpThreadId(followUpReadMessage), threadId);
+check(
+  'thread id: plain messaging thread url',
+  extractYelpThreadId(`https://biz.yelp.com/messaging/${bizId}/thread/${threadId}?utm_source=x`),
+  threadId,
+);
+check('thread id: reply+hex inbox links are not thread ids', extractYelpThreadId(leadCopyBody), null);
+const flaggedLead = parseYelpLeadEmail({
+  subject: yelpSubject('Ju'),
+  from: yelpFrom('c0ffee11c0ffee22c0ffee33c0ffee44'),
+  body: flaggedLeadBody,
+  gmailThreadId: 'gt-ju',
+  receivedAt: null,
+});
+check('thread id: parsed onto the lead', flaggedLead.yelpThreadId, threadId);
+check('thread id: written onto the ticket', yelpLeadEmailJobWriteData(flaggedLead, null).yelpThreadId, threadId);
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);
