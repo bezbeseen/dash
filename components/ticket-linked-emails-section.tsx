@@ -1,12 +1,5 @@
 import type { LinkedEmail } from '@prisma/client';
-
-function fmtDate(d: Date | null) {
-  if (!d) return '—';
-  return new Intl.DateTimeFormat('en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(d);
-}
+import { fmtDetailDate } from '@/lib/ticket/format';
 
 type Props = {
   sectionId?: string;
@@ -57,8 +50,8 @@ export function TicketLinkedEmailsSection({ sectionId, jobId, links, emailError 
                     To <span className="detail-mono">{row.toAddr}</span>
                   </span>
                 ) : null}
-                {row.sentAt ? <span>Sent {fmtDate(row.sentAt)}</span> : null}
-                <span>Added {fmtDate(row.createdAt)}</span>
+                {row.sentAt ? <span>Sent {fmtDetailDate(row.sentAt)}</span> : null}
+                <span>Added {fmtDetailDate(row.createdAt)}</span>
               </div>
               {row.linkUrl ? (
                 <p className="linked-email-link-line">

@@ -99,7 +99,7 @@ model Job {
   estimateAmountCents  Int               @default(0)
   invoiceAmountCents   Int               @default(0)
   amountPaidCents      Int               @default(0)
-  /// QuickBooks payments received for this customer that are not applied to an invoice yet.
+  /// This ticket's share of the customer's QuickBooks deposits not on an invoice yet (see attributeCustomerDeposit).
   depositCents         Int               @default(0)
   estimateSentAt       DateTime?
   estimateAcceptedAt   DateTime?

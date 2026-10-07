@@ -14,7 +14,7 @@ type Props = {
   suppressProductionShortcuts?: boolean;
   reviewEmailFeatureEnabled?: boolean;
   reviewEmailMailboxReady?: boolean;
-  reviewEmailSentAtIso?: string | null;
+  reviewEmailSentLabel?: string | null;
   hasDriveFolder?: boolean;
 };
 
@@ -27,7 +27,7 @@ export function TicketActionsSection({
   suppressProductionShortcuts = false,
   reviewEmailFeatureEnabled = false,
   reviewEmailMailboxReady = false,
-  reviewEmailSentAtIso = null,
+  reviewEmailSentLabel = null,
   hasDriveFolder = false,
 }: Props) {
   return (
@@ -49,7 +49,7 @@ export function TicketActionsSection({
           jobId={jobId}
           featureEnabled={reviewEmailFeatureEnabled}
           mailboxReady={reviewEmailMailboxReady}
-          lastSentAtIso={reviewEmailSentAtIso}
+          lastSentLabel={reviewEmailSentLabel}
         />
       ) : null}
     </section>

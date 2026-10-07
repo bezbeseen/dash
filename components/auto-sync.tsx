@@ -8,15 +8,17 @@ const INTERVAL_MS = 5 * 60_000;
 function isEditing(): boolean {
   const el = document.activeElement;
   return (
-    el instanceof HTMLElement &&
-    (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')
+    (el instanceof HTMLElement &&
+      (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) ||
+    document.querySelector('[data-autosync-hold]') != null
   );
 }
 
 /**
  * Keeps tickets current while Dash is open: every few minutes (and when the tab comes back into
  * view) the server pulls QuickBooks changes and new Yelp lead emails. When something changed the
- * page refreshes, but never mid-drag or while someone is typing. The server skips the run when
+ * page refreshes, but never mid-drag, while someone is typing, or while an element marked
+ * `data-autosync-hold` (e.g. a half-typed task) is on the page. The server skips the run when
  * another tab synced moments ago.
  */
 export function AutoSync() {

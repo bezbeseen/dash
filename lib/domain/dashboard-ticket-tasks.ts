@@ -2,7 +2,7 @@ import { TaskStatus, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { jobPrimaryHeading } from '@/lib/domain/job-display';
 import { ticketCustomerLine, type TicketTaskTableRow } from '@/lib/domain/ticket-task-table';
-import { fmtShortDate } from '@/lib/ticket/format';
+import { fmtDueDate, fmtShortDate, pastDueCutoff } from '@/lib/ticket/format';
 
 export const DASHBOARD_TICKET_TASKS_LIMIT = 200;
 
@@ -24,6 +24,7 @@ export async function loadDashboardTicketTasks(
   viewerEmailLower: string | null,
   now = new Date(),
 ): Promise<DashboardTicketTasksModule> {
+  const dueCutoff = pastDueCutoff(now);
   const [tasks, openTotal, openMine, openOverdue] = await Promise.all([
     prisma.task.findMany({
       where: openTicketTaskWhere,
@@ -44,7 +45,7 @@ export async function loadDashboardTicketTasks(
     viewerEmailLower
       ? prisma.task.count({ where: { ...openTicketTaskWhere, assigneeEmail: viewerEmailLower } })
       : Promise.resolve(0),
-    prisma.task.count({ where: { ...openTicketTaskWhere, dueAt: { lt: now } } }),
+    prisma.task.count({ where: { ...openTicketTaskWhere, dueAt: { lt: dueCutoff } } }),
   ]);
 
   const rows: TicketTaskTableRow[] = [];
@@ -60,8 +61,8 @@ export async function loadDashboardTicketTasks(
       ticketCustomer: ticketCustomerLine(ticketTitle, task.job.customerName),
       assigneeEmail: task.assigneeEmail,
       dueAt: task.dueAt?.toISOString() ?? null,
-      dueLabel: task.dueAt ? fmtShortDate(task.dueAt) : null,
-      overdue: task.dueAt != null && task.dueAt < now,
+      dueLabel: task.dueAt ? fmtDueDate(task.dueAt) : null,
+      overdue: task.dueAt != null && task.dueAt < dueCutoff,
       createdAt: task.createdAt.toISOString(),
       createdLabel: fmtShortDate(task.createdAt),
       createdByEmail: task.createdByEmail,

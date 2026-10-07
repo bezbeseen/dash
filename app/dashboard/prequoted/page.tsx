@@ -1,11 +1,13 @@
 import { BoardStatus } from '@prisma/client';
 import Link from 'next/link';
+import { getServerSession } from 'next-auth';
 import { JobCard } from '@/components/job-card';
 import { PrequoteBoardFilters } from '@/components/prequote-board-filters';
 import { PrequoteFromGmailForm } from '@/components/prequote-from-gmail-form';
 import { TicketBoardBadgeLegend } from '@/components/ticket-board-badge-legend';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db/prisma';
-import { taskCountsByJobId } from '@/lib/domain/job-task-counts';
+import { jobCardTasksInclude } from '@/lib/domain/job-card-tasks';
 import { jobIdsMissingEstimateDeposit } from '@/lib/domain/estimate-deposit-check';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import {
@@ -32,6 +34,7 @@ import {
 } from '@/components/ticket-board-multi-select';
 import { WorkflowTabsBar } from '@/components/workflow-tabs-bar';
 import { fmtDetailDate } from '@/lib/ticket/format';
+import { loadTodoAssigneeOptions } from '@/lib/todo/assignee-options';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,7 +53,10 @@ type PrequotedPageProps = {
 };
 
 export default async function PrequotedTicketsPage({ searchParams }: PrequotedPageProps) {
-  const [jobs, totalCount, qbToolbar, gmailConnections] = await Promise.all([
+  const session = await getServerSession(authOptions);
+  const sessionEmail = (session?.user?.email ?? '').toLowerCase() || null;
+
+  const [jobs, totalCount, qbToolbar, gmailConnections, assigneeOptions] = await Promise.all([
     prisma.job.findMany({
       where: { archivedAt: null, boardStatus: BoardStatus.REQUESTED },
       orderBy: [
@@ -58,6 +64,7 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
         { updatedAt: 'desc' },
       ],
       take: PREQUOTE_PAGE_LIMIT,
+      include: jobCardTasksInclude,
     }),
     prisma.job.count({
       where: { archivedAt: null, boardStatus: BoardStatus.REQUESTED },
@@ -67,11 +74,9 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
       orderBy: { googleEmail: 'asc' },
       select: { id: true, googleEmail: true },
     }),
+    loadTodoAssigneeOptions(prisma, sessionEmail),
   ]);
-  const [taskByJob, depositMissingJobIds] = await Promise.all([
-    taskCountsByJobId(jobs.map((j) => j.id)),
-    jobIdsMissingEstimateDeposit(jobs),
-  ]);
+  const depositMissingJobIds = await jobIdsMissingEstimateDeposit(jobs);
   const lastTicketSyncAt = qbToolbar.lastTicketSyncAt;
 
   const q = await searchParams;
@@ -229,7 +234,9 @@ export default async function PrequotedTicketsPage({ searchParams }: PrequotedPa
                               key={job.id}
                               job={full}
                               leadSubstance={substanceByJobId.get(job.id) ?? null}
-                              taskCounts={taskByJob.get(job.id) ?? { open: 0, done: 0 }}
+                              taskCounts={{ open: full.tasks.length, done: full._count.tasks }}
+                              openTasks={full.tasks}
+                              assigneeOptions={assigneeOptions}
                               estimateDepositMissing={depositMissingJobIds.has(job.id)}
                               updatedAfterLastTicketSync={
                                 lastTicketSyncAt != null && full.updatedAt > lastTicketSyncAt

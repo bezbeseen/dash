@@ -1,10 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { SortableTh, type SortDir } from '@/components/sortable-th';
 import { TaskAssigneeSelect } from '@/components/task-assignee-select';
+import { TaskDoneButton } from '@/components/task-done-button';
 import type { DashboardTicketTasksModule } from '@/lib/domain/dashboard-ticket-tasks';
 import {
   defaultTicketTaskSortDir,
@@ -22,47 +22,6 @@ type Props = {
   sessionEmail: string | null;
   className?: string;
 };
-
-function TaskDoneButton({ taskId }: { taskId: string }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
-
-  async function markDone() {
-    setBusy(true);
-    setFailed(false);
-    const res = await fetch(`/api/tasks/${taskId}/toggle`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({ status: 'DONE' }),
-    }).catch(() => null);
-    if (!res?.ok) {
-      setBusy(false);
-      setFailed(true);
-      return;
-    }
-    router.refresh();
-  }
-
-  return (
-    <div>
-      <button
-        type="button"
-        className="btn btn-sm btn-outline-success"
-        title="Mark done"
-        disabled={busy}
-        onClick={() => void markDone()}
-      >
-        {busy ? 'Saving…' : 'Done'}
-      </button>
-      {failed ? <div className="small text-danger mt-1">Could not save.</div> : null}
-    </div>
-  );
-}
 
 export function DashboardTicketTasks({ module: m, assigneeOptions, sessionEmail, className }: Props) {
   const mine = sessionEmail?.toLowerCase() ?? null;

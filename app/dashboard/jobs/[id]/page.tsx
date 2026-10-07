@@ -213,7 +213,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const depositCustomerId = qboEstimate?.customerId ?? qboInvoice?.customerId ?? job.quickbooksCustomerId;
   if (realmId && depositCustomerId) {
     try {
-      depositCents = await persistCustomerDepositCents(realmId, depositCustomerId);
+      depositCents = (await persistCustomerDepositCents(realmId, depositCustomerId)).get(job.id) ?? 0;
     } catch {
       /* keep the last stored deposit */
     }
@@ -593,7 +593,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
             suppressProductionShortcuts={job.boardStatus === BoardStatus.REQUESTED}
             reviewEmailFeatureEnabled={reviewEmailFeatureOn}
             reviewEmailMailboxReady={reviewEmailMailboxReady}
-            reviewEmailSentAtIso={job.reviewRequestEmailSentAt?.toISOString() ?? null}
+            reviewEmailSentLabel={job.reviewRequestEmailSentAt ? fmtDetailDate(job.reviewRequestEmailSentAt) : null}
             hasDriveFolder={Boolean(job.googleDriveFolderId)}
           />
 

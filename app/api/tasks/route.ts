@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { requireSessionEmail } from '@/lib/auth-session';
 import { postDashboardFormRedirect } from '@/lib/http/post-action-redirect';
+import { wantsJsonResponse } from '@/lib/http/wants-json-response';
 import { isAllowedAssigneeEmail } from '@/lib/todo/assignee-options';
 
 export async function GET(req: Request) {
@@ -25,6 +26,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const email = await requireSessionEmail();
+  const wantsJson = wantsJsonResponse(req);
   const form = await req.formData();
   const titleRaw = String(form.get('title') ?? '').trim();
   const notesRaw = String(form.get('notes') ?? '').trim();
@@ -33,28 +35,23 @@ export async function POST(req: Request) {
   const assigneeRaw = String(form.get('assigneeEmail') ?? '').trim();
   const jobId = jobIdRaw || null;
 
-  if (!titleRaw) {
+  const fail = (error: 'title_required' | 'assignee_invalid' | 'dueAt_invalid') => {
+    if (wantsJson) return NextResponse.json({ ok: false, error }, { status: 400 });
     const to = postDashboardFormRedirect(req, { fallbackPath: '/dashboard/tasks', jobIdFallback: jobId });
-    to.searchParams.set('task_error', 'title_required');
+    to.searchParams.set('task_error', error);
     return NextResponse.redirect(to);
-  }
+  };
+
+  if (!titleRaw) return fail('title_required');
 
   const assigneeEmail = assigneeRaw ? assigneeRaw.toLowerCase() : null;
-  if (!isAllowedAssigneeEmail(assigneeEmail)) {
-    const to = postDashboardFormRedirect(req, { fallbackPath: '/dashboard/tasks', jobIdFallback: jobId });
-    to.searchParams.set('task_error', 'assignee_invalid');
-    return NextResponse.redirect(to);
-  }
+  if (!isAllowedAssigneeEmail(assigneeEmail)) return fail('assignee_invalid');
 
   const dueAt = dueAtRaw ? new Date(dueAtRaw) : null;
   const dueAtValid = dueAt ? !Number.isNaN(dueAt.getTime()) : true;
-  if (!dueAtValid) {
-    const to = postDashboardFormRedirect(req, { fallbackPath: '/dashboard/tasks', jobIdFallback: jobId });
-    to.searchParams.set('task_error', 'dueAt_invalid');
-    return NextResponse.redirect(to);
-  }
+  if (!dueAtValid) return fail('dueAt_invalid');
 
-  await prisma.task.create({
+  const task = await prisma.task.create({
     data: {
       title: titleRaw,
       notes: notesRaw || null,
@@ -65,6 +62,7 @@ export async function POST(req: Request) {
     },
   });
 
+  if (wantsJson) return NextResponse.json({ ok: true, id: task.id });
   const to = postDashboardFormRedirect(req, { fallbackPath: '/dashboard/tasks', jobIdFallback: jobId });
   return NextResponse.redirect(to);
 }

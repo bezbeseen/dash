@@ -1718,6 +1718,149 @@ a.work-cal-chip:hover {
   margin-top: 2px;
 }
 
+/* Board card tasks (components/job-card-tasks.tsx), outside the card link */
+.job-card-tasks {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+.job-card-select-main .job-card-tasks {
+  margin-top: 8px;
+}
+.job-card-tasks .job-card-tasks-toggle {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  padding: 0.2rem 0.3rem 0.2rem 0.4rem;
+  cursor: pointer;
+}
+.job-card-tasks-toggle .material-icons-outlined {
+  font-size: 13px;
+  line-height: 1;
+}
+.job-card-tasks-toggle:focus-visible,
+.job-card-tasks-add-toggle:focus-visible {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: 1px;
+}
+.job-card-tasks-add-toggle {
+  justify-self: start;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 11px;
+  color: var(--bs-secondary-color);
+}
+.job-card-tasks-add-toggle:hover {
+  color: var(--bs-primary);
+}
+.job-card-task-list {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.job-card-task {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  line-height: 1.35;
+}
+.job-card-task-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.job-card-task-assignee {
+  flex: none;
+  max-width: 6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--bs-secondary-color);
+}
+.job-card-task-overdue,
+.job-card-task-due {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--bs-danger-text-emphasis);
+}
+.job-card-task-due {
+  font-weight: 400;
+  color: var(--bs-secondary-color);
+}
+.job-card-tasks-more {
+  font-size: 11px;
+  color: var(--bs-secondary-color);
+  text-decoration: none;
+}
+.job-card-tasks-more:hover {
+  color: var(--bs-primary);
+  text-decoration: underline;
+}
+.job-card-tasks-panel {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: var(--bs-border-width) solid var(--bs-border-color);
+  border-radius: 8px;
+  background-color: var(--bs-tertiary-bg);
+}
+.job-card-tasks-panel .job-card-task-list {
+  gap: 8px;
+}
+.job-card-task-edit {
+  display: grid;
+  gap: 4px;
+}
+.job-card-task-edit .job-card-task {
+  display: grid;
+  gap: 1px;
+}
+.job-card-task-edit .job-card-task-title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.job-card-task-add {
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: var(--bs-border-width) solid var(--bs-border-color);
+}
+.job-card-tasks-panel > .job-card-task-add:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+.job-card-task-controls {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.job-card-task-assign {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.job-card-tasks .form-control-sm,
+.job-card-tasks .form-select-sm {
+  font-size: 12px;
+}
+.job-card-tasks .btn-sm {
+  font-size: 11px;
+  padding: 0.22rem 0.45rem;
+  line-height: 1.25;
+}
+
 /* Job card rows (components/job-card.tsx) — named hooks for layout and overrides */
 .job-card-title {
   line-height: 1.3;

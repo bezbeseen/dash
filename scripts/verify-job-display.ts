@@ -1,8 +1,9 @@
 /**
- * Ticket title + QBO estimate/payment activity (no live QBO).
+ * Ticket title, QBO estimate/payment activity, and card / ticket dates (no live QBO).
  * Run `npm run verify:job-display` after changing those modules.
  */
 import { EstimateStatus, InvoiceStatus } from '@prisma/client';
+import { jobCardTasks } from '../lib/domain/job-card-tasks';
 import {
   isGenericProjectLabel,
   isShopTicketTitle,
@@ -12,6 +13,8 @@ import {
   preferHumanProjectName,
 } from '../lib/domain/job-display';
 import { qbDocActivityEvents } from '../lib/domain/qb-doc-activity';
+import { shopTimeZone } from '../lib/shop-time-zone';
+import { fmtDetailDate, fmtDueDate, fmtQboWhen, fmtShortDate, pastDueCutoff } from '../lib/ticket/format';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -151,6 +154,43 @@ const estSent = qbDocActivityEvents({
 });
 check('activity: estimate sent', estSent[0]?.eventName, 'estimate.sent');
 check('activity: estimate sent message', estSent[0]?.message, 'Estimate #12 marked sent in QuickBooks.');
+
+// ---- Card / ticket dates use the shop's time zone, not the server's (UTC on Vercel)
+process.env.TZ = 'UTC';
+delete process.env.QUICKBOOKS_REPORT_TIMEZONE;
+/** Newer ICU puts a narrow no-break space before AM/PM. */
+const plain = (s: string) => s.replace(/\u202f/g, ' ');
+const lateMorningUtc = new Date('2026-10-07T19:25:00.000Z');
+const eveningLa = new Date('2026-10-08T02:25:00.000Z');
+check('time zone: defaults to Los Angeles', shopTimeZone(), 'America/Los_Angeles');
+check('time zone: 19:25 UTC shows as 12:25 PM', plain(fmtDetailDate(lateMorningUtc)), 'Oct 7, 2026, 12:25 PM');
+check('time zone: evening stays on the shop day', plain(fmtDetailDate(eveningLa)), 'Oct 7, 2026, 7:25 PM');
+check('time zone: short date uses the shop day', fmtShortDate(eveningLa), 'Oct 7, 2026');
+check('time zone: winter is PST', plain(fmtDetailDate(new Date('2026-01-15T20:00:00.000Z'))), 'Jan 15, 2026, 12:00 PM');
+check('time zone: QuickBooks times convert', plain(fmtQboWhen('2026-10-01T18:30:00-07:00')), 'Oct 1, 2026, 6:30 PM');
+check('time zone: QuickBooks dates keep their day', fmtQboWhen('2026-10-01'), 'Oct 1, 2026');
+check('due: a typed due date keeps its day', fmtDueDate(new Date('2026-10-09')), 'Oct 9, 2026');
+check('due: not overdue on its own day', new Date('2026-10-07') < pastDueCutoff(eveningLa), false);
+check('due: overdue the next day', new Date('2026-10-06') < pastDueCutoff(eveningLa), true);
+check(
+  'due: card task rows',
+  jobCardTasks(
+    [
+      { id: 't1', title: 'Call about vinyl', assigneeEmail: null, dueAt: new Date('2026-10-06') },
+      { id: 't2', title: 'Order substrate', assigneeEmail: 'ben@example.com', dueAt: new Date('2026-10-07') },
+      { id: 't3', title: 'Proof', assigneeEmail: null, dueAt: null },
+    ],
+    eveningLa,
+  ).map((t) => [t.dueLabel, t.overdue]),
+  [
+    ['Oct 6, 2026', true],
+    ['Oct 7, 2026', false],
+    [null, false],
+  ],
+);
+process.env.QUICKBOOKS_REPORT_TIMEZONE = 'America/New_York';
+check('time zone: QUICKBOOKS_REPORT_TIMEZONE overrides', plain(fmtDetailDate(eveningLa)), 'Oct 7, 2026, 10:25 PM');
+delete process.env.QUICKBOOKS_REPORT_TIMEZONE;
 
 if (failures) {
   console.error(`\n${failures} failed`);

@@ -3,7 +3,7 @@ import { JobWorkflowActions } from '@/components/job-workflow-actions';
 import type { DashboardWorkList } from '@/lib/domain/dashboard-work-list';
 import { DASHBOARD_WORK_LIST_LIMIT } from '@/lib/domain/dashboard-work-list';
 import { jobNeedsWrapUpReminder, jobWrapUpRecorded } from '@/lib/domain/production-workflow';
-import { fmtShortDate } from '@/lib/ticket/format';
+import { fmtDueDate, fmtShortDate } from '@/lib/ticket/format';
 
 type Props = {
   work: DashboardWorkList;
@@ -109,7 +109,7 @@ export function DashboardWorkList({ work, leadCount }: Props) {
                           {row.overdueTasks > 0 ? (
                             <div className="text-danger">{row.overdueTasks} overdue</div>
                           ) : row.nextDueAt ? (
-                            <div className="text-body-secondary">Due {fmtShortDate(row.nextDueAt)}</div>
+                            <div className="text-body-secondary">Due {fmtDueDate(row.nextDueAt)}</div>
                           ) : null}
                         </>
                       )}

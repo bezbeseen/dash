@@ -1,5 +1,6 @@
 import { BoardStatus } from '@prisma/client';
 import Link from 'next/link';
+import { getServerSession } from 'next-auth';
 import { JobCard } from '@/components/job-card';
 import {
   TicketBoardCheckbox,
@@ -8,8 +9,9 @@ import {
 } from '@/components/ticket-board-multi-select';
 import { TicketBoardColumnBody, TicketBoardDndProvider } from '@/components/ticket-board-dnd';
 import { TicketBoardBadgeLegend } from '@/components/ticket-board-badge-legend';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db/prisma';
-import { taskCountsByJobId } from '@/lib/domain/job-task-counts';
+import { jobCardTasksInclude } from '@/lib/domain/job-card-tasks';
 import { jobIdsMissingEstimateDeposit } from '@/lib/domain/estimate-deposit-check';
 import {
   boardColumnTitle,
@@ -27,6 +29,7 @@ import { WorkflowTabsBar } from '@/components/workflow-tabs-bar';
 import { YelpSyncButton } from '@/components/yelp-sync-button';
 import { resolveYelpLeadMailboxState } from '@/lib/yelp/lead-mailbox';
 import { fmtDetailDate } from '@/lib/ticket/format';
+import { loadTodoAssigneeOptions } from '@/lib/todo/assignee-options';
 
 /** Always read fresh jobs from the DB (avoid any edge-case caching after CSV import / sync). */
 export const dynamic = 'force-dynamic';
@@ -48,24 +51,26 @@ type TicketsPageProps = {
 };
 
 export default async function TicketsPage({ searchParams }: TicketsPageProps) {
-  const [jobs, leadCount, qbToolbar, yelpMailbox] = await Promise.all([
+  const session = await getServerSession(authOptions);
+  const sessionEmail = (session?.user?.email ?? '').toLowerCase() || null;
+
+  const [jobs, leadCount, qbToolbar, yelpMailbox, assigneeOptions] = await Promise.all([
     prisma.job.findMany({
       where: { archivedAt: null, boardStatus: { not: BoardStatus.REQUESTED } },
       orderBy: [
         { qbOrderingAt: { sort: 'desc', nulls: 'last' } },
         { updatedAt: 'desc' },
       ],
+      include: jobCardTasksInclude,
     }),
     prisma.job.count({
       where: { archivedAt: null, boardStatus: BoardStatus.REQUESTED },
     }),
     loadQbTicketsToolbar(),
     resolveYelpLeadMailboxState(null),
+    loadTodoAssigneeOptions(prisma, sessionEmail),
   ]);
-  const [taskByJob, depositMissingJobIds] = await Promise.all([
-    taskCountsByJobId(jobs.map((j) => j.id)),
-    jobIdsMissingEstimateDeposit(jobs),
-  ]);
+  const depositMissingJobIds = await jobIdsMissingEstimateDeposit(jobs);
   const lastTicketSyncAt = qbToolbar.lastTicketSyncAt;
   const q = await searchParams;
   const { synced, syncError } = syncToastFromQuery(q);
@@ -202,7 +207,9 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
                         key={job.id}
                         job={job}
                         boardColumn={column}
-                        taskCounts={taskByJob.get(job.id) ?? { open: 0, done: 0 }}
+                        taskCounts={{ open: job.tasks.length, done: job._count.tasks }}
+                        openTasks={job.tasks}
+                        assigneeOptions={assigneeOptions}
                         estimateDepositMissing={depositMissingJobIds.has(job.id)}
                         updatedAfterLastTicketSync={
                           lastTicketSyncAt != null && job.updatedAt > lastTicketSyncAt

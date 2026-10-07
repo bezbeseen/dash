@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { getQuickBooksApiBase } from '@/lib/quickbooks/config';
 import { getValidQuickBooksAccessToken } from '@/lib/quickbooks/tokens-db';
+import { shopTimeZone } from '@/lib/shop-time-zone';
 import { BankAccountBalance, EstimateSnapshot, InvoiceSnapshot } from './types';
 import { parseAccountListBalances } from './account-list-balances';
 import { parseBalanceSheetBankBalances } from './balance-sheet-banks';
@@ -475,6 +476,7 @@ export async function fetchCustomerPrimaryEmail(realmId: string, customerId: str
 /**
  * Money this customer paid that no invoice has absorbed yet (QBO estimate deposits / unused
  * credits). Paginates; see `customerDepositCentsFromPayments` for how applied deposits drop out.
+ * Invoices are only read when the payments alone still show money held.
  */
 export async function fetchCustomerUnappliedPaymentCents(
   realmId: string,
@@ -496,7 +498,27 @@ export async function fetchCustomerUnappliedPaymentCents(
     if (rows.length < 100) break;
     start += rows.length;
   }
-  return customerDepositCentsFromPayments(payments);
+  if (customerDepositCentsFromPayments(payments) === 0) return 0;
+  return customerDepositCentsFromPayments(payments, await fetchCustomerInvoiceDepositCents(realmId, customerId));
+}
+
+/** Sum of the Deposit field on this customer's invoices, where a converted estimate's deposit can land. */
+async function fetchCustomerInvoiceDepositCents(realmId: string, customerId: string): Promise<number> {
+  const lit = qboQuerySqlStringLiteral(customerId);
+  let start = 1;
+  let total = 0;
+  for (let page = 0; page < 8; page++) {
+    const sql = `SELECT Id, Deposit FROM Invoice WHERE CustomerRef = '${lit}' STARTPOSITION ${start} MAXRESULTS 100`;
+    const body = await quickBooksCompanyJson(realmId, `query?query=${encodeURIComponent(sql)}`);
+    const rows = qboQueryEntities<{ Deposit?: number | string }>(
+      body as { QueryResponse?: Record<string, unknown> },
+      'Invoice',
+    );
+    for (const row of rows) total += dollarsToCents(row.Deposit);
+    if (rows.length < 100) break;
+    start += rows.length;
+  }
+  return total;
 }
 
 /** QBO returns raw PDF bytes (not JSON). */
@@ -960,7 +982,7 @@ export async function listBankAccountsDetailed(realmId: string): Promise<BankAcc
 }
 
 async function fetchBalanceSheetBankMap(realmId: string): Promise<Map<string, number>> {
-  const tz = (process.env.QUICKBOOKS_REPORT_TIMEZONE || 'America/Los_Angeles').trim() || 'America/Los_Angeles';
+  const tz = shopTimeZone();
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: tz,
     year: 'numeric',

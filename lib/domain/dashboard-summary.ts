@@ -5,6 +5,7 @@ import { DASHBOARD_COLUMNS, type DashboardColumnKey } from '@/lib/domain/board-d
 import { jobPrimaryHeading } from '@/lib/domain/job-display';
 import { loadQbTicketsToolbar } from '@/lib/domain/load-qb-tickets-toolbar';
 import { computeMoneyRollup } from '@/lib/domain/money-rollup';
+import { pastDueCutoff } from '@/lib/ticket/format';
 
 export type DashboardRecentAction = {
   id: string;
@@ -211,7 +212,7 @@ export async function loadDashboardSummary(): Promise<DashboardSummary> {
       where: {
         ...ticketTaskBaseWhere,
         status: TaskStatus.OPEN,
-        dueAt: { lt: now },
+        dueAt: { lt: pastDueCutoff(now) },
       },
     }),
     loadReviewRequestEmailDashboardStats(reviewEmailSince),

@@ -1,4 +1,5 @@
 import { fetchProfitAndLossReport } from '@/lib/quickbooks/client';
+import { shopTimeZone } from '@/lib/shop-time-zone';
 
 export type PnlLine = { label: string; amountCents: number; depth: number };
 
@@ -24,7 +25,7 @@ export type PnlErrorResult = {
 
 /** IANA timezone for month boundaries (calendar month ? "today" in this zone). */
 export function quickBooksReportTimeZone(): string {
-  return (process.env.QUICKBOOKS_REPORT_TIMEZONE || 'America/Los_Angeles').trim() || 'America/Los_Angeles';
+  return shopTimeZone();
 }
 
 export function accountingMethodForPnl(): 'Accrual' | 'Cash' {

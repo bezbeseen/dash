@@ -1,6 +1,8 @@
+import { shopTimeZone } from '@/lib/shop-time-zone';
+
 /** Report / shop calendar defaults (same as QuickBooks P&L). */
 export function todoListTimeZone(): string {
-  return (process.env.QUICKBOOKS_REPORT_TIMEZONE || 'America/Los_Angeles').trim() || 'America/Los_Angeles';
+  return shopTimeZone();
 }
 
 /** YYYY-MM-DD in the given IANA time zone. */

@@ -10,15 +10,15 @@ type Props = {
   featureEnabled: boolean;
   /** Gmail OAuth connected for REVIEW_REQUEST_SEND_AS_EMAIL. */
   mailboxReady: boolean;
-  /** Last successful send (from server); shown as hint. */
-  lastSentAtIso: string | null;
+  /** Last successful send, formatted on the server (shop time zone); shown as hint. */
+  lastSentLabel: string | null;
 };
 
 export function TicketReviewRequestEmailButton({
   jobId,
   featureEnabled,
   mailboxReady,
-  lastSentAtIso,
+  lastSentLabel,
 }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -60,10 +60,6 @@ export function TicketReviewRequestEmailButton({
     return null;
   }
 
-  const sentHint = lastSentAtIso
-    ? new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(lastSentAtIso))
-    : null;
-
   return (
     <div className="ticket-review-email-send mt-3 pt-3 border-top border-secondary-subtle">
       <h3 className="h6 text-body-secondary mb-2">Review request email</h3>
@@ -71,9 +67,9 @@ export function TicketReviewRequestEmailButton({
         Sends the HTML review template to the invoice <strong>Bill email</strong> in QuickBooks (same as the automatic
         send when a ticket is marked Done).
       </p>
-      {sentHint ? (
+      {lastSentLabel ? (
         <p className="small text-body-secondary mb-2">
-          Last recorded send: <span className="text-body">{sentHint}</span> (you can send again).
+          Last recorded send: <span className="text-body">{lastSentLabel}</span> (you can send again).
         </p>
       ) : (
         <p className="small text-body-secondary mb-2">No send recorded on this ticket yet.</p>

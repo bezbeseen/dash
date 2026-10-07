@@ -2,6 +2,7 @@ import { BoardStatus, TaskStatus, type InvoiceStatus, type ProductionStatus } fr
 import { prisma } from '@/lib/db/prisma';
 import { boardStatusDisplayLabel } from '@/lib/domain/board-display';
 import { jobPrimaryHeading, jobSecondaryHeading } from '@/lib/domain/job-display';
+import { pastDueCutoff } from '@/lib/ticket/format';
 
 export const DASHBOARD_WORK_LIST_LIMIT = 50;
 
@@ -99,6 +100,7 @@ export async function loadDashboardWorkList(now = new Date()): Promise<Dashboard
     prisma.job.count({ where }),
   ]);
 
+  const dueCutoff = pastDueCutoff(now);
   const rows: DashboardWorkRow[] = jobs.map((job) => {
     const { at, label } = workDateForJob(job);
     const dueDates = job.tasks.map((t) => t.dueAt).filter((d): d is Date => d != null);
@@ -112,7 +114,7 @@ export async function loadDashboardWorkList(now = new Date()): Promise<Dashboard
       dateLabel: label,
       updatedAt: job.updatedAt,
       openTasks: job.tasks.length,
-      overdueTasks: dueDates.filter((d) => d < now).length,
+      overdueTasks: dueDates.filter((d) => d < dueCutoff).length,
       nextDueAt: dueDates[0] ?? null,
       invoiceStatus: job.invoiceStatus,
       invoiceAmountCents: job.invoiceAmountCents,

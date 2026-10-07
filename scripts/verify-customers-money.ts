@@ -1,5 +1,5 @@
 /**
- * Customer CRM money rollup + QBO overlay (no live QBO).
+ * Customer CRM money rollup + QBO overlay, deposits and which ticket shows them (no live QBO).
  * Run `npm run verify:customers-money` after changing those modules.
  */
 import { EstimateStatus, InvoiceStatus } from '@prisma/client';
@@ -8,6 +8,7 @@ import {
   rollupCustomersFromJobs,
   type CustomerJobRollupInput,
 } from '../lib/domain/customers';
+import { attributeCustomerDeposit, type DepositTicket } from '../lib/domain/customer-deposit';
 import { estimateStatusFromQbo } from '../lib/domain/derive-board-status';
 import { displayJobMoney, jobMoneyNeedsPersist, type JobMoneyFields } from '../lib/domain/hydrate-job-money';
 import { customerDepositCentsFromPayments, type QboPaymentForDeposit } from '../lib/quickbooks/payment-deposits';
@@ -208,6 +209,117 @@ check(
   4000,
 );
 check('deposit: never negative', customerDepositCentsFromPayments([depositMovedOntoInvoice]), 0);
+
+// ---- Deposits paid online: the estimate becomes an invoice and QuickBooks records the charge twice
+const onlineDeposit: QboPaymentForDeposit = {
+  Id: '5810',
+  TotalAmt: 818.44,
+  UnappliedAmt: 818.44,
+  PaymentExtendedType: 'Prepayment',
+  CreditCardPayment: { CreditChargeResponse: { CCTransId: 'cc-1' } },
+  Line: [],
+};
+const sameChargeOnInvoice: QboPaymentForDeposit = {
+  Id: '5812',
+  TotalAmt: 818.44,
+  UnappliedAmt: 0,
+  CreditCardPayment: { CreditChargeResponse: { CCTransId: 'cc-1' } },
+  Line: [{ Amount: 818.44, LinkedTxn: [{ TxnId: '5811', TxnType: 'Invoice' }] }],
+};
+check('deposit: online deposit counts until its invoice exists', customerDepositCentsFromPayments([onlineDeposit]), 81844);
+check(
+  'deposit: the same card charge on the invoice cancels the prepayment copy',
+  customerDepositCentsFromPayments([onlineDeposit, sameChargeOnInvoice]),
+  0,
+);
+check(
+  'deposit: an unapplied rest of that charge counts once',
+  customerDepositCentsFromPayments([
+    onlineDeposit,
+    {
+      ...sameChargeOnInvoice,
+      UnappliedAmt: 18.44,
+      Line: [{ Amount: 800, LinkedTxn: [{ TxnId: '5811', TxnType: 'Invoice' }] }],
+    },
+  ]),
+  1844,
+);
+check(
+  'deposit: a different card charge is not the same money',
+  customerDepositCentsFromPayments([
+    onlineDeposit,
+    { ...sameChargeOnInvoice, CreditCardPayment: { CreditChargeResponse: { CCTransId: 'cc-2' } } },
+  ]),
+  81844,
+);
+check(
+  "deposit: an invoice's Deposit field absorbs a hand-entered prepayment",
+  customerDepositCentsFromPayments(
+    [{ Id: '3179', TotalAmt: 1636.88, UnappliedAmt: 1636.88, PaymentExtendedType: 'Prepayment' }],
+    163688,
+  ),
+  0,
+);
+
+// ---- Which ticket shows a customer's held deposit (QuickBooks does not say which estimate it is for)
+const estimateTicket = (id: string, estimateAmountCents: number, extra: Partial<DepositTicket> = {}): DepositTicket => ({
+  id,
+  archivedAt: null,
+  quickbooksEstimateId: `est-${id}`,
+  quickbooksInvoiceId: null,
+  estimateStatus: EstimateStatus.SENT,
+  estimateAmountCents,
+  ...extra,
+});
+const invoicedTicket = estimateTicket('inv', 355840, { quickbooksInvoiceId: '6282' });
+const shares = (heldCents: number, tickets: DepositTicket[]) =>
+  Object.fromEntries(attributeCustomerDeposit(heldCents, tickets));
+
+check(
+  'attribution: the one open estimate gets the held deposit',
+  shares(110210, [estimateTicket('a', 212188), invoicedTicket]),
+  { a: 110210, inv: 0 },
+);
+check('attribution: never more than that estimate total', shares(181844, [estimateTicket('a', 65000)]), { a: 65000 });
+check(
+  'attribution: two open estimates is ambiguous, neither shows it',
+  shares(50000, [estimateTicket('a', 65000), estimateTicket('b', 90000)]),
+  { a: 0, b: 0 },
+);
+check(
+  'attribution: archived, rejected and $0 estimates are not candidates',
+  shares(50000, [
+    estimateTicket('a', 65000),
+    estimateTicket('old', 90000, { archivedAt: day(1) }),
+    estimateTicket('no', 90000, { estimateStatus: EstimateStatus.REJECTED }),
+    estimateTicket('zero', 0),
+  ]),
+  { a: 50000, old: 0, no: 0, zero: 0 },
+);
+check('attribution: nothing held clears every ticket', shares(0, [estimateTicket('a', 65000)]), { a: 0 });
+const ariaHeld = customerDepositCentsFromPayments([
+  onlineDeposit,
+  sameChargeOnInvoice,
+  {
+    Id: '6195',
+    TotalAmt: 1000,
+    UnappliedAmt: 1000,
+    PaymentExtendedType: 'Prepayment',
+    CreditCardPayment: { CreditChargeResponse: { CCTransId: 'cc-3' } },
+  },
+  {
+    Id: '6197',
+    TotalAmt: 1000,
+    UnappliedAmt: 0,
+    CreditCardPayment: { CreditChargeResponse: { CCTransId: 'cc-3' } },
+    Line: [{ Amount: 1000, LinkedTxn: [{ TxnId: '6196', TxnType: 'Invoice' }] }],
+  },
+]);
+check(
+  'attribution: deposits already on invoices leave an open $650 estimate at $0 (was $1,818.44)',
+  shares(ariaHeld, [estimateTicket('1347', 65000), invoicedTicket]),
+  { 1347: 0, inv: 0 },
+);
 
 if (failures) {
   console.error(`\n${failures} failed`);

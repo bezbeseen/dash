@@ -3,8 +3,10 @@ import Link from 'next/link';
 import { BoardStatus, Job } from '@prisma/client';
 import { JobWorkflowActions } from '@/components/job-workflow-actions';
 import { JobCardDragHandle } from '@/components/job-card-drag-handle';
+import { JobCardTasks } from '@/components/job-card-tasks';
 import { PrequoteWorkflowActions } from '@/components/prequote-workflow-actions';
 import type { DashboardColumnKey } from '@/lib/domain/board-display';
+import { jobCardTasks, type JobWithCardTasks } from '@/lib/domain/job-card-tasks';
 import { jobNeedsWrapUpReminder, jobWrapUpRecorded } from '@/lib/domain/production-workflow';
 import { boardStatusDisplayLabel, leadTicketQuotedColumnHint } from '@/lib/domain/board-display';
 import {
@@ -31,6 +33,10 @@ type JobCardProps = {
   job: Job;
   /** Ticket-linked tasks: `open` undone, `done` completed. */
   taskCounts?: { open: number; done: number };
+  /** Boards: open tasks listed (and editable) under the card link, in place of the open-task badge. */
+  openTasks?: JobWithCardTasks['tasks'];
+  /** Assignee choices for `openTasks`, loaded once per board. */
+  assigneeOptions?: string[];
   /** True when this ticket was edited in Dash after the last “Sync from QuickBooks” (totals may need a refresh). */
   updatedAfterLastTicketSync?: boolean;
   extraMeta?: string;
@@ -47,6 +53,8 @@ type JobCardProps = {
 export function JobCard({
   job,
   taskCounts = { open: 0, done: 0 },
+  openTasks,
+  assigneeOptions = [],
   updatedAfterLastTicketSync = false,
   extraMeta,
   selectionSlot,
@@ -181,7 +189,7 @@ export function JobCard({
               Paid
             </span>
           ) : null}
-          {taskOpen > 0 ? (
+          {taskOpen > 0 && !openTasks ? (
             <span
               className="badge rounded-pill bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle small fw-semibold d-inline-flex align-items-center gap-1"
               title={taskSummaryTitle || `${taskOpen} open`}
@@ -191,7 +199,7 @@ export function JobCard({
               </i>
               {taskOpen}
             </span>
-          ) : taskDone > 0 ? (
+          ) : taskOpen === 0 && taskDone > 0 ? (
             <span
               className="badge rounded-pill bg-light text-body-secondary border small fw-semibold d-inline-flex align-items-center gap-1"
               title={taskSummaryTitle}
@@ -243,7 +251,7 @@ export function JobCard({
               Estimate: ${(job.estimateAmountCents / 100).toFixed(2)}
             </div>
             {qbQuotedHint ? <div className="job-card-prequote-qb-hint small text-body-secondary">{qbQuotedHint}</div> : null}
-            {/* depositCents is per customer; once this job is invoiced, its payments show as invoice paid. */}
+            {/* depositCents is this ticket's share of the customer's held deposit; once invoiced, it shows as invoice paid. */}
             {hasQbInvoice || job.depositCents <= 0 ? (
               <div className="job-card-invoice">
                 Invoice paid: ${(job.amountPaidCents / 100).toFixed(2)} / $
@@ -264,6 +272,14 @@ export function JobCard({
         <span className="job-card-open-hint card-open-hint">Open ticket →</span>
       </Link>
       {inboundPanel ? <div className="job-card-inbound-panel-wrap">{inboundPanel}</div> : null}
+      {openTasks ? (
+        <JobCardTasks
+          jobId={job.id}
+          tasks={jobCardTasks(openTasks)}
+          doneCount={taskDone}
+          assigneeOptions={assigneeOptions}
+        />
+      ) : null}
     </>
   );
 

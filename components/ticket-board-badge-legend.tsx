@@ -38,7 +38,7 @@ export function TicketBoardBadgeLegend() {
             </i>
             n
           </span>
-          Open ticket tasks (number = open)
+          Open ticket tasks (number = open; red if one is overdue). Click it to assign, finish or add tasks
         </li>
         <li className="d-flex align-items-center gap-2">
           <span className="badge rounded-pill bg-light text-body-secondary border small fw-semibold d-inline-flex align-items-center gap-1">
