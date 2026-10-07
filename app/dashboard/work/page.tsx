@@ -2,11 +2,13 @@ import Link from 'next/link';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { DashboardHomeTodos } from '@/components/dashboard-home-todos';
+import { DashboardTicketTasks } from '@/components/dashboard-ticket-tasks';
 import { DashboardWorkList } from '@/components/dashboard-work-list';
 import { WorkCalendarPeek } from '@/components/work-calendar-peek';
 import { loadWorkCalendarPeek } from '@/lib/calendar/work-peek';
 import { loadDashboardTodosModule } from '@/lib/domain/dashboard-home-todos';
 import { loadDashboardSummary } from '@/lib/domain/dashboard-summary';
+import { loadDashboardTicketTasks } from '@/lib/domain/dashboard-ticket-tasks';
 import { loadDashboardWorkList } from '@/lib/domain/dashboard-work-list';
 import { jobErrorFromQuery } from '@/lib/domain/integration-query-toasts';
 import { prisma } from '@/lib/db/prisma';
@@ -39,11 +41,12 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
   const session = await getServerSession(authOptions);
   const sessionEmail = (session?.user?.email ?? '').toLowerCase() || null;
 
-  const [summary, todosModule, assigneeOptions, workList, calendarPeek] = await Promise.all([
+  const [summary, todosModule, assigneeOptions, workList, ticketTasks, calendarPeek] = await Promise.all([
     loadDashboardSummary(),
     loadDashboardTodosModule(sessionEmail, { upcomingLimit: 40 }),
     loadTodoAssigneeOptions(prisma, sessionEmail),
     loadDashboardWorkList(),
+    loadDashboardTicketTasks(sessionEmail),
     loadWorkCalendarPeek({ sessionEmail, mailbox }),
   ]);
 
@@ -53,7 +56,7 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Work</h1>
           <p className="board-topbar-sub">
-            Jobs and shop to-dos. Open{' '}
+            Jobs, ticket tasks, and shop to-dos. Open{' '}
             <Link href="/dashboard/tickets" className="text-decoration-underline">
               Tickets
             </Link>{' '}
@@ -75,6 +78,12 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
       <div className="work-page-body">
         <div className="work-page-main">
           <DashboardWorkList work={workList} leadCount={summary.leadCount} />
+          <DashboardTicketTasks
+            module={ticketTasks}
+            assigneeOptions={assigneeOptions}
+            sessionEmail={sessionEmail}
+            className="shadow-sm mb-0"
+          />
         </div>
         <div className="work-page-side">
           <DashboardHomeTodos module={todosModule} assigneeOptions={assigneeOptions} className="shadow-sm mb-0" />

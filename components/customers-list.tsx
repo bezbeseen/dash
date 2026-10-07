@@ -2,39 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-
-function SortableTh({
-  label,
-  column,
-  sortKey,
-  sortDir,
-  onSort,
-  align = 'start',
-  className = '',
-}: {
-  label: string;
-  column: SortKey;
-  sortKey: SortKey;
-  sortDir: SortDir;
-  onSort: (key: SortKey) => void;
-  align?: 'start' | 'end';
-  className?: string;
-}) {
-  const active = sortKey === column;
-  const arrow = active ? (sortDir === 'asc' ? '↑' : '↓') : '';
-  return (
-    <th className={`${align === 'end' ? 'text-end' : ''} ${className}`.trim()} aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-      <button
-        type="button"
-        className="btn btn-link btn-sm p-0 text-reset text-decoration-none fw-semibold"
-        onClick={() => onSort(column)}
-      >
-        {label}
-        {arrow ? <span className="ms-1" aria-hidden>{arrow}</span> : null}
-      </button>
-    </th>
-  );
-}
+import { SortableTh, type SortDir } from '@/components/sortable-th';
 
 function rowMatchesQuery(
   row: { name: string; quickbooksCustomerId: string | null },
@@ -65,7 +33,6 @@ export type CustomerListRowView = {
 };
 
 type SortKey = 'name' | 'open' | 'estimate' | 'invoiced' | 'paid' | 'outstanding' | 'updated';
-type SortDir = 'asc' | 'desc';
 
 function defaultDir(key: SortKey): SortDir {
   return key === 'name' ? 'asc' : 'desc';

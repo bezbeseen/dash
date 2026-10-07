@@ -1,12 +1,22 @@
 import Link from 'next/link';
+import { getServerSession } from 'next-auth';
+import { TaskAssigneeSelect } from '@/components/task-assignee-select';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db/prisma';
+import { loadTodoAssigneeOptions } from '@/lib/todo/assignee-options';
 
 export async function TicketTasksSection({ sectionId, jobId }: { sectionId: string; jobId: string }) {
-  const tasks = await prisma.task.findMany({
-    where: { jobId },
-    orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
-    take: 100,
-  });
+  const session = await getServerSession(authOptions);
+  const sessionEmail = (session?.user?.email ?? '').toLowerCase() || null;
+
+  const [tasks, assigneeOptions] = await Promise.all([
+    prisma.task.findMany({
+      where: { jobId },
+      orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
+      take: 100,
+    }),
+    loadTodoAssigneeOptions(prisma, sessionEmail),
+  ]);
 
   const open = tasks.filter((t) => t.status === 'OPEN');
   const done = tasks.filter((t) => t.status === 'DONE');
@@ -25,7 +35,20 @@ export async function TicketTasksSection({ sectionId, jobId }: { sectionId: stri
         <input type="hidden" name="jobId" value={jobId} />
         <input className="form-control" name="title" placeholder="Add a task for this ticket" required />
         <textarea className="form-control" name="notes" placeholder="Notes (optional)" rows={2} />
-        <div>
+        <div className="d-flex flex-wrap gap-2 align-items-end">
+          <div style={{ minWidth: '12rem' }}>
+            <label className="form-label small mb-1" htmlFor={`${sectionId}-assignee`}>
+              Assign
+            </label>
+            <select className="form-select" id={`${sectionId}-assignee`} name="assigneeEmail" defaultValue="">
+              <option value="">Unassigned</option>
+              {assigneeOptions.map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </select>
+          </div>
           <button className="btn btn-toolbar" type="submit">
             Add task
           </button>
@@ -42,16 +65,24 @@ export async function TicketTasksSection({ sectionId, jobId }: { sectionId: stri
           ) : (
             <ul className="list-unstyled mb-0 d-flex flex-column gap-2">
               {open.map((t) => (
-                <li key={t.id} className="d-flex align-items-start justify-content-between gap-2">
-                  <div>
+                <li key={t.id} className="d-flex flex-wrap align-items-start justify-content-between gap-2">
+                  <div style={{ minWidth: 0 }}>
                     <div className="fw-semibold">{t.title}</div>
                     {t.notes ? <div className="small text-body-secondary">{t.notes}</div> : null}
                   </div>
-                  <form action={`/api/tasks/${t.id}/toggle`} method="post">
-                    <button className="btn btn-sm btn-outline-secondary" type="submit">
-                      Done
-                    </button>
-                  </form>
+                  <div className="d-flex align-items-start gap-2">
+                    <TaskAssigneeSelect
+                      taskId={t.id}
+                      assigneeEmail={t.assigneeEmail}
+                      options={assigneeOptions}
+                      label={`Assignee for ${t.title}`}
+                    />
+                    <form action={`/api/tasks/${t.id}/toggle`} method="post">
+                      <button className="btn btn-sm btn-outline-secondary" type="submit">
+                        Done
+                      </button>
+                    </form>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -71,6 +102,9 @@ export async function TicketTasksSection({ sectionId, jobId }: { sectionId: stri
                   <div className="text-body-secondary">
                     <div className="fw-semibold">{t.title}</div>
                     {t.notes ? <div className="small text-body-secondary">{t.notes}</div> : null}
+                    <div className="small text-body-secondary">
+                      {t.assigneeEmail ? `Assigned: ${t.assigneeEmail}` : 'Unassigned'}
+                    </div>
                   </div>
                   <form action={`/api/tasks/${t.id}/toggle`} method="post">
                     <button className="btn btn-sm btn-outline-secondary" type="submit">

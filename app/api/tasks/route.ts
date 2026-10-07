@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { requireSessionEmail } from '@/lib/auth-session';
 import { postDashboardFormRedirect } from '@/lib/http/post-action-redirect';
+import { isAllowedAssigneeEmail } from '@/lib/todo/assignee-options';
 
 export async function GET(req: Request) {
   await requireSessionEmail();
@@ -29,11 +30,19 @@ export async function POST(req: Request) {
   const notesRaw = String(form.get('notes') ?? '').trim();
   const jobIdRaw = String(form.get('jobId') ?? '').trim();
   const dueAtRaw = String(form.get('dueAt') ?? '').trim();
+  const assigneeRaw = String(form.get('assigneeEmail') ?? '').trim();
   const jobId = jobIdRaw || null;
 
   if (!titleRaw) {
     const to = postDashboardFormRedirect(req, { fallbackPath: '/dashboard/tasks', jobIdFallback: jobId });
     to.searchParams.set('task_error', 'title_required');
+    return NextResponse.redirect(to);
+  }
+
+  const assigneeEmail = assigneeRaw ? assigneeRaw.toLowerCase() : null;
+  if (!isAllowedAssigneeEmail(assigneeEmail)) {
+    const to = postDashboardFormRedirect(req, { fallbackPath: '/dashboard/tasks', jobIdFallback: jobId });
+    to.searchParams.set('task_error', 'assignee_invalid');
     return NextResponse.redirect(to);
   }
 
@@ -51,6 +60,7 @@ export async function POST(req: Request) {
       notes: notesRaw || null,
       jobId,
       dueAt: dueAt ?? null,
+      assigneeEmail,
       createdByEmail: email,
     },
   });

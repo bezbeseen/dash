@@ -1,6 +1,10 @@
 import Link from 'next/link';
+import { getServerSession } from 'next-auth';
+import { TaskAssigneeSelect } from '@/components/task-assignee-select';
 import { WorkflowTabsBar } from '@/components/workflow-tabs-bar';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db/prisma';
+import { emailLocalPart, loadTodoAssigneeOptions } from '@/lib/todo/assignee-options';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +16,8 @@ function taskErrorMessage(code: string | undefined): string | null {
       return 'Add a title for the task.';
     case 'dueAt_invalid':
       return 'Due date was not valid; use yyyy-mm-dd or a full date/time.';
+    case 'assignee_invalid':
+      return 'Assignee must be a Google Workspace email for your organization, or leave unassigned.';
     case 'not_found':
       return 'That task no longer exists.';
     default:
@@ -25,7 +31,10 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const q = await searchParams;
   const taskError = taskErrorMessage(q.task_error);
 
-  const [tasks, linkableJobs] = await Promise.all([
+  const session = await getServerSession(authOptions);
+  const sessionEmail = (session?.user?.email ?? '').toLowerCase() || null;
+
+  const [tasks, linkableJobs, assigneeOptions] = await Promise.all([
     prisma.task.findMany({
       orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
       take: 200,
@@ -37,6 +46,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
       take: LINKABLE_JOBS_LIMIT,
       select: { id: true, projectName: true, customerName: true },
     }),
+    loadTodoAssigneeOptions(prisma, sessionEmail),
   ]);
 
   const open = tasks.filter((t) => t.status === 'OPEN');
@@ -48,7 +58,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
       <header className="board-topbar">
         <div className="board-topbar-titles">
           <h1 className="board-topbar-title">Tasks</h1>
-          <p className="board-topbar-sub">Ticket follow-ups: optional link to a job, due date, and done/reopen.</p>
+          <p className="board-topbar-sub">Ticket follow-ups: optional link to a job, assignee, due date, and done/reopen.</p>
         </div>
         <div className="board-topbar-actions">
           <Link href="/dashboard" className="btn btn-toolbar btn-toolbar-muted">
@@ -89,6 +99,19 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                   Showing {linkableJobs.length} most recently updated open tickets.
                 </p>
               </div>
+              <div style={{ minWidth: '12rem' }}>
+                <label htmlFor="task-assignee" className="form-label small mb-1">
+                  Assign
+                </label>
+                <select className="form-select" id="task-assignee" name="assigneeEmail" defaultValue="">
+                  <option value="">Unassigned</option>
+                  {assigneeOptions.map((e) => (
+                    <option key={e} value={e}>
+                      {e}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="flex-grow-1" style={{ minWidth: '12rem' }}>
                 <label htmlFor="task-due" className="form-label small mb-1">
                   Due (optional)
@@ -122,6 +145,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                 <tr>
                   <th className="ps-4">Task</th>
                   <th>Ticket</th>
+                  <th style={{ width: '11rem' }}>Assignee</th>
                   <th className="text-end pe-4" style={{ width: '10rem' }}>
                     Action
                   </th>
@@ -130,7 +154,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
               <tbody>
                 {open.length === 0 ? (
                   <tr>
-                    <td className="ps-4 py-4 text-body-secondary" colSpan={3}>
+                    <td className="ps-4 py-4 text-body-secondary" colSpan={4}>
                       No open tasks.
                     </td>
                   </tr>
@@ -151,6 +175,14 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         ) : (
                           <span className="text-body-secondary">--</span>
                         )}
+                      </td>
+                      <td>
+                        <TaskAssigneeSelect
+                          taskId={t.id}
+                          assigneeEmail={t.assigneeEmail}
+                          options={assigneeOptions}
+                          label={`Assignee for ${t.title}`}
+                        />
                       </td>
                       <td className="text-end pe-4">
                         <form action={`/api/tasks/${t.id}/toggle`} method="post">
@@ -177,6 +209,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                 <tr>
                   <th className="ps-4">Task</th>
                   <th>Ticket</th>
+                  <th style={{ width: '11rem' }}>Assignee</th>
                   <th className="text-end pe-4" style={{ width: '10rem' }}>
                     Action
                   </th>
@@ -185,7 +218,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
               <tbody>
                 {done.length === 0 ? (
                   <tr>
-                    <td className="ps-4 py-4 text-body-secondary" colSpan={3}>
+                    <td className="ps-4 py-4 text-body-secondary" colSpan={4}>
                       No completed tasks yet.
                     </td>
                   </tr>
@@ -206,6 +239,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         ) : (
                           <span className="text-body-secondary">--</span>
                         )}
+                      </td>
+                      <td className="small text-body-secondary" title={t.assigneeEmail ?? undefined}>
+                        {t.assigneeEmail ? emailLocalPart(t.assigneeEmail) : 'Unassigned'}
                       </td>
                       <td className="text-end pe-4">
                         <form action={`/api/tasks/${t.id}/toggle`} method="post">

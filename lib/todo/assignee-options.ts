@@ -11,8 +11,8 @@ function parseEnvEmailList(): string[] {
 }
 
 /**
- * Deduplicated assignee options for to-do dropdowns: env list, everyone who
- * appears on to-dos, and the current user.
+ * Deduplicated assignee options for to-do and ticket task dropdowns: env list,
+ * everyone who appears on to-dos or tasks, and the current user.
  */
 export async function loadTodoAssigneeOptions(
   prisma: PrismaClient,
@@ -23,11 +23,16 @@ export async function loadTodoAssigneeOptions(
 
   const fromEnv = parseEnvEmailList().filter(valid);
 
-  const fromRows = await prisma.todo.findMany({
-    select: { assigneeEmail: true, createdByEmail: true },
-  });
+  const [todoRows, taskRows] = await Promise.all([
+    prisma.todo.findMany({
+      select: { assigneeEmail: true, createdByEmail: true },
+    }),
+    prisma.task.findMany({
+      select: { assigneeEmail: true, createdByEmail: true },
+    }),
+  ]);
   const fromDb = new Set<string>();
-  for (const r of fromRows) {
+  for (const r of [...todoRows, ...taskRows]) {
     if (r.assigneeEmail && valid(r.assigneeEmail)) {
       fromDb.add(r.assigneeEmail.toLowerCase());
     }
@@ -47,4 +52,9 @@ export async function loadTodoAssigneeOptions(
 export function isAllowedAssigneeEmail(raw: string | null | undefined): boolean {
   if (raw == null || raw.trim() === '') return true;
   return raw.trim().toLowerCase().endsWith(`@${workspaceDomain()}`);
+}
+
+/** Compact label for tables; every option shares the workspace domain, so the local part is unique. */
+export function emailLocalPart(email: string): string {
+  return email.split('@')[0] || email;
 }

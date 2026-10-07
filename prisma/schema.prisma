@@ -208,6 +208,8 @@ model Task {
   notes          String?
   status         TaskStatus @default(OPEN)
   dueAt          DateTime?
+  /// Google Workspace user expected to do the work; null = unassigned.
+  assigneeEmail  String?
   createdByEmail String
 
   jobId String?
@@ -219,6 +221,7 @@ model Task {
   @@index([status, updatedAt])
   @@index([jobId, status])
   @@index([createdByEmail, status])
+  @@index([assigneeEmail, status])
 }
 
 /// Shop-wide to-dos (not ticket-linked; see `Task` for job-related items).
